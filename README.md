@@ -55,17 +55,30 @@
 - `counter_env`: 环境
 - `counter_test`: 测试用例
 
-### 自定义报告服务器 (custom_report_server.sv)
-- 自定义UVM_INFO、UVM_WARNING等消息格式
-- 可配置的文件路径显示模式
-- 支持颜色编码和时间戳
-- 运行时动态配置
+### 自定义报告服务器
+
+项目提供了两种UVM报告服务器的实现方法：
+
+#### 方法1: custom_report_server.sv
+- **继承**: `uvm_default_report_server`
+- **重写方法**: `format_action`
+- **特点**: 简单实现，主要修改消息格式
+
+#### 方法2: custom_report_server_v2.sv (推荐)
+- **继承**: `uvm_default_report_server`
+- **重写方法**: `process_report`
+- **特点**: 完全控制报告处理流程，更灵活
 
 #### 支持的路径显示模式
 1. **完整路径**: 显示完整的文件路径
 2. **仅文件名**: 只显示文件名，不显示路径
 3. **相对路径**: 显示从src/tb/test开始的相对路径
 4. **缩写路径**: 显示`.../<parent_dir>/<filename>`格式
+
+#### 为什么选择继承uvm_default_report_server？
+- `uvm_report_server`是抽象基类，包含纯虚函数
+- `uvm_default_report_server`是具体实现，提供了完整的功能
+- 继承`uvm_default_report_server`可以选择性重写特定方法，而不需要实现所有接口
 
 ## 编译和运行
 

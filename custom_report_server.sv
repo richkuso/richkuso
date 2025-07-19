@@ -15,27 +15,23 @@ package custom_report_pkg;
             super.new(name);
         endfunction
         
-        // 重写compose_report_message方法来自定义消息格式
-        virtual function string compose_report_message(uvm_report_message report_message,
-                                                     string report_object_name = "");
+        // 重写format_action方法来自定义消息格式
+        virtual function string format_action(uvm_severity severity,
+                                             uvm_report_object ro,
+                                             string filename,
+                                             int line,
+                                             string id,
+                                             uvm_action action,
+                                             string message);
             
-            uvm_severity severity;
-            string filename, line, time_str, context_str, message_str;
-            string id_str, severity_str, custom_filename;
-            uvm_verbosity verbosity;
-            int line_num;
-            
-            // 获取报告消息的各个字段
-            severity = report_message.get_severity();
-            filename = report_message.get_filename();
-            line_num = report_message.get_line();
-            id_str = report_message.get_id();
-            message_str = report_message.get_message();
-            verbosity = report_message.get_verbosity();
-            context_str = report_message.get_context();
+            string time_str, severity_str, custom_filename;
+            string object_name;
             
             // 获取仿真时间
             time_str = $sformatf("%0t", $time);
+            
+            // 获取对象名称
+            object_name = (ro != null) ? ro.get_full_name() : "";
             
             // 转换severity为字符串
             case (severity)
@@ -51,7 +47,7 @@ package custom_report_pkg;
             
             // 构造自定义格式的消息
             return compose_custom_message(severity_str, time_str, custom_filename, 
-                                        line_num, id_str, report_object_name, message_str);
+                                        line, id, object_name, message);
         endfunction
         
         // 处理文件名的函数 - 可以根据需要修改

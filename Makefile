@@ -9,7 +9,7 @@ UVM_VERSION = 1.2
 # Source files
 DESIGN_FILES = counter.sv
 INTERFACE_FILES = counter_interface.sv
-PACKAGE_FILES = counter_pkg.sv advanced_tests.sv custom_report_server.sv custom_report_demo.sv
+PACKAGE_FILES = counter_pkg.sv advanced_tests.sv custom_report_server.sv custom_report_demo.sv custom_report_server_v2.sv
 TESTBENCH_FILES = testbench.sv
 
 ALL_FILES = $(DESIGN_FILES) $(INTERFACE_FILES) $(PACKAGE_FILES) $(TESTBENCH_FILES)
@@ -97,6 +97,21 @@ demo_config:
 run_demo: demo_compile demo_run
 
 run_config_demo: demo_compile demo_config
+
+# Comparison targets
+COMP_FILES = custom_report_server.sv custom_report_server_v2.sv report_server_comparison.sv
+
+comp_compile:
+	vcs $(VCS_OPTS) $(COMP_FILES) -o simv_comp
+
+comp_v1:
+	./simv_comp +UVM_TESTNAME=report_comparison_test +IMPL=v1 +UVM_VERBOSITY=UVM_MEDIUM
+
+comp_v2:
+	./simv_comp +UVM_TESTNAME=report_comparison_test +IMPL=v2 +UVM_VERBOSITY=UVM_MEDIUM
+
+run_comparison_v1: comp_compile comp_v1
+run_comparison_v2: comp_compile comp_v2
 
 # View waveforms
 waves:
