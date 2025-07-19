@@ -4,6 +4,7 @@ module testbench;
     import uvm_pkg::*;
     import counter_pkg::*;
     import advanced_tests_pkg::*;
+    import custom_report_pkg::*;
     `include "uvm_macros.svh"
     
     // Clock and reset generation
@@ -32,6 +33,9 @@ module testbench;
     
     // Test execution
     initial begin
+        // Setup custom report server BEFORE any UVM_INFO messages
+        custom_report_config::setup_custom_report_server();
+        
         // Set interface in config_db
         uvm_config_db#(virtual counter_if)::set(null, "*", "vif", counter_if_inst);
         

@@ -9,7 +9,7 @@ UVM_VERSION = 1.2
 # Source files
 DESIGN_FILES = counter.sv
 INTERFACE_FILES = counter_interface.sv
-PACKAGE_FILES = counter_pkg.sv advanced_tests.sv
+PACKAGE_FILES = counter_pkg.sv advanced_tests.sv custom_report_server.sv custom_report_demo.sv
 TESTBENCH_FILES = testbench.sv
 
 ALL_FILES = $(DESIGN_FILES) $(INTERFACE_FILES) $(PACKAGE_FILES) $(TESTBENCH_FILES)
@@ -81,6 +81,23 @@ run_test:
 run_advanced:
 	$(MAKE) run UVM_TESTNAME=counter_advanced_test
 
+# Demo targets for custom report server
+DEMO_FILES = $(DESIGN_FILES) $(INTERFACE_FILES) $(PACKAGE_FILES) testbench_demo.sv
+
+demo_compile:
+	vcs $(VCS_OPTS) $(DEMO_FILES) -o simv_demo
+
+demo_run:
+	./simv_demo +UVM_TESTNAME=report_demo_test +UVM_VERBOSITY=UVM_MEDIUM
+
+demo_config:
+	./simv_demo +UVM_TESTNAME=report_config_demo_test +UVM_VERBOSITY=UVM_MEDIUM
+
+# Run report server demos
+run_demo: demo_compile demo_run
+
+run_config_demo: demo_compile demo_config
+
 # View waveforms
 waves:
 	dve -vpd vcdplus.vpd &
@@ -96,6 +113,8 @@ help:
 	@echo "  run_high     - Run with UVM_HIGH verbosity"
 	@echo "  run_full     - Run with UVM_FULL verbosity"
 	@echo "  run_test     - Run specific test (TEST=<name>)"
+	@echo "  run_demo     - Run custom report server demo"
+	@echo "  run_config_demo - Run report configuration demo"
 	@echo "  waves        - View waveforms"
 	@echo "  clean        - Clean generated files"
 	@echo "  help         - Show this help"
