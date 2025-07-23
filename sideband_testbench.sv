@@ -1,0 +1,456 @@
+module sideband_testbench;
+  import uvm_pkg::*;
+  import sideband_pkg::*;
+  `include "uvm_macros.svh"
+  
+  // Clock and reset generation
+  logic sb_clk = 0;
+  logic sb_reset = 1;
+  
+  // Sideband clock - higher frequency for serial transmission
+  always #2.5 sb_clk = ~sb_clk; // 200MHz sideband clock
+  
+  initial begin
+    sb_reset = 1;
+    #100;
+    sb_reset = 0;
+  end
+  
+  // Interface instantiation
+  sideband_interface sb_intf(sb_clk, sb_reset);
+  
+  // Simple sideband receiver DUT for demonstration
+  sideband_receiver_dut dut (
+    .sb_clk(sb_clk),
+    .sb_reset(sb_reset),
+    .sb_data(sb_intf.sb_data)
+  );
+  
+  // UVM Environment
+  class sideband_env extends uvm_env;
+    `uvm_component_utils(sideband_env)
+    
+    sideband_agent agent;
+    
+    function new(string name = "sideband_env", uvm_component parent = null);
+      super.new(name, parent);
+    endfunction
+    
+    virtual function void build_phase(uvm_phase phase);
+      super.build_phase(phase);
+      agent = sideband_agent::type_id::create("agent", this);
+    endfunction
+  endclass
+  
+  // Base test class
+  class sideband_base_test extends uvm_test;
+    `uvm_component_utils(sideband_base_test)
+    
+    sideband_env env;
+    
+    function new(string name = "sideband_base_test", uvm_component parent = null);
+      super.new(name, parent);
+    endfunction
+    
+    virtual function void build_phase(uvm_phase phase);
+      super.build_phase(phase);
+      
+      // Create environment
+      env = sideband_env::type_id::create("env", this);
+      
+      // Configure the agent as active
+      uvm_config_db#(uvm_active_passive_enum)::set(this, "env.agent", "is_active", UVM_ACTIVE);
+      
+      // Set the virtual interface
+      uvm_config_db#(virtual sideband_interface)::set(this, "env.agent.*", "vif", sb_intf);
+    endfunction
+    
+    virtual function void end_of_elaboration_phase(uvm_phase phase);
+      super.end_of_elaboration_phase(phase);
+      uvm_top.print_topology();
+    endfunction
+  endclass
+  
+  // Memory access test
+  class sideband_memory_test extends sideband_base_test;
+    `uvm_component_utils(sideband_memory_test)
+    
+    function new(string name = "sideband_memory_test", uvm_component parent = null);
+      super.new(name, parent);
+    endfunction
+    
+    virtual task run_phase(uvm_phase phase);
+      sideband_mem_write_seq write_seq;
+      sideband_mem_read_seq read_seq;
+      
+      phase.raise_objection(this);
+      
+      `uvm_info("MEMORY_TEST", "Starting memory access test", UVM_LOW)
+      
+      // Run memory write sequence
+      write_seq = sideband_mem_write_seq::type_id::create("write_seq");
+      assert(write_seq.randomize() with {
+        num_transactions == 5;
+        use_64bit == 1'b0; // Use 32-bit first
+      });
+      write_seq.start(env.agent.sequencer);
+      
+      #1000; // Gap between sequences
+      
+      // Run memory read sequence
+      read_seq = sideband_mem_read_seq::type_id::create("read_seq");
+      assert(read_seq.randomize() with {
+        num_transactions == 5;
+        use_64bit == 1'b0; // Use 32-bit first
+      });
+      read_seq.start(env.agent.sequencer);
+      
+      #1000;
+      
+      // Run 64-bit memory operations
+      write_seq = sideband_mem_write_seq::type_id::create("write_seq_64");
+      assert(write_seq.randomize() with {
+        num_transactions == 3;
+        use_64bit == 1'b1; // Use 64-bit
+      });
+      write_seq.start(env.agent.sequencer);
+      
+      #1000;
+      
+      read_seq = sideband_mem_read_seq::type_id::create("read_seq_64");
+      assert(read_seq.randomize() with {
+        num_transactions == 3;
+        use_64bit == 1'b1; // Use 64-bit
+      });
+      read_seq.start(env.agent.sequencer);
+      
+      #2000;
+      
+      `uvm_info("MEMORY_TEST", "Memory access test completed", UVM_LOW)
+      
+      phase.drop_objection(this);
+    endtask
+  endclass
+  
+  // Configuration access test
+  class sideband_config_test extends sideband_base_test;
+    `uvm_component_utils(sideband_config_test)
+    
+    function new(string name = "sideband_config_test", uvm_component parent = null);
+      super.new(name, parent);
+    endfunction
+    
+    virtual task run_phase(uvm_phase phase);
+      sideband_cfg_seq cfg_seq;
+      
+      phase.raise_objection(this);
+      
+      `uvm_info("CONFIG_TEST", "Starting configuration access test", UVM_LOW)
+      
+      // Run 32-bit configuration sequence
+      cfg_seq = sideband_cfg_seq::type_id::create("cfg_seq_32");
+      assert(cfg_seq.randomize() with {
+        num_reads == 3;
+        num_writes == 3;
+        use_64bit == 1'b0;
+      });
+      cfg_seq.start(env.agent.sequencer);
+      
+      #1000;
+      
+      // Run 64-bit configuration sequence
+      cfg_seq = sideband_cfg_seq::type_id::create("cfg_seq_64");
+      assert(cfg_seq.randomize() with {
+        num_reads == 2;
+        num_writes == 2;
+        use_64bit == 1'b1;
+      });
+      cfg_seq.start(env.agent.sequencer);
+      
+      #2000;
+      
+      `uvm_info("CONFIG_TEST", "Configuration access test completed", UVM_LOW)
+      
+      phase.drop_objection(this);
+    endtask
+  endclass
+  
+  // Mixed traffic test
+  class sideband_mixed_test extends sideband_base_test;
+    `uvm_component_utils(sideband_mixed_test)
+    
+    function new(string name = "sideband_mixed_test", uvm_component parent = null);
+      super.new(name, parent);
+    endfunction
+    
+    virtual task run_phase(uvm_phase phase);
+      sideband_base_sequence sequences[];
+      
+      phase.raise_objection(this);
+      
+      `uvm_info("MIXED_TEST", "Starting mixed traffic test", UVM_LOW)
+      
+      // Create array of different sequences
+      sequences = new[6];
+      sequences[0] = sideband_mem_write_seq::type_id::create("mem_wr_32");
+      sequences[1] = sideband_mem_read_seq::type_id::create("mem_rd_32");
+      sequences[2] = sideband_cfg_seq::type_id::create("cfg_32");
+      sequences[3] = sideband_mem_write_seq::type_id::create("mem_wr_64");
+      sequences[4] = sideband_mem_read_seq::type_id::create("mem_rd_64");
+      sequences[5] = sideband_cfg_seq::type_id::create("cfg_64");
+      
+      // Configure sequences
+      void'($cast(sequences[0], sideband_mem_write_seq::type_id::create("mem_wr_32")));
+      assert(sequences[0].randomize() with {
+        sideband_mem_write_seq::num_transactions == 2;
+        sideband_mem_write_seq::use_64bit == 1'b0;
+      });
+      
+      void'($cast(sequences[1], sideband_mem_read_seq::type_id::create("mem_rd_32")));
+      assert(sequences[1].randomize() with {
+        sideband_mem_read_seq::num_transactions == 2;
+        sideband_mem_read_seq::use_64bit == 1'b0;
+      });
+      
+      void'($cast(sequences[2], sideband_cfg_seq::type_id::create("cfg_32")));
+      assert(sequences[2].randomize() with {
+        sideband_cfg_seq::num_reads == 1;
+        sideband_cfg_seq::num_writes == 1;
+        sideband_cfg_seq::use_64bit == 1'b0;
+      });
+      
+      void'($cast(sequences[3], sideband_mem_write_seq::type_id::create("mem_wr_64")));
+      assert(sequences[3].randomize() with {
+        sideband_mem_write_seq::num_transactions == 2;
+        sideband_mem_write_seq::use_64bit == 1'b1;
+      });
+      
+      void'($cast(sequences[4], sideband_mem_read_seq::type_id::create("mem_rd_64")));
+      assert(sequences[4].randomize() with {
+        sideband_mem_read_seq::num_transactions == 2;
+        sideband_mem_read_seq::use_64bit == 1'b1;
+      });
+      
+      void'($cast(sequences[5], sideband_cfg_seq::type_id::create("cfg_64")));
+      assert(sequences[5].randomize() with {
+        sideband_cfg_seq::num_reads == 1;
+        sideband_cfg_seq::num_writes == 1;
+        sideband_cfg_seq::use_64bit == 1'b1;
+      });
+      
+      // Run sequences in random order
+      sequences.shuffle();
+      
+      foreach(sequences[i]) begin
+        sequences[i].start(env.agent.sequencer);
+        #500; // Small gap between different sequence types
+      end
+      
+      #2000;
+      
+      `uvm_info("MIXED_TEST", "Mixed traffic test completed", UVM_LOW)
+      
+      phase.drop_objection(this);
+    endtask
+  endclass
+  
+  // Initial block to start UVM
+  initial begin
+    // Enable assertions
+    `ifdef ENABLE_SIDEBAND_ASSERTIONS
+      `uvm_info("TB", "Sideband assertions enabled", UVM_LOW)
+    `endif
+    
+    // Set up UVM configuration
+    uvm_config_db#(virtual sideband_interface)::set(null, "*", "vif", sb_intf);
+    
+    // Set verbosity
+    uvm_top.set_report_verbosity_level_hier(UVM_MEDIUM);
+    
+    // Run the test
+    run_test();
+  end
+  
+  // Waveform dumping
+  initial begin
+    $dumpfile("sideband_waves.vcd");
+    $dumpvars(0, sideband_testbench);
+  end
+  
+  // Timeout watchdog
+  initial begin
+    #50000; // 50us timeout
+    `uvm_fatal("TIMEOUT", "Test timeout - simulation ran too long")
+  end
+  
+endmodule
+
+// Simple sideband receiver DUT for demonstration
+module sideband_receiver_dut (
+  input  logic sb_clk,
+  input  logic sb_reset,
+  input  logic sb_data
+);
+  
+  // State machine for packet reception
+  typedef enum logic [2:0] {
+    IDLE,
+    RECEIVING_HEADER,
+    WAITING_GAP,
+    RECEIVING_DATA,
+    PROCESSING
+  } state_t;
+  
+  state_t current_state, next_state;
+  
+  // Packet reception registers
+  logic [63:0] header_reg;
+  logic [63:0] data_reg;
+  logic [5:0]  bit_counter;
+  logic [5:0]  gap_counter;
+  logic        packet_valid;
+  logic        data_phase;
+  
+  // State register
+  always_ff @(posedge sb_clk or posedge sb_reset) begin
+    if (sb_reset) begin
+      current_state <= IDLE;
+      bit_counter <= 0;
+      gap_counter <= 0;
+      header_reg <= 0;
+      data_reg <= 0;
+      packet_valid <= 0;
+      data_phase <= 0;
+    end else begin
+      current_state <= next_state;
+      
+      case (current_state)
+        IDLE: begin
+          if (sb_data) begin
+            bit_counter <= 1;
+            header_reg[0] <= sb_data;
+            packet_valid <= 0;
+          end
+        end
+        
+        RECEIVING_HEADER: begin
+          if (bit_counter < 63) begin
+            header_reg[bit_counter] <= sb_data;
+            bit_counter <= bit_counter + 1;
+          end else begin
+            header_reg[63] <= sb_data;
+            bit_counter <= 0;
+            gap_counter <= 0;
+          end
+        end
+        
+        WAITING_GAP: begin
+          if (!sb_data) begin
+            gap_counter <= gap_counter + 1;
+          end else if (gap_counter >= 32) begin
+            // Start of data packet
+            bit_counter <= 1;
+            data_reg[0] <= sb_data;
+            data_phase <= 1;
+          end else begin
+            gap_counter <= 0;
+          end
+        end
+        
+        RECEIVING_DATA: begin
+          if (bit_counter < 63) begin
+            data_reg[bit_counter] <= sb_data;
+            bit_counter <= bit_counter + 1;
+          end else begin
+            data_reg[63] <= sb_data;
+            bit_counter <= 0;
+          end
+        end
+        
+        PROCESSING: begin
+          packet_valid <= 1;
+          data_phase <= 0;
+        end
+      endcase
+    end
+  end
+  
+  // Next state logic
+  always_comb begin
+    next_state = current_state;
+    
+    case (current_state)
+      IDLE: begin
+        if (sb_data)
+          next_state = RECEIVING_HEADER;
+      end
+      
+      RECEIVING_HEADER: begin
+        if (bit_counter == 63)
+          next_state = WAITING_GAP;
+      end
+      
+      WAITING_GAP: begin
+        if (gap_counter >= 32) begin
+          if (sb_data && needs_data_packet())
+            next_state = RECEIVING_DATA;
+          else if (gap_counter >= 32)
+            next_state = PROCESSING;
+        end
+      end
+      
+      RECEIVING_DATA: begin
+        if (bit_counter == 63)
+          next_state = PROCESSING;
+      end
+      
+      PROCESSING: begin
+        next_state = IDLE;
+      end
+    endcase
+  end
+  
+  // Determine if packet needs data based on opcode
+  function bit needs_data_packet();
+    logic [4:0] opcode;
+    opcode = header_reg[6:2];
+    
+    case (opcode)
+      5'b00001, 5'b00011, 5'b00101: return 1'b1; // 32-bit writes
+      5'b01001, 5'b01011, 5'b01101: return 1'b1; // 64-bit writes
+      5'b10001, 5'b11001, 5'b11011, 5'b11000: return 1'b1; // Completions with data, messages with data
+      default: return 1'b0;
+    endcase
+  endfunction
+  
+  // Packet processing and display
+  always_ff @(posedge sb_clk) begin
+    if (packet_valid) begin
+      logic [4:0] opcode;
+      logic [2:0] srcid, dstid;
+      logic [4:0] tag;
+      logic [23:0] addr;
+      logic [15:0] status;
+      
+      opcode = header_reg[6:2];
+      srcid = header_reg[31:29];
+      dstid = header_reg[56:54];
+      tag = header_reg[25:21];
+      
+      if (opcode inside {5'b10000, 5'b10001, 5'b11001}) begin // Completions
+        status = header_reg[47:32];
+        $display("DUT: Received COMPLETION - opcode=%0d, srcid=%0d, dstid=%0d, tag=%0d, status=0x%0h", 
+                 opcode, srcid, dstid, tag, status);
+      end else begin // Register access
+        addr = {8'h0, header_reg[47:32]};
+        $display("DUT: Received REG_ACCESS - opcode=%0d, srcid=%0d, dstid=%0d, tag=%0d, addr=0x%0h", 
+                 opcode, srcid, dstid, tag, addr);
+      end
+      
+      if (data_phase) begin
+        $display("DUT: Packet data = 0x%016h", data_reg);
+      end
+    end
+  end
+  
+endmodule
