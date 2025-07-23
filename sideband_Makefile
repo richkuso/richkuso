@@ -1,0 +1,221 @@
+# Makefile for Sideband UVM Agent Testbench
+# Supports multiple simulators and test cases
+
+# Default simulator and test
+SIM ?= vcs
+TEST ?= sideband_memory_test
+
+# Source files
+SOURCES = sideband_interface.sv sideband_pkg.sv sideband_testbench.sv
+
+# Common UVM arguments
+UVM_HOME ?= $(VCS_HOME)/etc/uvm-1.2
+UVM_ARGS = +incdir+$(UVM_HOME)/src $(UVM_HOME)/src/uvm_pkg.sv
+
+# Enable sideband assertions (optional)
+ENABLE_ASSERTIONS ?= 1
+ifeq ($(ENABLE_ASSERTIONS), 1)
+    DEFINE_ARGS = +define+ENABLE_SIDEBAND_ASSERTIONS
+else
+    DEFINE_ARGS = 
+endif
+
+# VCS specific settings
+VCS_ARGS = -sverilog -ntb_opts uvm-1.2 -debug_access+all -kdb -lca $(DEFINE_ARGS)
+VCS_RUN_ARGS = +UVM_TESTNAME=$(TEST) +UVM_VERBOSITY=UVM_MEDIUM
+
+# Questa specific settings
+QUESTA_ARGS = -sv -uvm +incdir+$(UVM_HOME)/src $(DEFINE_ARGS)
+QUESTA_RUN_ARGS = +UVM_TESTNAME=$(TEST) +UVM_VERBOSITY=UVM_MEDIUM
+
+# Xcelium specific settings
+XCELIUM_ARGS = -sv -uvm +incdir+$(UVM_HOME)/src $(DEFINE_ARGS)
+XCELIUM_RUN_ARGS = +UVM_TESTNAME=$(TEST) +UVM_VERBOSITY=UVM_MEDIUM
+
+# Available tests
+TESTS = sideband_memory_test sideband_config_test sideband_mixed_test
+
+# Default target
+all: compile run
+
+# Compilation targets
+compile: compile_$(SIM)
+
+compile_vcs:
+	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -o sideband_simv
+
+compile_questa:
+	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(SOURCES)
+	vopt sideband_testbench -o sideband_testbench_opt
+
+compile_xcelium:
+	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES)
+	xmelab sideband_testbench -access +rwc
+
+# Run targets
+run: run_$(SIM)
+
+run_vcs:
+	./sideband_simv $(VCS_RUN_ARGS)
+
+run_questa:
+	vsim sideband_testbench_opt -c -do "run -all; quit" $(QUESTA_RUN_ARGS)
+
+run_xcelium:
+	xmsim sideband_testbench $(XCELIUM_RUN_ARGS) -exit
+
+# Test-specific targets
+test_memory: 
+	$(MAKE) TEST=sideband_memory_test run
+
+test_config:
+	$(MAKE) TEST=sideband_config_test run
+
+test_mixed:
+	$(MAKE) TEST=sideband_mixed_test run
+
+test_all:
+	@echo "Running all sideband tests..."
+	$(MAKE) TEST=sideband_memory_test run
+	$(MAKE) TEST=sideband_config_test run
+	$(MAKE) TEST=sideband_mixed_test run
+
+# Debug targets (with GUI)
+debug: debug_$(SIM)
+
+debug_vcs:
+	./sideband_simv $(VCS_RUN_ARGS) -gui
+
+debug_questa:
+	vsim sideband_testbench_opt -gui $(QUESTA_RUN_ARGS)
+
+debug_xcelium:
+	xmsim sideband_testbench $(XCELIUM_RUN_ARGS) -gui
+
+# Coverage targets
+coverage: coverage_$(SIM)
+
+coverage_vcs:
+	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -o sideband_simv_cov -cm line+cond+fsm+tgl+branch
+	./sideband_simv_cov $(VCS_RUN_ARGS) -cm line+cond+fsm+tgl+branch
+	urg -dir simv.vdb -report coverage_report
+
+coverage_questa:
+	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(SOURCES) +cover
+	vopt sideband_testbench -o sideband_testbench_cov +cover
+	vsim sideband_testbench_cov -c -do "coverage save -onexit coverage.ucdb; run -all; quit" $(QUESTA_RUN_ARGS)
+	vcover report coverage.ucdb -html -htmldir coverage_report
+
+coverage_xcelium:
+	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES) -coverage all
+	xmelab sideband_testbench -access +rwc -coverage all
+	xmsim sideband_testbench $(XCELIUM_RUN_ARGS) -coverage all
+	imc -load cov_work/scope/test -execcmd "report -summary"
+
+# Lint targets
+lint: lint_$(SIM)
+
+lint_vcs:
+	vlogan $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -lint
+
+lint_questa:
+	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(SOURCES) -lint
+
+lint_xcelium:
+	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES) -lint
+
+# Clean targets
+clean: clean_$(SIM)
+
+clean_vcs:
+	rm -rf sideband_simv* csrc *.daidir *.log *.vpd *.vcd ucli.key vc_hdrs.h
+	rm -rf simv.vdb coverage_report urgReport AN.DB
+
+clean_questa:
+	rm -rf work *.log *.wlf transcript *.vstf coverage.ucdb coverage_report
+
+clean_xcelium:
+	rm -rf xcelium.d *.log *.shm *.trn *.dsn cov_work imc.log
+
+clean_all:
+	$(MAKE) clean_vcs
+	$(MAKE) clean_questa  
+	$(MAKE) clean_xcelium
+	rm -rf *.vcd waves.vcd sideband_waves.vcd
+
+# Regression target
+regress:
+	@echo "Running sideband regression suite..."
+	@echo "======================================="
+	@for test in $(TESTS); do \
+		echo "Running $$test..."; \
+		$(MAKE) TEST=$$test run || exit 1; \
+		echo "$$test PASSED"; \
+		echo ""; \
+	done
+	@echo "All tests PASSED!"
+
+# Synthesis check (if synthesis tools are available)
+synth_check:
+	@echo "Checking synthesizability of interface..."
+	# Add synthesis commands here if needed
+
+# Help target
+help:
+	@echo "Sideband UVM Agent Makefile"
+	@echo "==========================="
+	@echo "Available targets:"
+	@echo "  compile         - Compile the testbench"
+	@echo "  run             - Run the simulation"
+	@echo "  all             - Compile and run (default)"
+	@echo "  debug           - Run with GUI"
+	@echo "  coverage        - Run with coverage collection"
+	@echo "  lint            - Run linting checks"
+	@echo "  clean           - Clean generated files"
+	@echo "  clean_all       - Clean all simulator files"
+	@echo "  regress         - Run all tests"
+	@echo "  help            - Show this help"
+	@echo ""
+	@echo "Test-specific targets:"
+	@echo "  test_memory     - Run memory access test"
+	@echo "  test_config     - Run configuration test"
+	@echo "  test_mixed      - Run mixed traffic test"
+	@echo "  test_all        - Run all tests sequentially"
+	@echo ""
+	@echo "Supported simulators (set SIM variable):"
+	@echo "  vcs             - Synopsys VCS (default)"
+	@echo "  questa          - Mentor Questa"
+	@echo "  xcelium         - Cadence Xcelium"
+	@echo ""
+	@echo "Available tests (set TEST variable):"
+	@echo "  sideband_memory_test  - Memory read/write operations (default)"
+	@echo "  sideband_config_test  - Configuration register access"
+	@echo "  sideband_mixed_test   - Mixed traffic patterns"
+	@echo ""
+	@echo "Options:"
+	@echo "  ENABLE_ASSERTIONS=1   - Enable protocol assertions (default: 1)"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make SIM=vcs TEST=sideband_memory_test"
+	@echo "  make SIM=questa debug"
+	@echo "  make coverage"
+	@echo "  make regress"
+	@echo "  make clean_all"
+
+# Wave viewing targets
+waves: waves_$(SIM)
+
+waves_vcs:
+	dve -vpd *.vpd &
+
+waves_questa:
+	vsim -view *.wlf &
+
+waves_xcelium:
+	simvision *.shm &
+
+.PHONY: all compile run clean help debug coverage lint regress test_memory test_config test_mixed test_all waves synth_check
+.PHONY: compile_vcs compile_questa compile_xcelium run_vcs run_questa run_xcelium
+.PHONY: clean_vcs clean_questa clean_xcelium clean_all debug_vcs debug_questa debug_xcelium
+.PHONY: coverage_vcs coverage_questa coverage_xcelium lint_vcs lint_questa lint_xcelium
+.PHONY: waves_vcs waves_questa waves_xcelium
