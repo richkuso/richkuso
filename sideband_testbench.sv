@@ -4,11 +4,7 @@ module sideband_testbench;
   `include "uvm_macros.svh"
   
   // Clock and reset generation
-  logic sb_clk = 0;
   logic sb_reset = 1;
-  
-  // Sideband clock - higher frequency for serial transmission
-  always #2.5 sb_clk = ~sb_clk; // 200MHz sideband clock
   
   initial begin
     sb_reset = 1;
@@ -17,13 +13,31 @@ module sideband_testbench;
   end
   
   // Interface instantiation
-  sideband_interface sb_intf(sb_clk, sb_reset);
+  sideband_interface sb_intf(sb_reset);
+  
+  // Clock generation for sideband TX and RX - higher frequency for serial transmission
+  always #2.5 sb_intf.sbtx_clk = ~sb_intf.sbtx_clk; // 200MHz TX sideband clock
+  always #2.5 sb_intf.sbrx_clk = ~sb_intf.sbrx_clk; // 200MHz RX sideband clock
+  
+  initial begin
+    sb_intf.sbtx_clk = 0;
+    sb_intf.sbrx_clk = 0;
+    sb_intf.sbtx_data = 0;
+    sb_intf.sbrx_data = 0;
+  end
+  
+  // Loopback connection for demonstration (TX to RX)
+  always_comb begin
+    sb_intf.sbrx_data = sb_intf.sbtx_data;
+  end
   
   // Simple sideband receiver DUT for demonstration
   sideband_receiver_dut dut (
-    .sb_clk(sb_clk),
-    .sb_reset(sb_reset),
-    .sb_data(sb_intf.sb_data)
+    .sbtx_clk(sb_intf.sbtx_clk),
+    .sbtx_data(sb_intf.sbtx_data),
+    .sbrx_clk(sb_intf.sbrx_clk),
+    .sbrx_data(sb_intf.sbrx_data),
+    .sb_reset(sb_reset)
   );
   
   // UVM Environment
@@ -287,9 +301,11 @@ endmodule
 
 // Simple sideband receiver DUT for demonstration
 module sideband_receiver_dut (
-  input  logic sb_clk,
-  input  logic sb_reset,
-  input  logic sb_data
+  input  logic sbtx_clk,
+  input  logic sbtx_data,
+  input  logic sbrx_clk,
+  input  logic sbrx_data,
+  input  logic sb_reset
 );
   
   // State machine for packet reception
@@ -311,8 +327,8 @@ module sideband_receiver_dut (
   logic        packet_valid;
   logic        data_phase;
   
-  // State register
-  always_ff @(posedge sb_clk or posedge sb_reset) begin
+  // State register - monitor TX path (what's being transmitted)
+  always_ff @(posedge sbtx_clk or posedge sb_reset) begin
     if (sb_reset) begin
       current_state <= IDLE;
       bit_counter <= 0;
@@ -326,31 +342,31 @@ module sideband_receiver_dut (
       
       case (current_state)
         IDLE: begin
-          if (sb_data) begin
+          if (sbtx_data) begin
             bit_counter <= 1;
-            header_reg[0] <= sb_data;
+            header_reg[0] <= sbtx_data;
             packet_valid <= 0;
           end
         end
         
         RECEIVING_HEADER: begin
           if (bit_counter < 63) begin
-            header_reg[bit_counter] <= sb_data;
+            header_reg[bit_counter] <= sbtx_data;
             bit_counter <= bit_counter + 1;
           end else begin
-            header_reg[63] <= sb_data;
+            header_reg[63] <= sbtx_data;
             bit_counter <= 0;
             gap_counter <= 0;
           end
         end
         
         WAITING_GAP: begin
-          if (!sb_data) begin
+          if (!sbtx_data) begin
             gap_counter <= gap_counter + 1;
           end else if (gap_counter >= 32) begin
             // Start of data packet
             bit_counter <= 1;
-            data_reg[0] <= sb_data;
+            data_reg[0] <= sbtx_data;
             data_phase <= 1;
           end else begin
             gap_counter <= 0;
@@ -359,10 +375,10 @@ module sideband_receiver_dut (
         
         RECEIVING_DATA: begin
           if (bit_counter < 63) begin
-            data_reg[bit_counter] <= sb_data;
+            data_reg[bit_counter] <= sbtx_data;
             bit_counter <= bit_counter + 1;
           end else begin
-            data_reg[63] <= sb_data;
+            data_reg[63] <= sbtx_data;
             bit_counter <= 0;
           end
         end
@@ -381,7 +397,7 @@ module sideband_receiver_dut (
     
     case (current_state)
       IDLE: begin
-        if (sb_data)
+        if (sbtx_data)
           next_state = RECEIVING_HEADER;
       end
       
@@ -392,7 +408,7 @@ module sideband_receiver_dut (
       
       WAITING_GAP: begin
         if (gap_counter >= 32) begin
-          if (sb_data && needs_data_packet())
+          if (sbtx_data && needs_data_packet())
             next_state = RECEIVING_DATA;
           else if (gap_counter >= 32)
             next_state = PROCESSING;
@@ -424,7 +440,7 @@ module sideband_receiver_dut (
   endfunction
   
   // Packet processing and display
-  always_ff @(posedge sb_clk) begin
+  always_ff @(posedge sbtx_clk) begin
     if (packet_valid) begin
       logic [4:0] opcode;
       logic [2:0] srcid, dstid;
