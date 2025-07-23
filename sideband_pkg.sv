@@ -349,7 +349,7 @@ package sideband_pkg;
       drive_serial_packet(header);
       
       // Wait minimum 32 bits low between packets
-      repeat(32) @(posedge vif.sb_clk);
+      repeat(32) @(posedge vif.sbtx_clk);
       
       // Drive data if present
       if (trans.has_data) begin
@@ -361,20 +361,21 @@ package sideband_pkg;
         end
         
         // Wait minimum 32 bits low after data
-        repeat(32) @(posedge vif.sb_clk);
+        repeat(32) @(posedge vif.sbtx_clk);
       end
     endtask
     
-    // Drive a 64-bit serial packet
+    // Drive a 64-bit serial packet on TX path
     virtual task drive_serial_packet(bit [63:0] packet);
+      // Generate TX clock and drive data
       for (int i = 0; i < 64; i++) begin
-        @(posedge vif.sb_clk);
-        vif.sb_data <= packet[i];
+        @(posedge vif.sbtx_clk);
+        vif.sbtx_data <= packet[i];
       end
       
       // Drive low after packet
-      @(posedge vif.sb_clk);
-      vif.sb_data <= 1'b0;
+      @(posedge vif.sbtx_clk);
+      vif.sbtx_data <= 1'b0;
     endtask
   endclass
 
@@ -401,7 +402,7 @@ package sideband_pkg;
       bit [63:0] header, data_payload;
       
       forever begin
-        // Wait for start of packet (data goes high)
+        // Wait for start of packet (RX data goes high)
         wait_for_packet_start();
         
         // Capture header
@@ -432,29 +433,29 @@ package sideband_pkg;
       end
     endtask
     
-    // Wait for start of packet
+    // Wait for start of packet on RX path
     virtual task wait_for_packet_start();
-      @(posedge vif.sb_data);
+      @(posedge vif.sbrx_data);
     endtask
     
-    // Wait for minimum gap between packets (32 bits low)
+    // Wait for minimum gap between packets (32 bits low) on RX path
     virtual task wait_for_packet_gap();
       int low_count = 0;
       while (low_count < 32) begin
-        @(posedge vif.sb_clk);
-        if (vif.sb_data == 1'b0)
+        @(posedge vif.sbrx_clk);
+        if (vif.sbrx_data == 1'b0)
           low_count++;
         else
           low_count = 0;
       end
     endtask
     
-    // Capture a 64-bit serial packet
+    // Capture a 64-bit serial packet from RX path
     virtual function bit [63:0] capture_serial_packet();
       bit [63:0] packet;
       for (int i = 0; i < 64; i++) begin
-        @(posedge vif.sb_clk);
-        packet[i] = vif.sb_data;
+        @(posedge vif.sbrx_clk);
+        packet[i] = vif.sbrx_data;
       end
       return packet;
     endfunction
