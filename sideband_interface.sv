@@ -6,28 +6,14 @@ interface sideband_interface(input logic sb_reset);
   logic sbrx_data;   // Sideband RX data  
   logic sbrx_clk;    // Sideband RX clock
   
-  // Clocking blocks for TX (driver) - synchronous to TX clock
-  clocking driver_cb @(posedge sbtx_clk);
-    default input #1step output #0;
-    output sbtx_data;
-  endclocking
-  
-  // Clocking blocks for RX (monitor) - synchronous to RX clock
-  clocking monitor_cb @(posedge sbrx_clk);
-    default input #1step;
-    input sbrx_data;
-  endclocking
-  
   // Modports for driver (TX path)
   modport driver_mp (
-    clocking driver_cb,
     input sb_reset, sbrx_clk, sbrx_data,
     output sbtx_data, sbtx_clk
   );
   
   // Modports for monitor (RX path)
   modport monitor_mp (
-    clocking monitor_cb,
     input sb_reset, sbtx_clk, sbtx_data,
     output sbrx_data, sbrx_clk
   );
