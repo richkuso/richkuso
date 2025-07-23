@@ -42,7 +42,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     drive_serial_packet(header);
     
     // Wait minimum 32 bits low between packets
-    repeat(32) @(posedge vif.sbtx_clk);
+    repeat(32) @(vif.driver_cb);
     
     // Drive data if present
     if (trans.has_data) begin
@@ -54,21 +54,21 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
       end
       
       // Wait minimum 32 bits low after data
-      repeat(32) @(posedge vif.sbtx_clk);
+      repeat(32) @(vif.driver_cb);
     end
   endtask
   
-  // Drive a 64-bit serial packet on TX path
+  // Drive a 64-bit serial packet on TX path using clocking block
   virtual task drive_serial_packet(bit [63:0] packet);
-    // Generate TX clock and drive data
+    // Drive data using clocking block for proper timing
     for (int i = 0; i < 64; i++) begin
-      @(posedge vif.sbtx_clk);
-      vif.sbtx_data <= packet[i];
+      @(vif.driver_cb);
+      vif.driver_cb.sbtx_data <= packet[i];
     end
     
     // Drive low after packet
-    @(posedge vif.sbtx_clk);
-    vif.sbtx_data <= 1'b0;
+    @(vif.driver_cb);
+    vif.driver_cb.sbtx_data <= 1'b0;
   endtask
   
   // Additional utility tasks
@@ -76,14 +76,14 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   // Task to drive idle state (all zeros)
   virtual task drive_idle(int num_cycles = 32);
     repeat(num_cycles) begin
-      @(posedge vif.sbtx_clk);
-      vif.sbtx_data <= 1'b0;
+      @(vif.driver_cb);
+      vif.driver_cb.sbtx_data <= 1'b0;
     end
   endtask
   
   // Task to wait for specific number of clock cycles
   virtual task wait_cycles(int num_cycles);
-    repeat(num_cycles) @(posedge vif.sbtx_clk);
+    repeat(num_cycles) @(vif.driver_cb);
   endtask
   
   // Task to check if interface is ready for transmission
@@ -93,7 +93,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     
     // Ensure we start from idle state
     while (vif.sbtx_data !== 1'b0) begin
-      @(posedge vif.sbtx_clk);
+      @(vif.driver_cb);
     end
   endtask
   
