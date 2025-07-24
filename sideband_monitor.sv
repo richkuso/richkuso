@@ -34,6 +34,9 @@ class sideband_monitor extends uvm_monitor;
   virtual sideband_interface vif;
   uvm_analysis_port #(sideband_transaction) ap;
   
+  // Configuration parameters
+  real ui_time_ns = 1.25;  // UI time in nanoseconds (800MHz default)
+  
   // Statistics
   int packets_captured = 0;
   int bits_captured = 0;
@@ -95,7 +98,8 @@ class sideband_monitor extends uvm_monitor;
   
   //-----------------------------------------------------------------------------
   // TASK: wait_for_packet_gap
-  // Waits for minimum gap between packets (32 cycles low)
+  // Waits for minimum gap between packets (32 UI with both CLK and DATA low)
+  // During gap: SBRX_CLK and SBRX_DATA both stay low, no clock toggling
   //-----------------------------------------------------------------------------
   extern virtual task wait_for_packet_gap();
   
@@ -181,6 +185,15 @@ class sideband_monitor extends uvm_monitor;
   // Prints current monitor statistics to log
   //-----------------------------------------------------------------------------
   extern virtual function void print_statistics();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: set_ui_time
+  // Sets the UI time for gap detection based on clock frequency
+  //
+  // PARAMETERS:
+  //   ui_ns - UI time in nanoseconds (e.g., 1.25 for 800MHz)
+  //-----------------------------------------------------------------------------
+  extern virtual function void set_ui_time(real ui_ns);
 
 endclass : sideband_monitor
 
@@ -201,6 +214,12 @@ virtual function void sideband_monitor::build_phase(uvm_phase phase);
   
   // Create analysis port
   ap = new("ap", this);
+  
+  // Get UI time configuration
+  if (!uvm_config_db#(real)::get(this, "", "ui_time_ns", ui_time_ns))
+    `uvm_warning("MONITOR", $sformatf("UI time not found in config, using default: %.2fns", ui_time_ns))
+  else
+    `uvm_info("MONITOR", $sformatf("UI time configured: %.2fns", ui_time_ns), UVM_LOW)
   
   `uvm_info("MONITOR", "Sideband monitor built successfully", UVM_LOW)
 endfunction
@@ -294,25 +313,55 @@ endtask
 
 //-----------------------------------------------------------------------------
 // TASK: wait_for_packet_gap
-// Waits for minimum gap between packets (32 cycles low on posedge clock)
+// Waits for minimum gap between packets (32 UI with both CLK and DATA low)
+// During gap: SBRX_CLK and SBRX_DATA both stay low, no clock toggling
 //-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_for_packet_gap();
-  int low_count = 0;
+  time gap_start_time;
+  time current_time;
+  time gap_duration;
+  int ui_count;
   
-  `uvm_info("MONITOR", "Waiting for packet gap (32 cycles minimum)", UVM_DEBUG)
+  `uvm_info("MONITOR", $sformatf("Waiting for packet gap (32 UI minimum, UI=%.2fns)", ui_time_ns), UVM_DEBUG)
   
-  while (low_count < 32) begin
-    @(posedge vif.SBRX_CLK);  // Check gap on positive edge
-    if (vif.SBRX_DATA == 1'b0) begin
-      low_count++;
-      `uvm_info("MONITOR", $sformatf("Gap count: %0d/32", low_count), UVM_HIGH)
-    end else begin
-      low_count = 0;  // Reset if data goes high
-      `uvm_info("MONITOR", "Gap reset - data went high", UVM_HIGH)
+  // Wait for both clock and data to go low (start of gap)
+  while (vif.SBRX_CLK !== 1'b0 || vif.SBRX_DATA !== 1'b0) begin
+    #1ns; // Small delay to avoid infinite loop
+  end
+  
+  gap_start_time = $time;
+  `uvm_info("MONITOR", $sformatf("Gap started at time %0t", gap_start_time), UVM_DEBUG)
+  
+  // Monitor the gap duration - both signals must stay low
+  forever begin
+    #1ns; // Check every nanosecond
+    current_time = $time;
+    gap_duration = current_time - gap_start_time;
+    ui_count = int'(gap_duration / (ui_time_ns * 1ns));
+    
+    // Check if either signal goes high (gap ends)
+    if (vif.SBRX_CLK === 1'b1 || vif.SBRX_DATA === 1'b1) begin
+      if (ui_count >= 32) begin
+        `uvm_info("MONITOR", $sformatf("Valid gap detected: %0d UI (%0t)", ui_count, gap_duration), UVM_DEBUG)
+        break;
+      end else begin
+        `uvm_warning("MONITOR", $sformatf("Gap too short: %0d UI (minimum 32 UI required)", ui_count))
+        // Gap was too short, wait for signals to go low again and restart
+        while (vif.SBRX_CLK !== 1'b0 || vif.SBRX_DATA !== 1'b0) begin
+          #1ns;
+        end
+        gap_start_time = $time;
+        `uvm_info("MONITOR", "Gap restarted due to insufficient duration", UVM_DEBUG)
+      end
+    end
+    
+    // Optional: Log progress for very long gaps
+    if (ui_count > 0 && (ui_count % 16 == 0)) begin
+      `uvm_info("MONITOR", $sformatf("Gap progress: %0d UI", ui_count), UVM_HIGH)
     end
   end
   
-  `uvm_info("MONITOR", "Packet gap detected (32 cycles complete)", UVM_DEBUG)
+  `uvm_info("MONITOR", $sformatf("Packet gap complete: %0d UI duration", ui_count), UVM_DEBUG)
 endtask
 
 //-----------------------------------------------------------------------------
@@ -504,4 +553,13 @@ virtual function void sideband_monitor::print_statistics();
     `uvm_info("MONITOR", $sformatf("Error rate: %.2f%%", real'(protocol_errors)/real'(packets_captured)*100.0), UVM_LOW)
   end
   `uvm_info("MONITOR", "=========================", UVM_LOW)
+endfunction
+
+//-----------------------------------------------------------------------------
+// FUNCTION: set_ui_time
+// Sets the UI time for gap detection based on clock frequency
+//-----------------------------------------------------------------------------
+virtual function void sideband_monitor::set_ui_time(real ui_ns);
+  ui_time_ns = ui_ns;
+  `uvm_info("MONITOR", $sformatf("UI time set to %.2fns (%.1fMHz equivalent)", ui_ns, 1000.0/ui_ns), UVM_LOW)
 endfunction
