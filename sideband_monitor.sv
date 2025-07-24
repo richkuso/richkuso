@@ -4,6 +4,10 @@
 class sideband_monitor extends uvm_monitor;
   `uvm_component_utils(sideband_monitor)
   
+  //------------------------------------------
+  // Class Members
+  //------------------------------------------
+  
   virtual sideband_interface vif;
   uvm_analysis_port #(sideband_transaction) analysis_port;
   
@@ -11,9 +15,29 @@ class sideband_monitor extends uvm_monitor;
   bit enable_protocol_checking = 1;
   bit enable_packet_logging = 1;
   
-  function new(string name = "sideband_monitor", uvm_component parent = null);
-    super.new(name, parent);
-  endfunction
+  //------------------------------------------
+  // Constructor
+  //------------------------------------------
+  
+  extern function new(string name = "sideband_monitor", uvm_component parent = null);
+  
+  //------------------------------------------
+  // Extern Function/Task Declarations
+  //------------------------------------------
+  
+  // UVM Phases
+  extern virtual function void build_phase(uvm_phase phase);
+  extern virtual task run_phase(uvm_phase phase);
+  
+  // Packet Capture and Processing
+  extern virtual task wait_for_packet_start();
+  extern virtual function bit [63:0] capture_serial_packet();
+  extern virtual task wait_for_packet_gap();
+  extern virtual function sideband_transaction decode_header(bit [63:0] header);
+  
+  // Protocol Checking
+  extern virtual function void check_protocol_compliance(sideband_transaction trans);
+  extern virtual function bit verify_parity(sideband_transaction trans);
   
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
@@ -253,5 +277,14 @@ class sideband_monitor extends uvm_monitor;
     super.report_phase(phase);
     print_statistics();
   endfunction
-  
+
 endclass
+
+//------------------------------------------
+// Monitor Implementation Section
+//------------------------------------------
+
+// Constructor implementation
+function sideband_monitor::new(string name = "sideband_monitor", uvm_component parent = null);
+  super.new(name, parent);
+endfunction

@@ -2,6 +2,11 @@
 // Contains all packet fields and methods for sideband protocol transactions
 
 class sideband_transaction extends uvm_sequence_item;
+  
+  //------------------------------------------
+  // Data Members
+  //------------------------------------------
+  
   // Header fields
   rand sideband_opcode_e opcode;
   rand bit [2:0]         srcid;
@@ -25,6 +30,10 @@ class sideband_transaction extends uvm_sequence_item;
   bit                    has_data;
   bit                    is_64bit;
   
+  //------------------------------------------
+  // UVM Macros
+  //------------------------------------------
+  
   `uvm_object_utils_begin(sideband_transaction)
     `uvm_field_enum(sideband_opcode_e, opcode, UVM_ALL_ON)
     `uvm_field_int(srcid, UVM_ALL_ON)
@@ -43,9 +52,33 @@ class sideband_transaction extends uvm_sequence_item;
     `uvm_field_int(is_64bit, UVM_ALL_ON)
   `uvm_object_utils_end
 
-  function new(string name = "sideband_transaction");
-    super.new(name);
-  endfunction
+  //------------------------------------------
+  // Constructor
+  //------------------------------------------
+  
+  extern function new(string name = "sideband_transaction");
+  
+  //------------------------------------------
+  // Extern Function/Task Declarations
+  //------------------------------------------
+  
+  // Core functionality
+  extern function void post_randomize();
+  extern function void update_packet_info();
+  extern function void calculate_parity();
+  
+  // Header and data processing
+  extern function bit [63:0] get_header();
+  
+  // Helper functions for UCIe interpretation
+  extern function string get_srcid_name();
+  extern function string get_dstid_name();
+  extern function bit is_remote_die_packet();
+  extern function bit is_poison_set();
+  extern function bit has_credit_return();
+  
+  // Debug and display
+  extern function string convert2string();
 
   // UCIe specification compliant constraints
   constraint valid_opcode_c {
@@ -105,6 +138,15 @@ class sideband_transaction extends uvm_sequence_item;
     if (opcode inside {MEM_READ_32B, MEM_WRITE_32B, DMS_READ_32B, DMS_WRITE_32B, CFG_READ_32B, CFG_WRITE_32B})
       be[7:4] == 4'b0000;
   }
+
+  //------------------------------------------
+  // Function/Task Implementations
+  //------------------------------------------
+
+  // Constructor implementation
+  function new(string name = "sideband_transaction");
+    super.new(name);
+  endfunction
 
   // Post-randomize to set derived fields
   function void post_randomize();

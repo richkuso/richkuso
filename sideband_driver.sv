@@ -1,9 +1,16 @@
 // UCIe Sideband Driver Class
 // Converts UVM transactions to serial bit stream on TX path
 
-// Driver configuration class
+//------------------------------------------
+// Driver Configuration Class
+//------------------------------------------
+
 class sideband_driver_config extends uvm_object;
   `uvm_object_utils(sideband_driver_config)
+  
+  //------------------------------------------
+  // Configuration Parameters
+  //------------------------------------------
   
   // Clock timing parameters
   real clock_period = 1.25;       // ns (800MHz default)
@@ -20,27 +27,26 @@ class sideband_driver_config extends uvm_object;
   real hold_time = 0.1;           // ns - data hold time after clock edge
   real gap_time = 0.0;            // ns - additional time during gaps
   
-  function new(string name = "sideband_driver_config");
-    super.new(name);
-  endfunction
+  //------------------------------------------
+  // Extern Function Declarations
+  //------------------------------------------
   
-  // Helper function to set frequency
-  function void set_frequency(real freq_hz);
-    clock_period = (1.0 / freq_hz) * 1e9; // Convert to ns
-    clock_high_time = clock_period / 2.0;
-    clock_low_time = clock_period / 2.0;
-    `uvm_info("CONFIG", $sformatf("Set frequency to %.1f MHz (period=%.3f ns)", freq_hz/1e6, clock_period), UVM_LOW)
-  endfunction
-  
-  // Helper function to set duty cycle
-  function void set_duty_cycle(real duty_percent);
-    clock_high_time = clock_period * (duty_percent / 100.0);
-    clock_low_time = clock_period - clock_high_time;
-  endfunction
+  extern function new(string name = "sideband_driver_config");
+  extern function void set_frequency(real freq_hz);
+  extern function void set_duty_cycle(real duty_percent);
+
 endclass
+
+//------------------------------------------
+// Main Driver Class
+//------------------------------------------
 
 class sideband_driver extends uvm_driver #(sideband_transaction);
   `uvm_component_utils(sideband_driver)
+  
+  //------------------------------------------
+  // Class Members
+  //------------------------------------------
   
   // Configuration and interface
   virtual sideband_interface vif;
@@ -56,11 +62,39 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   int errors_detected = 0;
   time last_packet_time;
   
-
+  //------------------------------------------
+  // Constructor
+  //------------------------------------------
   
-  function new(string name = "sideband_driver", uvm_component parent = null);
-    super.new(name, parent);
-  endfunction
+  extern function new(string name = "sideband_driver", uvm_component parent = null);
+  
+  //------------------------------------------
+  // Extern Function/Task Declarations
+  //------------------------------------------
+  
+  // UVM Phases
+  extern virtual function void build_phase(uvm_phase phase);
+  extern virtual task run_phase(uvm_phase phase);
+  extern virtual function void report_phase(uvm_phase phase);
+  extern virtual function void final_phase(uvm_phase phase);
+  
+  // Core Driver Tasks
+  extern virtual task drive_transaction(sideband_transaction trans);
+  extern virtual function bit drive_packet_with_clock(bit [63:0] packet);
+  extern virtual task drive_gap(int num_cycles = MIN_GAP_CYCLES);
+  
+  // Reset and Initialization
+  extern virtual task wait_for_reset_release();
+  
+  // Validation and Protocol Checking
+  extern virtual function bit validate_transaction(sideband_transaction trans);
+  
+  // Statistics and Utility
+  extern virtual task update_statistics();
+  extern virtual function void get_statistics(output int pkts, output int bits, output int errs, output time last_time);
+  extern virtual function bit get_tx_clk_state();
+  extern virtual function bit get_tx_data_state();
+  extern virtual task drive_debug_pattern(bit [63:0] pattern, string pattern_name = "DEBUG");
   
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
@@ -340,5 +374,33 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     super.final_phase(phase);
     // Driver cleanup if needed
   endfunction
-  
+
 endclass
+
+//------------------------------------------
+// Implementation Section
+//------------------------------------------
+
+// Configuration class implementations
+function sideband_driver_config::new(string name = "sideband_driver_config");
+  super.new(name);
+endfunction
+
+// Helper function to set frequency
+function void sideband_driver_config::set_frequency(real freq_hz);
+  clock_period = (1.0 / freq_hz) * 1e9; // Convert to ns
+  clock_high_time = clock_period / 2.0;
+  clock_low_time = clock_period / 2.0;
+  `uvm_info("CONFIG", $sformatf("Set frequency to %.1f MHz (period=%.3f ns)", freq_hz/1e6, clock_period), UVM_LOW)
+endfunction
+
+// Helper function to set duty cycle
+function void sideband_driver_config::set_duty_cycle(real duty_percent);
+  clock_high_time = clock_period * (duty_percent / 100.0);
+  clock_low_time = clock_period - clock_high_time;
+endfunction
+
+// Driver class constructor
+function sideband_driver::new(string name = "sideband_driver", uvm_component parent = null);
+  super.new(name, parent);
+endfunction
