@@ -1,6 +1,28 @@
 // UCIe Sideband Monitor Class - Refactored with extern methods
 // Captures serial data from RX path and reconstructs transactions
 
+//=============================================================================
+// CLASS: sideband_monitor
+//
+// DESCRIPTION:
+//   UCIe sideband monitor that captures source-synchronous serial data from
+//   the RX path and reconstructs complete transactions. Performs protocol
+//   validation, parity checking, and statistics collection according to
+//   UCIe specification.
+//
+// FEATURES:
+//   - Source-synchronous serial data capture
+//   - Header and data packet reconstruction
+//   - Automatic parity validation (CP and DP)
+//   - UCIe protocol compliance checking
+//   - Statistics collection and reporting
+//   - Support for all packet types and opcodes
+//   - Gap timing validation
+//
+// AUTHOR: UCIe Sideband UVM Agent
+// VERSION: 1.0
+//=============================================================================
+
 class sideband_monitor extends uvm_monitor;
   `uvm_component_utils(sideband_monitor)
   
@@ -21,6 +43,14 @@ class sideband_monitor extends uvm_monitor;
   // CONSTRUCTOR
   //=============================================================================
 
+  //-----------------------------------------------------------------------------
+  // FUNCTION: new
+  // Creates a new sideband monitor component
+  //
+  // PARAMETERS:
+  //   name   - Component name for UVM hierarchy
+  //   parent - Parent component reference
+  //-----------------------------------------------------------------------------
   function new(string name = "sideband_monitor", uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -29,29 +59,125 @@ class sideband_monitor extends uvm_monitor;
   // EXTERN FUNCTION/TASK DECLARATIONS
   //=============================================================================
   
-  // UVM phase methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: build_phase
+  // UVM build phase - gets interface and creates analysis port
+  //
+  // PARAMETERS:
+  //   phase - UVM phase object
+  //-----------------------------------------------------------------------------
   extern virtual function void build_phase(uvm_phase phase);
+  
+  //-----------------------------------------------------------------------------
+  // TASK: run_phase
+  // UVM run phase - main monitor loop for capturing transactions
+  //
+  // PARAMETERS:
+  //   phase - UVM phase object
+  //-----------------------------------------------------------------------------
   extern virtual task run_phase(uvm_phase phase);
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: report_phase
+  // UVM report phase - prints statistics
+  //
+  // PARAMETERS:
+  //   phase - UVM phase object
+  //-----------------------------------------------------------------------------
   extern virtual function void report_phase(uvm_phase phase);
   
-  // Core monitoring methods
+  //-----------------------------------------------------------------------------
+  // TASK: wait_for_packet_start
+  // Waits for start of packet transmission (data goes high)
+  //-----------------------------------------------------------------------------
   extern virtual task wait_for_packet_start();
+  
+  //-----------------------------------------------------------------------------
+  // TASK: wait_for_packet_gap
+  // Waits for minimum gap between packets (32 cycles low)
+  //-----------------------------------------------------------------------------
   extern virtual task wait_for_packet_gap();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: capture_serial_packet
+  // Captures a 64-bit serial packet from RX interface
+  //
+  // RETURNS: 64-bit captured packet
+  //-----------------------------------------------------------------------------
   extern virtual function bit [63:0] capture_serial_packet();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: decode_header
+  // Decodes 64-bit header packet into transaction object
+  //
+  // PARAMETERS:
+  //   header - 64-bit header packet to decode
+  //
+  // RETURNS: Decoded transaction object (null if decode fails)
+  //-----------------------------------------------------------------------------
   extern virtual function sideband_transaction decode_header(bit [63:0] header);
   
-  // Protocol validation methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: check_transaction_validity
+  // Validates captured transaction against UCIe specification
+  //
+  // PARAMETERS:
+  //   trans - Transaction to validate
+  //-----------------------------------------------------------------------------
   extern virtual function void check_transaction_validity(sideband_transaction trans);
   
-  // Utility methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_rx_clk_state
+  // Returns current state of RX clock signal
+  //
+  // RETURNS: Current SBRX_CLK value
+  //-----------------------------------------------------------------------------
   extern virtual function bit get_rx_clk_state();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_rx_data_state
+  // Returns current state of RX data signal
+  //
+  // RETURNS: Current SBRX_DATA value
+  //-----------------------------------------------------------------------------
   extern virtual function bit get_rx_data_state();
+  
+  //-----------------------------------------------------------------------------
+  // TASK: wait_rx_cycles
+  // Waits for specified number of RX clock cycles
+  //
+  // PARAMETERS:
+  //   num_cycles - Number of cycles to wait
+  //-----------------------------------------------------------------------------
   extern virtual task wait_rx_cycles(int num_cycles);
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: is_rx_idle
+  // Checks if RX interface is in idle state
+  //
+  // RETURNS: 1 if idle (data low), 0 if active
+  //-----------------------------------------------------------------------------
   extern virtual function bit is_rx_idle();
+  
+  //-----------------------------------------------------------------------------
+  // TASK: wait_for_rx_idle
+  // Waits for RX interface to become idle
+  //-----------------------------------------------------------------------------
   extern virtual task wait_for_rx_idle();
   
-  // Statistics methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: update_statistics
+  // Updates monitor statistics with captured transaction
+  //
+  // PARAMETERS:
+  //   trans - Captured transaction for statistics
+  //-----------------------------------------------------------------------------
   extern virtual function void update_statistics(sideband_transaction trans);
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: print_statistics
+  // Prints current monitor statistics to log
+  //-----------------------------------------------------------------------------
   extern virtual function void print_statistics();
 
 endclass : sideband_monitor
@@ -60,7 +186,10 @@ endclass : sideband_monitor
 // IMPLEMENTATION SECTION
 //=============================================================================
 
-// UVM phase methods
+//-----------------------------------------------------------------------------
+// FUNCTION: build_phase
+// UVM build phase - gets interface and creates analysis port
+//-----------------------------------------------------------------------------
 virtual function void sideband_monitor::build_phase(uvm_phase phase);
   super.build_phase(phase);
   
@@ -74,6 +203,10 @@ virtual function void sideband_monitor::build_phase(uvm_phase phase);
   `uvm_info("MONITOR", "Sideband monitor built successfully", UVM_LOW)
 endfunction
 
+//-----------------------------------------------------------------------------
+// TASK: run_phase
+// UVM run phase - main monitor loop for capturing transactions
+//-----------------------------------------------------------------------------
 virtual task sideband_monitor::run_phase(uvm_phase phase);
   sideband_transaction trans;
   bit [63:0] header_packet;
@@ -135,16 +268,27 @@ virtual task sideband_monitor::run_phase(uvm_phase phase);
   end
 endtask
 
+//-----------------------------------------------------------------------------
+// FUNCTION: report_phase
+// UVM report phase - prints statistics
+//-----------------------------------------------------------------------------
 virtual function void sideband_monitor::report_phase(uvm_phase phase);
   super.report_phase(phase);
   print_statistics();
 endfunction
 
-// Core monitoring methods
+//-----------------------------------------------------------------------------
+// TASK: wait_for_packet_start
+// Waits for start of packet transmission (data goes high)
+//-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_for_packet_start();
   @(posedge vif.SBRX_DATA);
 endtask
 
+//-----------------------------------------------------------------------------
+// TASK: wait_for_packet_gap
+// Waits for minimum gap between packets (32 cycles low)
+//-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_for_packet_gap();
   int low_count = 0;
   while (low_count < 32) begin
@@ -156,6 +300,10 @@ virtual task sideband_monitor::wait_for_packet_gap();
   end
 endtask
 
+//-----------------------------------------------------------------------------
+// FUNCTION: capture_serial_packet
+// Captures a 64-bit serial packet from RX interface
+//-----------------------------------------------------------------------------
 virtual function bit [63:0] sideband_monitor::capture_serial_packet();
   bit [63:0] packet;
   for (int i = 0; i < 64; i++) begin
@@ -165,6 +313,10 @@ virtual function bit [63:0] sideband_monitor::capture_serial_packet();
   return packet;
 endfunction
 
+//-----------------------------------------------------------------------------
+// FUNCTION: decode_header
+// Decodes 64-bit header packet into transaction object
+//-----------------------------------------------------------------------------
 virtual function sideband_transaction sideband_monitor::decode_header(bit [63:0] header);
   sideband_transaction trans;
   bit [31:0] phase0, phase1;
@@ -204,7 +356,10 @@ virtual function sideband_transaction sideband_monitor::decode_header(bit [63:0]
   return trans;
 endfunction
 
-// Protocol validation methods
+//-----------------------------------------------------------------------------
+// FUNCTION: check_transaction_validity
+// Validates captured transaction against UCIe specification
+//-----------------------------------------------------------------------------
 virtual function void sideband_monitor::check_transaction_validity(sideband_transaction trans);
   // Check parity
   bit expected_cp, expected_dp;
@@ -250,30 +405,52 @@ virtual function void sideband_monitor::check_transaction_validity(sideband_tran
   end
 endfunction
 
-// Utility methods
+//-----------------------------------------------------------------------------
+// FUNCTION: get_rx_clk_state
+// Returns current state of RX clock signal
+//-----------------------------------------------------------------------------
 virtual function bit sideband_monitor::get_rx_clk_state();
   return vif.SBRX_CLK;
 endfunction
 
+//-----------------------------------------------------------------------------
+// FUNCTION: get_rx_data_state
+// Returns current state of RX data signal
+//-----------------------------------------------------------------------------
 virtual function bit sideband_monitor::get_rx_data_state();
   return vif.SBRX_DATA;
 endfunction
 
+//-----------------------------------------------------------------------------
+// TASK: wait_rx_cycles
+// Waits for specified number of RX clock cycles
+//-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_rx_cycles(int num_cycles);
   repeat(num_cycles) @(posedge vif.SBRX_CLK);
 endtask
 
+//-----------------------------------------------------------------------------
+// FUNCTION: is_rx_idle
+// Checks if RX interface is in idle state
+//-----------------------------------------------------------------------------
 virtual function bit sideband_monitor::is_rx_idle();
   return (vif.SBRX_DATA == 1'b0);
 endfunction
 
+//-----------------------------------------------------------------------------
+// TASK: wait_for_rx_idle
+// Waits for RX interface to become idle
+//-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_for_rx_idle();
   while (vif.SBRX_DATA !== 1'b0) begin
     @(posedge vif.SBRX_CLK);
   end
 endtask
 
-// Statistics methods
+//-----------------------------------------------------------------------------
+// FUNCTION: update_statistics
+// Updates monitor statistics with captured transaction
+//-----------------------------------------------------------------------------
 virtual function void sideband_monitor::update_statistics(sideband_transaction trans);
   packets_captured++;
   bits_captured += 64; // Header packet
@@ -286,6 +463,10 @@ virtual function void sideband_monitor::update_statistics(sideband_transaction t
             packets_captured, bits_captured), UVM_DEBUG)
 endfunction
 
+//-----------------------------------------------------------------------------
+// FUNCTION: print_statistics
+// Prints current monitor statistics to log
+//-----------------------------------------------------------------------------
 virtual function void sideband_monitor::print_statistics();
   `uvm_info("MONITOR", "=== Monitor Statistics ===", UVM_LOW)
   `uvm_info("MONITOR", $sformatf("Packets captured: %0d", packets_captured), UVM_LOW)

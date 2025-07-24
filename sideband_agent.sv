@@ -1,6 +1,26 @@
 // UCIe Sideband Agent Class - Refactored with extern methods
 // Container for sideband driver, monitor, and sequencer
 
+//=============================================================================
+// CLASS: sideband_agent
+//
+// DESCRIPTION:
+//   UCIe sideband agent that serves as a container for driver, monitor, and
+//   sequencer components. Supports both active and passive modes with
+//   comprehensive configuration management and component orchestration.
+//
+// FEATURES:
+//   - Active/passive mode support
+//   - Automatic component creation and connection
+//   - Centralized configuration management
+//   - Statistics collection and reporting
+//   - Interface distribution to sub-components
+//   - Feature enable/disable controls
+//
+// AUTHOR: UCIe Sideband UVM Agent
+// VERSION: 1.0
+//=============================================================================
+
 class sideband_agent extends uvm_agent;
   `uvm_component_utils(sideband_agent)
   
@@ -23,6 +43,14 @@ class sideband_agent extends uvm_agent;
   // CONSTRUCTOR
   //=============================================================================
 
+  //-----------------------------------------------------------------------------
+  // FUNCTION: new
+  // Creates a new sideband agent component
+  //
+  // PARAMETERS:
+  //   name   - Component name for UVM hierarchy
+  //   parent - Parent component reference
+  //-----------------------------------------------------------------------------
   function new(string name = "sideband_agent", uvm_component parent = null);
     super.new(name, parent);
   endfunction
@@ -31,23 +59,83 @@ class sideband_agent extends uvm_agent;
   // EXTERN FUNCTION/TASK DECLARATIONS
   //=============================================================================
   
-  // UVM phase methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: build_phase
+  // UVM build phase - creates components and configures them
+  //
+  // PARAMETERS:
+  //   phase - UVM phase object
+  //-----------------------------------------------------------------------------
   extern virtual function void build_phase(uvm_phase phase);
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: connect_phase
+  // UVM connect phase - connects components together
+  //
+  // PARAMETERS:
+  //   phase - UVM phase object
+  //-----------------------------------------------------------------------------
   extern virtual function void connect_phase(uvm_phase phase);
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: end_of_elaboration_phase
+  // UVM end of elaboration phase - final setup and validation
+  //
+  // PARAMETERS:
+  //   phase - UVM phase object
+  //-----------------------------------------------------------------------------
   extern virtual function void end_of_elaboration_phase(uvm_phase phase);
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: report_phase
+  // UVM report phase - prints agent statistics and configuration
+  //
+  // PARAMETERS:
+  //   phase - UVM phase object
+  //-----------------------------------------------------------------------------
   extern virtual function void report_phase(uvm_phase phase);
   
-  // Configuration methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: configure_components
+  // Distributes configuration to all sub-components
+  //-----------------------------------------------------------------------------
   extern virtual function void configure_components();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: set_default_config
+  // Sets default configuration values for the agent
+  //-----------------------------------------------------------------------------
   extern virtual function void set_default_config();
   
-  // Utility methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: print_config
+  // Prints current agent configuration for debugging
+  //-----------------------------------------------------------------------------
   extern virtual function void print_config();
 
 endclass : sideband_agent
 
 //=============================================================================
 // AGENT CONFIGURATION CLASS
+//=============================================================================
+
+//=============================================================================
+// CLASS: sideband_agent_config
+//
+// DESCRIPTION:
+//   Configuration class for the UCIe sideband agent containing all settings
+//   for agent operation, component enables, and driver configuration.
+//   Provides helper functions for common configuration scenarios.
+//
+// FEATURES:
+//   - Active/passive mode control
+//   - Driver configuration management
+//   - Feature enable/disable controls
+//   - Pre-defined frequency configurations
+//   - Interface handle management
+//
+// AUTHOR: UCIe Sideband UVM Agent
+// VERSION: 1.0
 //=============================================================================
 
 class sideband_agent_config extends uvm_object;
@@ -75,6 +163,13 @@ class sideband_agent_config extends uvm_object;
   // CONSTRUCTOR
   //=============================================================================
   
+  //-----------------------------------------------------------------------------
+  // FUNCTION: new
+  // Creates a new agent configuration object with default driver config
+  //
+  // PARAMETERS:
+  //   name - Object name for UVM hierarchy
+  //-----------------------------------------------------------------------------
   function new(string name = "sideband_agent_config");
     super.new(name);
     // Create default driver configuration
@@ -85,8 +180,22 @@ class sideband_agent_config extends uvm_object;
   // EXTERN FUNCTION DECLARATIONS
   //=============================================================================
   
+  //-----------------------------------------------------------------------------
+  // FUNCTION: set_800mhz_config
+  // Configures driver for 800MHz operation with UCIe defaults
+  //-----------------------------------------------------------------------------
   extern function void set_800mhz_config();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: set_400mhz_config
+  // Configures driver for 400MHz operation (for testing/debug)
+  //-----------------------------------------------------------------------------
   extern function void set_400mhz_config();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: print_config
+  // Prints current configuration settings for debugging
+  //-----------------------------------------------------------------------------
   extern function void print_config();
 
 endclass : sideband_agent_config
@@ -95,7 +204,10 @@ endclass : sideband_agent_config
 // AGENT IMPLEMENTATION
 //=============================================================================
 
-// UVM phase methods
+//-----------------------------------------------------------------------------
+// FUNCTION: build_phase
+// UVM build phase - creates components and configures them
+//-----------------------------------------------------------------------------
 virtual function void sideband_agent::build_phase(uvm_phase phase);
   super.build_phase(phase);
   
@@ -126,6 +238,10 @@ virtual function void sideband_agent::build_phase(uvm_phase phase);
   configure_components();
 endfunction
 
+//-----------------------------------------------------------------------------
+// FUNCTION: connect_phase
+// UVM connect phase - connects components together
+//-----------------------------------------------------------------------------
 virtual function void sideband_agent::connect_phase(uvm_phase phase);
   super.connect_phase(phase);
   
@@ -141,6 +257,10 @@ virtual function void sideband_agent::connect_phase(uvm_phase phase);
   `uvm_info("AGENT", "Agent connections completed", UVM_LOW)
 endfunction
 
+//-----------------------------------------------------------------------------
+// FUNCTION: end_of_elaboration_phase
+// UVM end of elaboration phase - final setup and validation
+//-----------------------------------------------------------------------------
 virtual function void sideband_agent::end_of_elaboration_phase(uvm_phase phase);
   super.end_of_elaboration_phase(phase);
   
@@ -152,6 +272,10 @@ virtual function void sideband_agent::end_of_elaboration_phase(uvm_phase phase);
   `uvm_info("AGENT", "Agent elaboration completed", UVM_LOW)
 endfunction
 
+//-----------------------------------------------------------------------------
+// FUNCTION: report_phase
+// UVM report phase - prints agent statistics and configuration
+//-----------------------------------------------------------------------------
 virtual function void sideband_agent::report_phase(uvm_phase phase);
   super.report_phase(phase);
   
@@ -164,7 +288,10 @@ virtual function void sideband_agent::report_phase(uvm_phase phase);
   end
 endfunction
 
-// Configuration methods
+//-----------------------------------------------------------------------------
+// FUNCTION: configure_components
+// Distributes configuration to all sub-components
+//-----------------------------------------------------------------------------
 virtual function void sideband_agent::configure_components();
   // Set virtual interface for all components
   if (cfg.vif != null) begin
@@ -186,6 +313,10 @@ virtual function void sideband_agent::configure_components();
   `uvm_info("AGENT", "Component configuration completed", UVM_LOW)
 endfunction
 
+//-----------------------------------------------------------------------------
+// FUNCTION: set_default_config
+// Sets default configuration values for the agent
+//-----------------------------------------------------------------------------
 virtual function void sideband_agent::set_default_config();
   cfg.is_active = UVM_ACTIVE;
   cfg.enable_coverage = 1;
@@ -201,7 +332,10 @@ virtual function void sideband_agent::set_default_config();
   `uvm_info("AGENT", "Default configuration applied", UVM_MEDIUM)
 endfunction
 
-// Utility methods
+//-----------------------------------------------------------------------------
+// FUNCTION: print_config
+// Prints current agent configuration for debugging
+//-----------------------------------------------------------------------------
 virtual function void sideband_agent::print_config();
   `uvm_info("AGENT", "=== Agent Configuration ===", UVM_LOW)
   `uvm_info("AGENT", $sformatf("Mode: %s", cfg.is_active.name()), UVM_LOW)
@@ -221,6 +355,10 @@ endfunction
 // AGENT CONFIGURATION IMPLEMENTATION
 //=============================================================================
 
+//-----------------------------------------------------------------------------
+// FUNCTION: set_800mhz_config
+// Configures driver for 800MHz operation with UCIe defaults
+//-----------------------------------------------------------------------------
 function void sideband_agent_config::set_800mhz_config();
   driver_cfg.set_frequency(800e6);
   driver_cfg.set_duty_cycle(50.0);
@@ -228,6 +366,10 @@ function void sideband_agent_config::set_800mhz_config();
   `uvm_info("AGENT_CONFIG", "Set 800MHz configuration", UVM_LOW)
 endfunction
 
+//-----------------------------------------------------------------------------
+// FUNCTION: set_400mhz_config
+// Configures driver for 400MHz operation (for testing/debug)
+//-----------------------------------------------------------------------------
 function void sideband_agent_config::set_400mhz_config();
   driver_cfg.set_frequency(400e6);
   driver_cfg.set_duty_cycle(50.0);
@@ -235,6 +377,10 @@ function void sideband_agent_config::set_400mhz_config();
   `uvm_info("AGENT_CONFIG", "Set 400MHz configuration", UVM_LOW)
 endfunction
 
+//-----------------------------------------------------------------------------
+// FUNCTION: print_config
+// Prints current configuration settings for debugging
+//-----------------------------------------------------------------------------
 function void sideband_agent_config::print_config();
   `uvm_info("AGENT_CONFIG", "=== Agent Config ===", UVM_LOW)
   `uvm_info("AGENT_CONFIG", $sformatf("Mode: %s", is_active.name()), UVM_LOW)
