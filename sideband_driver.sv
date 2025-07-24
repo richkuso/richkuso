@@ -5,14 +5,36 @@
 class sideband_driver_config extends uvm_object;
   `uvm_object_utils(sideband_driver_config)
   
-  int min_gap_cycles = 32;
+  // Clock timing parameters
+  real clock_period = 5.0;        // ns (200MHz default)
+  real clock_high_time = 2.5;     // ns (50% duty cycle)
+  real clock_low_time = 2.5;      // ns (50% duty cycle)
+  
+  // Protocol parameters
+  int min_gap_cycles = 32;        // Minimum gap between packets
   bit enable_protocol_checking = 1;
   bit enable_statistics = 1;
-  real setup_time = 0.1; // ns
-  real hold_time = 0.1;   // ns
+  
+  // Timing parameters
+  real setup_time = 0.1;          // ns - data setup time before clock edge
+  real hold_time = 0.1;           // ns - data hold time after clock edge
+  real gap_time = 0.0;            // ns - additional time during gaps
   
   function new(string name = "sideband_driver_config");
     super.new(name);
+  endfunction
+  
+  // Helper function to set frequency
+  function void set_frequency(real freq_hz);
+    clock_period = (1.0 / freq_hz) * 1e9; // Convert to ns
+    clock_high_time = clock_period / 2.0;
+    clock_low_time = clock_period / 2.0;
+  endfunction
+  
+  // Helper function to set duty cycle
+  function void set_duty_cycle(real duty_percent);
+    clock_high_time = clock_period * (duty_percent / 100.0);
+    clock_low_time = clock_period - clock_high_time;
   endfunction
 endclass
 
@@ -57,6 +79,16 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     if (cfg.min_gap_cycles < 32) begin
       `uvm_warning("DRIVER", $sformatf("min_gap_cycles=%0d is less than UCIe minimum of 32", cfg.min_gap_cycles))
     end
+    
+    if (cfg.clock_period <= 0) begin
+      `uvm_error("DRIVER", "Invalid clock_period - must be positive")
+      cfg.clock_period = 5.0; // Default to 200MHz
+    end
+    
+    if (cfg.clock_high_time + cfg.clock_low_time != cfg.clock_period) begin
+      `uvm_warning("DRIVER", "clock_high_time + clock_low_time != clock_period, adjusting...")
+      cfg.clock_low_time = cfg.clock_period - cfg.clock_high_time;
+    end
   endfunction
   
   virtual task run_phase(uvm_phase phase);
@@ -65,8 +97,11 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     // Wait for reset to be released before starting
     wait_for_reset_release();
     
-    // Ensure clock is running (generated externally)
-    wait_for_clock_active();
+    // Initialize TX signals to idle state
+    vif.sbtx_clk = 0;
+    vif.sbtx_data = 0;
+    
+    `uvm_info("DRIVER", "Sideband driver ready - clock and data will be generated per transaction", UVM_LOW)
     
     forever begin
       seq_item_port.get_next_item(trans);
@@ -84,33 +119,31 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     end
   endtask
   
-  // Wait for external clock to be active
-  virtual task wait_for_clock_active();
-    int clock_toggle_count = 0;
-    logic prev_clk_state;
+  // Drive transaction with source-synchronous clock and data
+  virtual task drive_transaction(sideband_transaction trans);
+    bit [63:0] packet;
     
-    `uvm_info("DRIVER", "Waiting for TX clock to be active...", UVM_MEDIUM)
+    if (vif.sb_reset) begin
+      `uvm_warning("DRIVER", "Cannot drive transaction during reset")
+      return;
+    end
     
-    prev_clk_state = vif.sbtx_clk;
+    `uvm_info("DRIVER", {"Driving transaction: ", trans.convert2string()}, UVM_MEDIUM)
     
-    fork
-      begin
-        // Wait for at least 3 clock toggles to confirm clock is running
-        while (clock_toggle_count < 3) begin
-          @(vif.sbtx_clk);
-          if (vif.sbtx_clk !== prev_clk_state) begin
-            clock_toggle_count++;
-            prev_clk_state = vif.sbtx_clk;
-          end
-        end
-        `uvm_info("DRIVER", "TX clock confirmed active", UVM_MEDIUM)
-      end
-      begin
-        #1ms; // Timeout
-        `uvm_fatal("DRIVER", "TX clock not detected - ensure clock is generated externally")
-      end
-    join_any
-    disable fork;
+    // Pack transaction into 64-bit packet
+    packet = trans.pack_header();
+    
+    // Drive the packet with source-synchronous clock
+    if (drive_packet_with_clock(packet)) begin
+      last_packet_time = $time;
+      `uvm_info("DRIVER", $sformatf("Successfully drove packet: 0x%016h", packet), UVM_HIGH)
+    end else begin
+      `uvm_error("DRIVER", "Failed to drive packet")
+      errors_detected++;
+    end
+    
+    // Drive gap (clock low, data low)
+    drive_gap();
   endtask
   
   // Enhanced reset handling with timeout
@@ -186,25 +219,25 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     header = trans.get_header();
     data_payload = trans.data;
     
-    // Drive header (64-bit serial packet)
-    if (!drive_serial_packet(header)) begin
+    // Drive header (64-bit packet with clock)
+    if (!drive_packet_with_clock(header)) begin
       `uvm_error("DRIVER", "Failed to drive header packet")
       return;
     end
     
-    // Drive gap with actual low data
+    // Drive gap with clock and data low
     drive_gap(cfg.min_gap_cycles);
     
     // Drive data if present
     if (trans.has_data) begin
       if (trans.is_64bit) begin
-        if (!drive_serial_packet(data_payload)) begin
+        if (!drive_packet_with_clock(data_payload)) begin
           `uvm_error("DRIVER", "Failed to drive 64-bit data packet")
           return;
         end
       end else begin
         // For 32-bit data, pad MSBs with 0
-        if (!drive_serial_packet({32'h0, data_payload[31:0]})) begin
+        if (!drive_packet_with_clock({32'h0, data_payload[31:0]})) begin
           `uvm_error("DRIVER", "Failed to drive 32-bit data packet")
           return;
         end
@@ -215,36 +248,44 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     end
   endtask
   
-  // Drive a 64-bit serial packet on TX path with error checking
-  virtual function bit drive_serial_packet(bit [63:0] packet);
+  // Drive a 64-bit packet with source-synchronous clock generation
+  virtual function bit drive_packet_with_clock(bit [63:0] packet);
     if (vif.sb_reset) begin
       `uvm_warning("DRIVER", "Cannot drive packet during reset")
       return 0;
     end
     
-    `uvm_info("DRIVER", $sformatf("Driving 64-bit packet: 0x%016h", packet), UVM_HIGH)
+    `uvm_info("DRIVER", $sformatf("Driving 64-bit packet with clock: 0x%016h", packet), UVM_HIGH)
     
-    // Drive each bit with proper timing
+    // Drive each bit with source-synchronous clock
     for (int i = 0; i < PACKET_SIZE_BITS; i++) begin
-      @(posedge vif.sbtx_clk);
-      #(cfg.setup_time * 1ns); // Setup time
-      vif.sbtx_data <= packet[i];
-      #(cfg.hold_time * 1ns);   // Hold time
+      // Clock low phase - setup data
+      vif.sbtx_clk = 1'b0;
+      #(cfg.setup_time * 1ns);
+      vif.sbtx_data = packet[i];
+      #(cfg.clock_low_time * 1ns - cfg.setup_time * 1ns);
+      
+      // Clock high phase - data is valid
+      vif.sbtx_clk = 1'b1;
+      #(cfg.clock_high_time * 1ns);
     end
+    
+    // Return clock to idle (low) state
+    vif.sbtx_clk = 1'b0;
     
     return 1;
   endfunction
   
-  // Drive minimum gap with data low
+  // Drive minimum gap with clock and data low
   virtual task drive_gap(int num_cycles = MIN_GAP_CYCLES);
-    `uvm_info("DRIVER", $sformatf("Driving %0d cycle gap", num_cycles), UVM_DEBUG)
+    `uvm_info("DRIVER", $sformatf("Driving %0d cycle gap (clock and data low)", num_cycles), UVM_DEBUG)
     
-    repeat(num_cycles) begin
-      @(posedge vif.sbtx_clk);
-      #(cfg.setup_time * 1ns);
-      vif.sbtx_data <= 1'b0;
-      #(cfg.hold_time * 1ns);
-    end
+    // During gap: both clock and data are low
+    vif.sbtx_clk = 1'b0;
+    vif.sbtx_data = 1'b0;
+    
+    // Hold for the gap duration (minimum 32 clock periods)
+    #(num_cycles * cfg.clock_period * 1ns + cfg.gap_time * 1ns);
   endtask
   
   // Update statistics
@@ -290,10 +331,10 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     return vif.sbtx_data;
   endfunction
   
-  // Task for debug - drive specific pattern
+  // Task for debug - drive specific pattern with clock
   virtual task drive_debug_pattern(bit [63:0] pattern, string pattern_name = "DEBUG");
     `uvm_info("SIDEBAND_DRIVER", $sformatf("Driving debug pattern %s: 0x%016h", pattern_name, pattern), UVM_LOW)
-    void'(drive_serial_packet(pattern));
+    void'(drive_packet_with_clock(pattern));
     drive_gap();
   endtask
   

@@ -22,11 +22,20 @@ module sideband_driver_example;
       
       // Create and configure driver
       driver_cfg = sideband_driver_config::type_id::create("driver_cfg");
+      
+      // Configure clock timing (200MHz)
+      driver_cfg.set_frequency(200e6);     // 200MHz
+      driver_cfg.set_duty_cycle(50.0);     // 50% duty cycle
+      
+      // Configure protocol parameters
       driver_cfg.min_gap_cycles = 32;
       driver_cfg.enable_protocol_checking = 1;
       driver_cfg.enable_statistics = 1;
-      driver_cfg.setup_time = 0.1;  // 100ps
-      driver_cfg.hold_time = 0.1;   // 100ps
+      
+      // Configure timing parameters
+      driver_cfg.setup_time = 0.1;         // 100ps setup time
+      driver_cfg.hold_time = 0.1;          // 100ps hold time
+      driver_cfg.gap_time = 0.0;           // No additional gap time
       
       // Set configuration in config_db
       uvm_config_db#(sideband_driver_config)::set(this, "agent.driver", "cfg", driver_cfg);

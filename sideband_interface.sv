@@ -1,38 +1,17 @@
 interface sideband_interface(input logic sb_reset);
   
   // UCIe Sideband signals - separate TX and RX paths
-  logic sbtx_data;   // Sideband TX data
-  logic sbtx_clk;    // Sideband TX clock
-  logic sbrx_data;   // Sideband RX data  
-  logic sbrx_clk;    // Sideband RX clock
+  logic sbtx_data;   // Sideband TX data (driven by TX driver)
+  logic sbtx_clk;    // Sideband TX clock (driven by TX driver)
+  logic sbrx_data;   // Sideband RX data (driven by RX driver)
+  logic sbrx_clk;    // Sideband RX clock (driven by RX driver)
   
-  // Clock generation parameters (configurable)
-  parameter real SBTX_FREQ = 200e6; // 200MHz default
-  parameter real SBRX_FREQ = 200e6; // 200MHz default
-  
-  // Generate clocks at interface level
+  // Initialize signals
   initial begin
     sbtx_clk = 0;
     sbrx_clk = 0;
     sbtx_data = 0;
     sbrx_data = 0;
-    
-    // Wait for reset release before starting clocks
-    wait(!sb_reset);
-    
-    fork
-      // TX clock generation
-      forever begin
-        #((1.0/SBTX_FREQ) * 1s / 2);
-        sbtx_clk = ~sbtx_clk;
-      end
-      
-      // RX clock generation  
-      forever begin
-        #((1.0/SBRX_FREQ) * 1s / 2);
-        sbrx_clk = ~sbrx_clk;
-      end
-    join
   end
   
   // Modports for driver (TX path)

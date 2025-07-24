@@ -15,6 +15,39 @@ The sideband agent implements the UCIe sideband transmission protocol as specifi
 - **Minimum Gap Requirement**: 32 bits low between packets
 - **Parity Protection**: Control and data parity for error detection
 
+## Key Features
+
+- **UCIe Compliant**: Implements UCIe 1.1 sideband protocol specification
+- **Source-Synchronous**: Driver generates both clock and data per transaction (true UCIe behavior)
+- **Separate TX/RX Paths**: Full-duplex communication with independent clock domains
+- **19 Opcode Support**: All UCIe sideband opcodes (Register Access, Messages, Management, Completions)
+- **Comprehensive Validation**: Built-in protocol checking and error detection
+- **Modular Design**: Clean separation of transaction, sequences, driver, monitor, and agent
+- **Multi-Simulator Support**: Works with VCS, Questa, and Xcelium
+- **Configurable Timing**: Adjustable clock frequencies, duty cycles, setup/hold times, and gap cycles
+
+## Source-Synchronous Operation
+
+The UCIe sideband protocol is **source-synchronous**, meaning the transmitter generates both the clock and data signals. This is different from system-synchronous protocols where a common clock is shared.
+
+### How It Works
+
+1. **Idle State**: Both `sbtx_clk` and `sbtx_data` are low when no transmission is active
+2. **Transaction Start**: Driver receives a UVM transaction from the sequencer
+3. **Clock Generation**: Driver generates the clock signal along with data for each bit
+4. **Data Transmission**: Each bit is transmitted with proper setup/hold timing relative to the clock
+5. **Gap Period**: After each packet, both clock and data return to low for minimum 32 clock cycles
+
+### Timing Example
+
+```
+Clock:  ___/‾‾‾\___/‾‾‾\___/‾‾‾\___/‾‾‾\___________________
+Data:   _____|B0|___|B1|___|B2|___|B3|___________________
+        <-setup->    <-hold->
+        
+        |<-- Bit 0 -->|<-- Bit 1 -->|     |<-- Gap -->|
+```
+
 ## Architecture
 
 ### UVM Components
