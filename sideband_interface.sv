@@ -6,6 +6,35 @@ interface sideband_interface(input logic sb_reset);
   logic sbrx_data;   // Sideband RX data  
   logic sbrx_clk;    // Sideband RX clock
   
+  // Clock generation parameters (configurable)
+  parameter real SBTX_FREQ = 200e6; // 200MHz default
+  parameter real SBRX_FREQ = 200e6; // 200MHz default
+  
+  // Generate clocks at interface level
+  initial begin
+    sbtx_clk = 0;
+    sbrx_clk = 0;
+    sbtx_data = 0;
+    sbrx_data = 0;
+    
+    // Wait for reset release before starting clocks
+    wait(!sb_reset);
+    
+    fork
+      // TX clock generation
+      forever begin
+        #((1.0/SBTX_FREQ) * 1s / 2);
+        sbtx_clk = ~sbtx_clk;
+      end
+      
+      // RX clock generation  
+      forever begin
+        #((1.0/SBRX_FREQ) * 1s / 2);
+        sbrx_clk = ~sbrx_clk;
+      end
+    join
+  end
+  
   // Modports for driver (TX path)
   modport driver_mp (
     input sb_reset, sbrx_clk, sbrx_data,

@@ -22,8 +22,6 @@ module sideband_driver_example;
       
       // Create and configure driver
       driver_cfg = sideband_driver_config::type_id::create("driver_cfg");
-      driver_cfg.enable_clock_generation = 1;
-      driver_cfg.clock_frequency = 200e6;  // 200MHz
       driver_cfg.min_gap_cycles = 32;
       driver_cfg.enable_protocol_checking = 1;
       driver_cfg.enable_statistics = 1;

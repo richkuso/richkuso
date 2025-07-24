@@ -5,8 +5,6 @@
 class sideband_driver_config extends uvm_object;
   `uvm_object_utils(sideband_driver_config)
   
-  bit enable_clock_generation = 1;
-  real clock_frequency = 200e6; // 200MHz default
   int min_gap_cycles = 32;
   bit enable_protocol_checking = 1;
   bit enable_statistics = 1;
@@ -36,8 +34,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   int errors_detected = 0;
   time last_packet_time;
   
-  // Clock generation control
-  bit clock_gen_active = 0;
+
   
   function new(string name = "sideband_driver", uvm_component parent = null);
     super.new(name, parent);
@@ -57,24 +54,19 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     end
     
     // Validate configuration
-    if (cfg.clock_frequency <= 0) begin
-      `uvm_error("DRIVER", "Invalid clock frequency in configuration")
-      cfg.clock_frequency = 200e6;
+    if (cfg.min_gap_cycles < 32) begin
+      `uvm_warning("DRIVER", $sformatf("min_gap_cycles=%0d is less than UCIe minimum of 32", cfg.min_gap_cycles))
     end
   endfunction
   
   virtual task run_phase(uvm_phase phase);
     sideband_transaction trans;
     
-    // Start clock generation if enabled
-    if (cfg.enable_clock_generation) begin
-      fork
-        generate_tx_clock();
-      join_none
-    end
-    
     // Wait for reset to be released before starting
     wait_for_reset_release();
+    
+    // Ensure clock is running (generated externally)
+    wait_for_clock_active();
     
     forever begin
       seq_item_port.get_next_item(trans);
@@ -92,20 +84,33 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     end
   endtask
   
-  // Clock generation task
-  virtual task generate_tx_clock();
-    real half_period = (1.0 / cfg.clock_frequency) * 1e9 / 2.0; // Convert to ns
+  // Wait for external clock to be active
+  virtual task wait_for_clock_active();
+    int clock_toggle_count = 0;
+    logic prev_clk_state;
     
-    clock_gen_active = 1;
-    vif.sbtx_clk = 0;
+    `uvm_info("DRIVER", "Waiting for TX clock to be active...", UVM_MEDIUM)
     
-    `uvm_info("DRIVER", $sformatf("Starting TX clock generation at %.1f MHz", cfg.clock_frequency/1e6), UVM_LOW)
+    prev_clk_state = vif.sbtx_clk;
     
-    forever begin
-      #(half_period * 1ns);
-      vif.sbtx_clk = ~vif.sbtx_clk;
-      if (!clock_gen_active) break;
-    end
+    fork
+      begin
+        // Wait for at least 3 clock toggles to confirm clock is running
+        while (clock_toggle_count < 3) begin
+          @(vif.sbtx_clk);
+          if (vif.sbtx_clk !== prev_clk_state) begin
+            clock_toggle_count++;
+            prev_clk_state = vif.sbtx_clk;
+          end
+        end
+        `uvm_info("DRIVER", "TX clock confirmed active", UVM_MEDIUM)
+      end
+      begin
+        #1ms; // Timeout
+        `uvm_fatal("DRIVER", "TX clock not detected - ensure clock is generated externally")
+      end
+    join_any
+    disable fork;
   endtask
   
   // Enhanced reset handling with timeout
@@ -292,13 +297,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     drive_gap();
   endtask
   
-  // Stop clock generation
-  virtual function void stop_clock_generation();
-    if (clock_gen_active) begin
-      clock_gen_active = 0;
-      `uvm_info("DRIVER", "TX clock generation stopped", UVM_LOW)
-    end
-  endfunction
+
   
   // Get driver statistics
   virtual function void get_statistics(output int pkts, output int bits, output int errs, output time last_time);
@@ -331,7 +330,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   // Final phase - cleanup
   virtual function void final_phase(uvm_phase phase);
     super.final_phase(phase);
-    stop_clock_generation();
+    // Driver cleanup if needed
   endfunction
   
 endclass
