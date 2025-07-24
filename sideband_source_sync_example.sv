@@ -125,18 +125,18 @@ module sideband_source_sync_example;
     `uvm_info("TB", $sformatf("Monitoring %s...", trans_name), UVM_MEDIUM)
     
     // Wait for first clock edge
-    @(posedge sb_intf.sbtx_clk);
+    @(posedge sb_intf.SBTX_CLK);
     
     // Monitor for 64 bits + some extra time
     repeat(70) begin
-      @(sb_intf.sbtx_clk);
-      if (sb_intf.sbtx_clk !== prev_clk) begin
-        if (sb_intf.sbtx_clk === 1'b1) begin // Rising edge
+      @(sb_intf.SBTX_CLK);
+      if (sb_intf.SBTX_CLK !== prev_clk) begin
+        if (sb_intf.SBTX_CLK === 1'b1) begin // Rising edge
           bit_count++;
           `uvm_info("TB", $sformatf("Bit %0d: Data=%b, Time=%0t", 
-                    bit_count, sb_intf.sbtx_data, $time), UVM_HIGH)
+                    bit_count, sb_intf.SBTX_DATA, $time), UVM_HIGH)
         end
-        prev_clk = sb_intf.sbtx_clk;
+        prev_clk = sb_intf.SBTX_CLK;
       end
     end
     

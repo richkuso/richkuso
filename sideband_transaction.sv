@@ -253,4 +253,19 @@ class sideband_transaction extends uvm_sequence_item;
     
     return s;
   endfunction
+  
+  // Calculate parity bits according to UCIe specification
+  function void calculate_parity();
+    // Control parity (CP) - XOR of all control fields
+    cp = ^{opcode, srcid, dstid, tag, be, ep, cr, addr[15:0]};
+    
+    // Data parity (DP) - XOR of data if present
+    if (has_data) begin
+      dp = is_64bit ? ^data : ^data[31:0];
+    end else begin
+      dp = 1'b0;
+    end
+    
+    `uvm_info("TRANSACTION", $sformatf("Calculated parity: CP=%0b, DP=%0b", cp, dp), UVM_DEBUG)
+  endfunction
 endclass

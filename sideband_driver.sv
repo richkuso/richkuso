@@ -98,8 +98,8 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     wait_for_reset_release();
     
     // Initialize TX signals to idle state
-    vif.sbtx_clk = 0;
-    vif.sbtx_data = 0;
+    vif.SBTX_CLK = 0;
+    vif.SBTX_DATA = 0;
     
     `uvm_info("DRIVER", "Sideband driver ready - clock and data will be generated per transaction", UVM_LOW)
     
@@ -121,7 +121,8 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   
   // Drive transaction with source-synchronous clock and data
   virtual task drive_transaction(sideband_transaction trans);
-    bit [63:0] packet;
+    bit [63:0] header_packet;
+    bit [63:0] data_packet;
     
     if (vif.sb_reset) begin
       `uvm_warning("DRIVER", "Cannot drive transaction during reset")
@@ -130,20 +131,49 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     
     `uvm_info("DRIVER", {"Driving transaction: ", trans.convert2string()}, UVM_MEDIUM)
     
-    // Pack transaction into 64-bit packet
-    packet = trans.get_header();
+    // Calculate and set parity bits
+    trans.calculate_parity();
     
-    // Drive the packet with source-synchronous clock
-    if (drive_packet_with_clock(packet)) begin
+    // Pack transaction header into 64-bit packet
+    header_packet = trans.get_header();
+    
+    // Drive the header packet with source-synchronous clock
+    if (drive_packet_with_clock(header_packet)) begin
       last_packet_time = $time;
-      `uvm_info("DRIVER", $sformatf("Successfully drove packet: 0x%016h", packet), UVM_HIGH)
+      `uvm_info("DRIVER", $sformatf("Successfully drove header packet: 0x%016h", header_packet), UVM_HIGH)
     end else begin
-      `uvm_error("DRIVER", "Failed to drive packet")
+      `uvm_error("DRIVER", "Failed to drive header packet")
       errors_detected++;
+      return;
     end
     
-    // Drive gap (clock low, data low)
+    // Drive gap after header
     drive_gap();
+    
+    // Drive data packet if transaction has data
+    if (trans.has_data) begin
+      // Pack data according to transaction width
+      if (trans.is_64bit) begin
+        data_packet = trans.data;
+      end else begin
+        // For 32-bit data, pad MSBs with 0
+        data_packet = {32'h0, trans.data[31:0]};
+      end
+      
+      `uvm_info("DRIVER", $sformatf("Driving data packet: 0x%016h", data_packet), UVM_HIGH)
+      
+      // Drive the data packet
+      if (drive_packet_with_clock(data_packet)) begin
+        `uvm_info("DRIVER", "Successfully drove data packet", UVM_HIGH)
+      end else begin
+        `uvm_error("DRIVER", "Failed to drive data packet")
+        errors_detected++;
+        return;
+      end
+      
+      // Drive gap after data
+      drive_gap();
+    end
   endtask
   
   // Enhanced reset handling with timeout
@@ -217,18 +247,18 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     // Drive each bit with source-synchronous clock
     for (int i = 0; i < PACKET_SIZE_BITS; i++) begin
       // Clock low phase - setup data
-      vif.sbtx_clk = 1'b0;
+      vif.SBTX_CLK = 1'b0;
       #(cfg.setup_time * 1ns);
-      vif.sbtx_data = packet[i];
+      vif.SBTX_DATA = packet[i];
       #(cfg.clock_low_time * 1ns - cfg.setup_time * 1ns);
       
       // Clock high phase - data is valid
-      vif.sbtx_clk = 1'b1;
+      vif.SBTX_CLK = 1'b1;
       #(cfg.clock_high_time * 1ns);
     end
     
     // Return clock to idle (low) state
-    vif.sbtx_clk = 1'b0;
+    vif.SBTX_CLK = 1'b0;
     
     return 1;
   endfunction
@@ -238,8 +268,8 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     `uvm_info("DRIVER", $sformatf("Driving %0d cycle gap (clock and data low)", num_cycles), UVM_DEBUG)
     
     // During gap: both clock and data are low
-    vif.sbtx_clk = 1'b0;
-    vif.sbtx_data = 1'b0;
+    vif.SBTX_CLK = 1'b0;
+    vif.SBTX_DATA = 1'b0;
     
     // Hold for the gap duration (minimum 32 clock periods)
     #(num_cycles * cfg.clock_period * 1ns + cfg.gap_time * 1ns);
@@ -260,12 +290,12 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   
   // Function to get current TX clock state
   virtual function bit get_tx_clk_state();
-    return vif.sbtx_clk;
+    return vif.SBTX_CLK;
   endfunction
   
   // Function to get current TX data state
   virtual function bit get_tx_data_state();
-    return vif.sbtx_data;
+    return vif.SBTX_DATA;
   endfunction
   
   // Task for debug - drive specific pattern with clock

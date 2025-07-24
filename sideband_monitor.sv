@@ -72,15 +72,15 @@ class sideband_monitor extends uvm_monitor;
   
   // Wait for start of packet on RX path
   virtual task wait_for_packet_start();
-    @(posedge vif.sbrx_data);
+    @(posedge vif.SBRX_DATA);
   endtask
   
   // Wait for minimum gap between packets (32 bits low) on RX path
   virtual task wait_for_packet_gap();
     int low_count = 0;
     while (low_count < 32) begin
-      @(posedge vif.sbrx_clk);
-      if (vif.sbrx_data == 1'b0)
+      @(posedge vif.SBRX_CLK);
+      if (vif.SBRX_DATA == 1'b0)
         low_count++;
       else
         low_count = 0;
@@ -91,8 +91,8 @@ class sideband_monitor extends uvm_monitor;
   virtual function bit [63:0] capture_serial_packet();
     bit [63:0] packet;
     for (int i = 0; i < 64; i++) begin
-      @(posedge vif.sbrx_clk);
-      packet[i] = vif.sbrx_data;
+      @(posedge vif.SBRX_CLK);
+      packet[i] = vif.SBRX_DATA;
     end
     return packet;
   endfunction
@@ -196,28 +196,28 @@ class sideband_monitor extends uvm_monitor;
   
   // Function to get current RX clock state
   virtual function bit get_rx_clk_state();
-    return vif.sbrx_clk;
+    return vif.SBRX_CLK;
   endfunction
   
   // Function to get current RX data state
   virtual function bit get_rx_data_state();
-    return vif.sbrx_data;
+    return vif.SBRX_DATA;
   endfunction
   
   // Task to wait for specific number of RX clock cycles
   virtual task wait_rx_cycles(int num_cycles);
-    repeat(num_cycles) @(posedge vif.sbrx_clk);
+    repeat(num_cycles) @(posedge vif.SBRX_CLK);
   endtask
   
   // Function to check if RX interface is idle
   virtual function bit is_rx_idle();
-    return (vif.sbrx_data == 1'b0);
+    return (vif.SBRX_DATA == 1'b0);
   endfunction
   
   // Task to wait for RX idle condition
   virtual task wait_for_rx_idle();
-    while (vif.sbrx_data !== 1'b0) begin
-      @(posedge vif.sbrx_clk);
+    while (vif.SBRX_DATA !== 1'b0) begin
+      @(posedge vif.SBRX_CLK);
     end
   endtask
   
