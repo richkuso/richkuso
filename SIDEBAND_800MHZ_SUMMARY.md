@@ -121,14 +121,14 @@ At 800MHz with typical 100ps setup/hold times:
 
 **Status**: ✅ Timing margins are reasonable for 800MHz operation
 
-## 📁 **Updated Files**
+## 📁 **Core Files**
 
 1. **`sideband_driver.sv`** - Source-synchronous clock generation
-2. **`sideband_driver_example.sv`** - 800MHz configuration example
-3. **`sideband_source_sync_example.sv`** - Source-synchronous demonstration
-4. **`sideband_800mhz_timing.sv`** - Timing analysis module
-5. **`sideband_README.md`** - Updated documentation
-6. **`sideband_Makefile`** - Added timing analysis target
+2. **`sideband_source_sync_example.sv`** - Complete demonstration and timing analysis
+3. **`sideband_README.md`** - Updated documentation
+4. **`sideband_Makefile`** - Build system with demo target
+5. **`sideband_pkg_updated.sv`** - Modular package file
+6. **`sideband_files.f`** - Clean file list for compilation
 
 ## 🚀 **Benefits of 800MHz Source-Synchronous Design**
 

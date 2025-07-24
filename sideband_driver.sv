@@ -49,7 +49,6 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   // Parameters based on UCIe specification
   parameter int MIN_GAP_CYCLES = 32;
   parameter int PACKET_SIZE_BITS = 64;
-  parameter real DEFAULT_CLOCK_PERIOD = 1.25; // 800MHz
   
   // Statistics
   int packets_driven = 0;
@@ -132,7 +131,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     `uvm_info("DRIVER", {"Driving transaction: ", trans.convert2string()}, UVM_MEDIUM)
     
     // Pack transaction into 64-bit packet
-    packet = trans.pack_header();
+    packet = trans.get_header();
     
     // Drive the packet with source-synchronous clock
     if (drive_packet_with_clock(packet)) begin
@@ -204,50 +203,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     return 1;
   endfunction
   
-  virtual task drive_transaction(sideband_transaction trans);
-    bit [63:0] header;
-    bit [63:0] data_payload;
-    
-    `uvm_info("SIDEBAND_DRIVER", trans.convert2string(), UVM_MEDIUM)
-    
-    // Ensure we're not in reset
-    if (vif.sb_reset) begin
-      `uvm_warning("DRIVER", "Attempting to drive during reset")
-      return;
-    end
-    
-    // Get header and data
-    header = trans.get_header();
-    data_payload = trans.data;
-    
-    // Drive header (64-bit packet with clock)
-    if (!drive_packet_with_clock(header)) begin
-      `uvm_error("DRIVER", "Failed to drive header packet")
-      return;
-    end
-    
-    // Drive gap with clock and data low
-    drive_gap(cfg.min_gap_cycles);
-    
-    // Drive data if present
-    if (trans.has_data) begin
-      if (trans.is_64bit) begin
-        if (!drive_packet_with_clock(data_payload)) begin
-          `uvm_error("DRIVER", "Failed to drive 64-bit data packet")
-          return;
-        end
-      end else begin
-        // For 32-bit data, pad MSBs with 0
-        if (!drive_packet_with_clock({32'h0, data_payload[31:0]})) begin
-          `uvm_error("DRIVER", "Failed to drive 32-bit data packet")
-          return;
-        end
-      end
-      
-      // Drive gap after data
-      drive_gap(cfg.min_gap_cycles);
-    end
-  endtask
+
   
   // Drive a 64-bit packet with source-synchronous clock generation
   virtual function bit drive_packet_with_clock(bit [63:0] packet);
@@ -300,27 +256,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   
   // Additional utility tasks
   
-  // Task to drive idle state (all zeros)
-  virtual task drive_idle(int num_cycles = MIN_GAP_CYCLES);
-    `uvm_info("DRIVER", $sformatf("Driving idle for %0d cycles", num_cycles), UVM_DEBUG)
-    drive_gap(num_cycles);
-  endtask
-  
-  // Task to wait for specific number of clock cycles
-  virtual task wait_cycles(int num_cycles);
-    repeat(num_cycles) @(posedge vif.sbtx_clk);
-  endtask
-  
-  // Task to check if interface is ready for transmission
-  virtual task wait_for_ready();
-    wait_for_reset_release();
-    
-    // Ensure we start from idle state
-    while (vif.sbtx_data !== 1'b0) begin
-      @(posedge vif.sbtx_clk);
-    end
-    `uvm_info("DRIVER", "Interface ready for transmission", UVM_MEDIUM)
-  endtask
+
   
   // Function to get current TX clock state
   virtual function bit get_tx_clk_state();
