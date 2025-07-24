@@ -38,15 +38,25 @@ The UCIe sideband protocol is **source-synchronous**, meaning the transmitter ge
 4. **Data Transmission**: Each bit is transmitted with proper setup/hold timing relative to the clock
 5. **Gap Period**: After each packet, both clock and data return to low for minimum 32 clock cycles
 
-### Timing Example
+### Timing Example (800MHz)
 
 ```
-Clock:  ___/‾‾‾\___/‾‾‾\___/‾‾‾\___/‾‾‾\___________________
-Data:   _____|B0|___|B1|___|B2|___|B3|___________________
+Clock:  ___/‾\__/‾\__/‾\__/‾\__________________________
+Data:   _____|B0|_|B1|_|B2|_|B3|________________________
         <-setup->    <-hold->
         
-        |<-- Bit 0 -->|<-- Bit 1 -->|     |<-- Gap -->|
+        |<-1.25ns->|<-1.25ns->|     |<-- 40ns Gap -->|
 ```
+
+**Note**: At 800MHz, each bit period is 1.25ns with minimum 32-cycle gap (40ns)
+
+### 800MHz Timing Considerations
+
+- **Bit Period**: 1.25ns (very fast - requires careful timing)
+- **Setup/Hold**: Typically 100-200ps (configurable)
+- **Gap Duration**: 40ns minimum (32 × 1.25ns)
+- **64-bit Packet**: 80ns transmission time (64 × 1.25ns)
+- **Total Transaction**: ~120ns (packet + gap)
 
 ## Architecture
 

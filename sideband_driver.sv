@@ -6,9 +6,9 @@ class sideband_driver_config extends uvm_object;
   `uvm_object_utils(sideband_driver_config)
   
   // Clock timing parameters
-  real clock_period = 5.0;        // ns (200MHz default)
-  real clock_high_time = 2.5;     // ns (50% duty cycle)
-  real clock_low_time = 2.5;      // ns (50% duty cycle)
+  real clock_period = 1.25;       // ns (800MHz default)
+  real clock_high_time = 0.625;   // ns (50% duty cycle)
+  real clock_low_time = 0.625;    // ns (50% duty cycle)
   
   // Protocol parameters
   int min_gap_cycles = 32;        // Minimum gap between packets
@@ -29,6 +29,7 @@ class sideband_driver_config extends uvm_object;
     clock_period = (1.0 / freq_hz) * 1e9; // Convert to ns
     clock_high_time = clock_period / 2.0;
     clock_low_time = clock_period / 2.0;
+    `uvm_info("CONFIG", $sformatf("Set frequency to %.1f MHz (period=%.3f ns)", freq_hz/1e6, clock_period), UVM_LOW)
   endfunction
   
   // Helper function to set duty cycle
@@ -48,7 +49,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   // Parameters based on UCIe specification
   parameter int MIN_GAP_CYCLES = 32;
   parameter int PACKET_SIZE_BITS = 64;
-  parameter real DEFAULT_CLOCK_PERIOD = 5.0; // 200MHz
+  parameter real DEFAULT_CLOCK_PERIOD = 1.25; // 800MHz
   
   // Statistics
   int packets_driven = 0;
@@ -82,7 +83,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
     
     if (cfg.clock_period <= 0) begin
       `uvm_error("DRIVER", "Invalid clock_period - must be positive")
-      cfg.clock_period = 5.0; // Default to 200MHz
+      cfg.clock_period = 1.25; // Default to 800MHz
     end
     
     if (cfg.clock_high_time + cfg.clock_low_time != cfg.clock_period) begin

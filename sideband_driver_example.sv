@@ -23,8 +23,8 @@ module sideband_driver_example;
       // Create and configure driver
       driver_cfg = sideband_driver_config::type_id::create("driver_cfg");
       
-      // Configure clock timing (200MHz)
-      driver_cfg.set_frequency(200e6);     // 200MHz
+      // Configure clock timing (800MHz - UCIe sideband standard)
+      driver_cfg.set_frequency(800e6);     // 800MHz
       driver_cfg.set_duty_cycle(50.0);     // 50% duty cycle
       
       // Configure protocol parameters

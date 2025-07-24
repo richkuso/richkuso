@@ -46,9 +46,9 @@ module sideband_source_sync_example;
     driver = sideband_driver::type_id::create("driver", null);
     cfg = sideband_driver_config::type_id::create("cfg");
     
-    // Configure for 100MHz operation
-    cfg.set_frequency(100e6);        // 100MHz (10ns period)
-    cfg.set_duty_cycle(60.0);        // 60% duty cycle (6ns high, 4ns low)
+    // Configure for 800MHz operation (UCIe standard)
+    cfg.set_frequency(800e6);        // 800MHz (1.25ns period)
+    cfg.set_duty_cycle(50.0);        // 50% duty cycle (0.625ns high, 0.625ns low)
     cfg.min_gap_cycles = 32;         // UCIe minimum gap
     cfg.setup_time = 0.5;            // 500ps setup
     cfg.hold_time = 0.5;             // 500ps hold
