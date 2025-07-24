@@ -91,8 +91,8 @@ class sideband_monitor extends uvm_monitor;
   
   //-----------------------------------------------------------------------------
   // TASK: wait_for_packet_start
-  // Waits for start of packet transmission (data goes high on posedge clock)
-  // Uses posedge SBRX_CLK for proper source-synchronous timing alignment
+  // Waits for start of packet transmission (posedge clock only)
+  // Data can be high or low based on opcode - only clock edge matters
   //-----------------------------------------------------------------------------
   extern virtual task wait_for_packet_start();
   
@@ -300,13 +300,12 @@ endfunction
 
 //-----------------------------------------------------------------------------
 // TASK: wait_for_packet_start
-// Waits for start of packet transmission (data goes high on posedge clock)
+// Waits for start of packet transmission (posedge clock only)
+// Data can be high or low based on opcode - only clock edge matters
 //-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_for_packet_start();
-  // Wait for data to go high on positive edge of RX clock
-  do begin
-    @(posedge vif.SBRX_CLK);
-  end while (vif.SBRX_DATA == 1'b0);
+  // Wait for positive edge of RX clock - this indicates packet transmission start
+  @(posedge vif.SBRX_CLK);
   
   `uvm_info("MONITOR", "Packet start detected on posedge SBRX_CLK", UVM_DEBUG)
 endtask
