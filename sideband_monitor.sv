@@ -88,7 +88,8 @@ class sideband_monitor extends uvm_monitor;
   
   //-----------------------------------------------------------------------------
   // TASK: wait_for_packet_start
-  // Waits for start of packet transmission (data goes high)
+  // Waits for start of packet transmission (data goes high on posedge clock)
+  // Uses posedge SBRX_CLK for proper source-synchronous timing alignment
   //-----------------------------------------------------------------------------
   extern virtual task wait_for_packet_start();
   
@@ -100,7 +101,8 @@ class sideband_monitor extends uvm_monitor;
   
   //-----------------------------------------------------------------------------
   // FUNCTION: capture_serial_packet
-  // Captures a 64-bit serial packet from RX interface
+  // Captures a 64-bit serial packet from RX interface sampling on negedge clock
+  // Uses negedge sampling for proper source-synchronous data recovery
   //
   // RETURNS: 64-bit captured packet
   //-----------------------------------------------------------------------------
@@ -279,37 +281,56 @@ endfunction
 
 //-----------------------------------------------------------------------------
 // TASK: wait_for_packet_start
-// Waits for start of packet transmission (data goes high)
+// Waits for start of packet transmission (data goes high on posedge clock)
 //-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_for_packet_start();
-  @(posedge vif.SBRX_DATA);
+  // Wait for data to go high on positive edge of RX clock
+  do begin
+    @(posedge vif.SBRX_CLK);
+  end while (vif.SBRX_DATA == 1'b0);
+  
+  `uvm_info("MONITOR", "Packet start detected on posedge SBRX_CLK", UVM_DEBUG)
 endtask
 
 //-----------------------------------------------------------------------------
 // TASK: wait_for_packet_gap
-// Waits for minimum gap between packets (32 cycles low)
+// Waits for minimum gap between packets (32 cycles low on posedge clock)
 //-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_for_packet_gap();
   int low_count = 0;
+  
+  `uvm_info("MONITOR", "Waiting for packet gap (32 cycles minimum)", UVM_DEBUG)
+  
   while (low_count < 32) begin
-    @(posedge vif.SBRX_CLK);
-    if (vif.SBRX_DATA == 1'b0)
+    @(posedge vif.SBRX_CLK);  // Check gap on positive edge
+    if (vif.SBRX_DATA == 1'b0) begin
       low_count++;
-    else
-      low_count = 0;
+      `uvm_info("MONITOR", $sformatf("Gap count: %0d/32", low_count), UVM_HIGH)
+    end else begin
+      low_count = 0;  // Reset if data goes high
+      `uvm_info("MONITOR", "Gap reset - data went high", UVM_HIGH)
+    end
   end
+  
+  `uvm_info("MONITOR", "Packet gap detected (32 cycles complete)", UVM_DEBUG)
 endtask
 
 //-----------------------------------------------------------------------------
 // FUNCTION: capture_serial_packet
-// Captures a 64-bit serial packet from RX interface
+// Captures a 64-bit serial packet from RX interface sampling on negedge clock
 //-----------------------------------------------------------------------------
 virtual function bit [63:0] sideband_monitor::capture_serial_packet();
   bit [63:0] packet;
+  
+  `uvm_info("MONITOR", "Starting packet capture on negedge SBRX_CLK", UVM_DEBUG)
+  
   for (int i = 0; i < 64; i++) begin
-    @(posedge vif.SBRX_CLK);
+    @(negedge vif.SBRX_CLK);  // Sample data on negative edge for source-sync
     packet[i] = vif.SBRX_DATA;
+    `uvm_info("MONITOR", $sformatf("Captured bit[%0d] = %0b", i, packet[i]), UVM_HIGH)
   end
+  
+  `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h", packet), UVM_DEBUG)
   return packet;
 endfunction
 
@@ -423,10 +444,12 @@ endfunction
 
 //-----------------------------------------------------------------------------
 // TASK: wait_rx_cycles
-// Waits for specified number of RX clock cycles
+// Waits for specified number of RX clock cycles (posedge)
 //-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_rx_cycles(int num_cycles);
+  `uvm_info("MONITOR", $sformatf("Waiting for %0d RX clock cycles", num_cycles), UVM_DEBUG)
   repeat(num_cycles) @(posedge vif.SBRX_CLK);
+  `uvm_info("MONITOR", $sformatf("Completed %0d RX clock cycles", num_cycles), UVM_DEBUG)
 endtask
 
 //-----------------------------------------------------------------------------
@@ -439,12 +462,16 @@ endfunction
 
 //-----------------------------------------------------------------------------
 // TASK: wait_for_rx_idle
-// Waits for RX interface to become idle
+// Waits for RX interface to become idle (data low on posedge clock)
 //-----------------------------------------------------------------------------
 virtual task sideband_monitor::wait_for_rx_idle();
+  `uvm_info("MONITOR", "Waiting for RX interface to become idle", UVM_DEBUG)
+  
   while (vif.SBRX_DATA !== 1'b0) begin
     @(posedge vif.SBRX_CLK);
   end
+  
+  `uvm_info("MONITOR", "RX interface is now idle", UVM_DEBUG)
 endtask
 
 //-----------------------------------------------------------------------------
