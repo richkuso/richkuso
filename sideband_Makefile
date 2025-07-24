@@ -214,7 +214,13 @@ waves_questa:
 waves_xcelium:
 	simvision *.shm &
 
-.PHONY: all compile run clean help debug coverage lint regress test_memory test_config test_mixed test_all waves synth_check
+# Source-synchronous example
+source_sync_demo:
+	@echo "Running source-synchronous demonstration..."
+	vcs -sverilog -ntb_opts uvm-1.2 +incdir+$(UVM_HOME)/src sideband_source_sync_example.sv -o source_sync_demo
+	./source_sync_demo +UVM_VERBOSITY=UVM_LOW
+
+.PHONY: all compile run clean help debug coverage lint regress test_memory test_config test_mixed test_all waves synth_check source_sync_demo
 .PHONY: compile_vcs compile_questa compile_xcelium run_vcs run_questa run_xcelium
 .PHONY: clean_vcs clean_questa clean_xcelium clean_all debug_vcs debug_questa debug_xcelium
 .PHONY: coverage_vcs coverage_questa coverage_xcelium lint_vcs lint_questa lint_xcelium

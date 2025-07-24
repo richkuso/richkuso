@@ -17,12 +17,6 @@ sideband_pkg_updated.sv
 # Testbench files
 sideband_testbench.sv
 
-# Demo and utility files
-sideband_interface_demo.sv
-
-# Alternative: Use original monolithic package
-# sideband_pkg.sv
-
 # Compilation example for VCS:
 # vcs -f sideband_files.f +incdir+$UVM_HOME/src $UVM_HOME/src/uvm_pkg.sv -ntb_opts uvm-1.2
 

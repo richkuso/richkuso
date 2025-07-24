@@ -1,35 +1,29 @@
 interface sideband_interface(input logic sb_reset);
   
   // UCIe Sideband signals - separate TX and RX paths
-  logic sbtx_data;   // Sideband TX data
-  logic sbtx_clk;    // Sideband TX clock
-  logic sbrx_data;   // Sideband RX data  
-  logic sbrx_clk;    // Sideband RX clock
+  logic SBTX_DATA;   // Sideband TX data (driven by TX driver)
+  logic SBTX_CLK;    // Sideband TX clock (driven by TX driver)
+  logic SBRX_DATA;   // Sideband RX data (driven by RX driver)
+  logic SBRX_CLK;    // Sideband RX clock (driven by RX driver)
   
-  // Clocking blocks for TX (driver) - synchronous to TX clock
-  clocking driver_cb @(posedge sbtx_clk);
-    default input #1step output #0;
-    output sbtx_data;
-  endclocking
-  
-  // Clocking blocks for RX (monitor) - synchronous to RX clock
-  clocking monitor_cb @(posedge sbrx_clk);
-    default input #1step;
-    input sbrx_data;
-  endclocking
+  // Initialize signals
+  initial begin
+    SBTX_CLK = 0;
+    SBRX_CLK = 0;
+    SBTX_DATA = 0;
+    SBRX_DATA = 0;
+  end
   
   // Modports for driver (TX path)
   modport driver_mp (
-    clocking driver_cb,
-    input sb_reset, sbrx_clk, sbrx_data,
-    output sbtx_data, sbtx_clk
+    input sb_reset, SBRX_CLK, SBRX_DATA,
+    output SBTX_DATA, SBTX_CLK
   );
   
   // Modports for monitor (RX path)
   modport monitor_mp (
-    clocking monitor_cb,
-    input sb_reset, sbtx_clk, sbtx_data,
-    output sbrx_data, sbrx_clk
+    input sb_reset, SBTX_CLK, SBTX_DATA,
+    output SBRX_DATA, SBRX_CLK
   );
   
   // Protocol checking properties for TX path
@@ -37,47 +31,47 @@ interface sideband_interface(input logic sb_reset);
   // Property: Minimum gap between TX packets (32 bits low)
   property min_gap_between_tx_packets;
     bit [5:0] gap_counter;
-    @(posedge sbtx_clk) disable iff (sb_reset)
-    ($fell(sbtx_data), gap_counter = 0) |-> 
-    (sbtx_data == 1'b0, gap_counter++) [*32] ##1 
-    (sbtx_data == 1'b1 || gap_counter >= 32);
+    @(posedge SBTX_CLK) disable iff (sb_reset)
+    ($fell(SBTX_DATA), gap_counter = 0) |-> 
+    (SBTX_DATA == 1'b0, gap_counter++) [*32] ##1 
+    (SBTX_DATA == 1'b1 || gap_counter >= 32);
   endproperty
   
   // Property: TX serial packet is exactly 64 bits when active
   property tx_packet_length_64bits;
     int bit_counter;
-    @(posedge sbtx_clk) disable iff (sb_reset)
-    ($rose(sbtx_data), bit_counter = 1) |-> 
-    (sbtx_data, bit_counter++) [*63] ##1 bit_counter == 64;
+    @(posedge SBTX_CLK) disable iff (sb_reset)
+    ($rose(SBTX_DATA), bit_counter = 1) |-> 
+    (SBTX_DATA, bit_counter++) [*63] ##1 bit_counter == 64;
   endproperty
   
   // Property: TX data should be stable during clock edges
   property tx_data_stable_on_clock;
-    @(posedge sbtx_clk) disable iff (sb_reset)
-    $stable(sbtx_data);
+    @(posedge SBTX_CLK) disable iff (sb_reset)
+    $stable(SBTX_DATA);
   endproperty
   
   // Property: Minimum gap between RX packets (32 bits low)
   property min_gap_between_rx_packets;
     bit [5:0] gap_counter;
-    @(posedge sbrx_clk) disable iff (sb_reset)
-    ($fell(sbrx_data), gap_counter = 0) |-> 
-    (sbrx_data == 1'b0, gap_counter++) [*32] ##1 
-    (sbrx_data == 1'b1 || gap_counter >= 32);
+    @(posedge SBRX_CLK) disable iff (sb_reset)
+    ($fell(SBRX_DATA), gap_counter = 0) |-> 
+    (SBRX_DATA == 1'b0, gap_counter++) [*32] ##1 
+    (SBRX_DATA == 1'b1 || gap_counter >= 32);
   endproperty
   
   // Property: RX serial packet is exactly 64 bits when active
   property rx_packet_length_64bits;
     int bit_counter;
-    @(posedge sbrx_clk) disable iff (sb_reset)
-    ($rose(sbrx_data), bit_counter = 1) |-> 
-    (sbrx_data, bit_counter++) [*63] ##1 bit_counter == 64;
+    @(posedge SBRX_CLK) disable iff (sb_reset)
+    ($rose(SBRX_DATA), bit_counter = 1) |-> 
+    (SBRX_DATA, bit_counter++) [*63] ##1 bit_counter == 64;
   endproperty
   
   // Property: RX data should be stable during clock edges
   property rx_data_stable_on_clock;
-    @(posedge sbrx_clk) disable iff (sb_reset)
-    $stable(sbrx_data);
+    @(posedge SBRX_CLK) disable iff (sb_reset)
+    $stable(SBRX_DATA);
   endproperty
   
   // Bind assertions (can be disabled for performance)
@@ -104,11 +98,11 @@ interface sideband_interface(input logic sb_reset);
   `endif
   
   // Coverage for TX sideband activity
-  covergroup sideband_tx_activity_cg @(posedge sbtx_clk);
+  covergroup sideband_tx_activity_cg @(posedge SBTX_CLK);
     option.per_instance = 1;
     option.name = "sideband_tx_cov";
     
-    tx_data_transitions: coverpoint sbtx_data {
+    tx_data_transitions: coverpoint SBTX_DATA {
       bins low = {1'b0};
       bins high = {1'b1};
       bins low_to_high = (1'b0 => 1'b1);
@@ -125,11 +119,11 @@ interface sideband_interface(input logic sb_reset);
   endgroup
   
   // Coverage for RX sideband activity
-  covergroup sideband_rx_activity_cg @(posedge sbrx_clk);
+  covergroup sideband_rx_activity_cg @(posedge SBRX_CLK);
     option.per_instance = 1;
     option.name = "sideband_rx_cov";
     
-    rx_data_transitions: coverpoint sbrx_data {
+    rx_data_transitions: coverpoint SBRX_DATA {
       bins low = {1'b0};
       bins high = {1'b1};
       bins low_to_high = (1'b0 => 1'b1);
@@ -153,24 +147,24 @@ interface sideband_interface(input logic sb_reset);
   
   // Task to wait for a complete TX packet transmission
   task wait_for_tx_packet_complete();
-    @(posedge sbtx_data);  // Wait for packet start
-    repeat(64) @(posedge sbtx_clk);  // Wait for 64 bits
-    @(negedge sbtx_data);  // Wait for packet end
+    @(posedge SBTX_DATA);  // Wait for packet start
+    repeat(64) @(posedge SBTX_CLK);  // Wait for 64 bits
+    @(negedge SBTX_DATA);  // Wait for packet end
   endtask
   
   // Task to wait for a complete RX packet reception
   task wait_for_rx_packet_complete();
-    @(posedge sbrx_data);  // Wait for packet start
-    repeat(64) @(posedge sbrx_clk);  // Wait for 64 bits
-    @(negedge sbrx_data);  // Wait for packet end
+    @(posedge SBRX_DATA);  // Wait for packet start
+    repeat(64) @(posedge SBRX_CLK);  // Wait for 64 bits
+    @(negedge SBRX_DATA);  // Wait for packet end
   endtask
   
   // Task to wait for TX idle condition (minimum gap)
   task wait_for_tx_idle();
     int idle_count = 0;
     while (idle_count < 32) begin
-      @(posedge sbtx_clk);
-      if (sbtx_data == 1'b0)
+      @(posedge SBTX_CLK);
+      if (SBTX_DATA == 1'b0)
         idle_count++;
       else
         idle_count = 0;
@@ -181,8 +175,8 @@ interface sideband_interface(input logic sb_reset);
   task wait_for_rx_idle();
     int idle_count = 0;
     while (idle_count < 32) begin
-      @(posedge sbrx_clk);
-      if (sbrx_data == 1'b0)
+      @(posedge SBRX_CLK);
+      if (SBRX_DATA == 1'b0)
         idle_count++;
       else
         idle_count = 0;
@@ -191,22 +185,22 @@ interface sideband_interface(input logic sb_reset);
   
   // Function to check if TX interface is idle
   function bit is_tx_idle();
-    return (sbtx_data == 1'b0);
+    return (SBTX_DATA == 1'b0);
   endfunction
   
   // Function to check if RX interface is idle
   function bit is_rx_idle();
-    return (sbrx_data == 1'b0);
+    return (SBRX_DATA == 1'b0);
   endfunction
   
   // Function to sample current TX data
   function bit sample_tx_data();
-    return sbtx_data;
+    return SBTX_DATA;
   endfunction
   
   // Function to sample current RX data
   function bit sample_rx_data();
-    return sbrx_data;
+    return SBRX_DATA;
   endfunction
   
 endinterface

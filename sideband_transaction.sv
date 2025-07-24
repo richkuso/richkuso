@@ -47,7 +47,7 @@ class sideband_transaction extends uvm_sequence_item;
     super.new(name);
   endfunction
 
-  // Constraints
+  // UCIe specification compliant constraints
   constraint valid_opcode_c {
     opcode inside {
       MEM_READ_32B, MEM_WRITE_32B, DMS_READ_32B, DMS_WRITE_32B, CFG_READ_32B, CFG_WRITE_32B,
@@ -57,8 +57,40 @@ class sideband_transaction extends uvm_sequence_item;
     };
   }
   
-  constraint srcid_c { srcid inside {[0:7]}; }
-  constraint dstid_c { dstid inside {[0:7]}; }
+  // UCIe Table 7-4: srcid encodings
+  constraint srcid_c { 
+    srcid inside {
+      3'b001,  // D2D Adapter
+      3'b010,  // Physical Layer
+      3'b011   // Management Port Gateway
+    };
+  }
+  
+  // UCIe Table 7-4: dstid encodings based on packet type
+  constraint dstid_c {
+    // For Register Access requests: dstid[1:0] is Reserved, dstid[2] indicates remote die
+    if (pkt_type == PKT_REG_ACCESS && opcode inside {MEM_READ_32B, MEM_READ_64B, DMS_READ_32B, DMS_READ_64B, CFG_READ_32B, CFG_READ_64B, MEM_WRITE_32B, MEM_WRITE_64B, DMS_WRITE_32B, DMS_WRITE_64B, CFG_WRITE_32B, CFG_WRITE_64B}) {
+      dstid[1:0] == 2'b00;  // Reserved for register access requests
+      dstid[2] inside {1'b0, 1'b1};  // 0=local, 1=remote die
+    }
+    // For Remote die terminated Register Access Completions
+    else if (pkt_type == PKT_COMPLETION && dstid[2] == 1'b1) {
+      dstid[1:0] == 2'b01;  // D2D Adapter
+    }
+    // For Remote die terminated messages
+    else if (pkt_type inside {PKT_MESSAGE, PKT_MGMT} && dstid[2] == 1'b1) {
+      dstid[1:0] inside {
+        2'b01,  // D2D Adapter message
+        2'b10,  // Physical Layer message
+        2'b11   // Management Port Gateway message
+      };
+    }
+    // For local messages/completions
+    else {
+      dstid inside {[0:7]};  // Allow any encoding for local
+    }
+  }
+  
   constraint tag_c { tag inside {[0:31]}; }
   
   // Address alignment constraints
@@ -151,17 +183,89 @@ class sideband_transaction extends uvm_sequence_item;
     return header;
   endfunction
 
-  // Convert to string for debug
+  // Helper functions for UCIe srcid/dstid interpretation
+  function string get_srcid_name();
+    case (srcid)
+      3'b001: return "D2D_ADAPTER";
+      3'b010: return "PHYSICAL_LAYER";
+      3'b011: return "MGMT_PORT_GATEWAY";
+      default: return "RESERVED";
+    endcase
+  endfunction
+  
+  function string get_dstid_name();
+    string remote_str = dstid[2] ? "REMOTE_" : "LOCAL_";
+    
+    if (pkt_type == PKT_REG_ACCESS) begin
+      return {remote_str, "REG_ACCESS"};
+    end else if (pkt_type == PKT_COMPLETION && dstid[2]) begin
+      case (dstid[1:0])
+        2'b01: return {remote_str, "D2D_ADAPTER"};
+        default: return {remote_str, "RESERVED"};
+      endcase
+    end else if (pkt_type inside {PKT_MESSAGE, PKT_MGMT} && dstid[2]) begin
+      case (dstid[1:0])
+        2'b01: return {remote_str, "D2D_ADAPTER_MSG"};
+        2'b10: return {remote_str, "PHY_LAYER_MSG"};
+        2'b11: return {remote_str, "MGMT_PORT_MSG"};
+        default: return {remote_str, "RESERVED_MSG"};
+      endcase
+    end else begin
+      return $sformatf("LOCAL_0x%0h", dstid);
+    end
+  endfunction
+  
+  function bit is_remote_die_packet();
+    return dstid[2];
+  endfunction
+  
+  function bit is_poison_set();
+    return ep;
+  endfunction
+  
+  function bit has_credit_return();
+    return cr;
+  endfunction
+  
+  // Enhanced convert to string for debug with UCIe field interpretation
   function string convert2string();
     string s;
-    s = $sformatf("SIDEBAND_TXN: opcode=%s, srcid=%0d, dstid=%0d, tag=%0d", 
-                  opcode.name(), srcid, dstid, tag);
-    if (pkt_type == PKT_REG_ACCESS)
-      s = {s, $sformatf(", addr=0x%0h, be=0x%0h", addr, be)};
-    if (pkt_type == PKT_COMPLETION)
-      s = {s, $sformatf(", status=0x%0h", status)};
-    if (has_data)
+    s = $sformatf("SIDEBAND_TXN: opcode=%s, src=%s(0x%0h), dst=%s(0x%0h), tag=%0d", 
+                  opcode.name(), get_srcid_name(), srcid, get_dstid_name(), dstid, tag);
+    
+    if (pkt_type == PKT_REG_ACCESS) begin
+      s = {s, $sformatf(", addr=0x%06h, be=0x%02h", addr, be)};
+      if (ep) s = {s, ", POISON"};
+    end
+    
+    if (pkt_type == PKT_COMPLETION) begin
+      s = {s, $sformatf(", status=0x%04h", status)};
+      if (ep) s = {s, ", POISON"};
+    end
+    
+    if (cr) s = {s, ", CREDIT_RETURN"};
+    
+    if (has_data) begin
       s = {s, $sformatf(", data=0x%0h", is_64bit ? data : data[31:0])};
+    end
+    
+    s = {s, $sformatf(", cp=%0b, dp=%0b", cp, dp)};
+    
     return s;
+  endfunction
+  
+  // Calculate parity bits according to UCIe specification
+  function void calculate_parity();
+    // Control parity (CP) - XOR of all control fields
+    cp = ^{opcode, srcid, dstid, tag, be, ep, cr, addr[15:0]};
+    
+    // Data parity (DP) - XOR of data if present
+    if (has_data) begin
+      dp = is_64bit ? ^data : ^data[31:0];
+    end else begin
+      dp = 1'b0;
+    end
+    
+    `uvm_info("TRANSACTION", $sformatf("Calculated parity: CP=%0b, DP=%0b", cp, dp), UVM_DEBUG)
   endfunction
 endclass

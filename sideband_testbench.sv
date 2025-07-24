@@ -16,27 +16,27 @@ module sideband_testbench;
   sideband_interface sb_intf(sb_reset);
   
   // Clock generation for sideband TX and RX - higher frequency for serial transmission
-  always #2.5 sb_intf.sbtx_clk = ~sb_intf.sbtx_clk; // 200MHz TX sideband clock
-  always #2.5 sb_intf.sbrx_clk = ~sb_intf.sbrx_clk; // 200MHz RX sideband clock
+  always #2.5 sb_intf.SBTX_CLK = ~sb_intf.SBTX_CLK; // 200MHz TX sideband clock
+  always #2.5 sb_intf.SBRX_CLK = ~sb_intf.SBRX_CLK; // 200MHz RX sideband clock
   
   initial begin
-    sb_intf.sbtx_clk = 0;
-    sb_intf.sbrx_clk = 0;
-    sb_intf.sbtx_data = 0;
-    sb_intf.sbrx_data = 0;
+    sb_intf.SBTX_CLK = 0;
+    sb_intf.SBRX_CLK = 0;
+    sb_intf.SBTX_DATA = 0;
+    sb_intf.SBRX_DATA = 0;
   end
   
   // Loopback connection for demonstration (TX to RX)
   always_comb begin
-    sb_intf.sbrx_data = sb_intf.sbtx_data;
+    sb_intf.SBRX_DATA = sb_intf.SBTX_DATA;
   end
   
   // Simple sideband receiver DUT for demonstration
   sideband_receiver_dut dut (
-    .sbtx_clk(sb_intf.sbtx_clk),
-    .sbtx_data(sb_intf.sbtx_data),
-    .sbrx_clk(sb_intf.sbrx_clk),
-    .sbrx_data(sb_intf.sbrx_data),
+    .SBTX_CLK(sb_intf.SBTX_CLK),
+    .SBTX_DATA(sb_intf.SBTX_DATA),
+    .SBRX_CLK(sb_intf.SBRX_CLK),
+    .SBRX_DATA(sb_intf.SBRX_DATA),
     .sb_reset(sb_reset)
   );
   
