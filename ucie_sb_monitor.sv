@@ -410,39 +410,49 @@ virtual function ucie_sb_transaction ucie_sb_monitor::decode_header(bit [63:0] h
   // Check if this is a message without data format
   else if (detected_opcode == MESSAGE_NO_DATA || detected_opcode == MGMT_MSG_NO_DATA) begin
     // Message without data format (Figure 7-3)
-    // Phase 0: srcid[31:30] + rsvd[29:24] + msgcode[23:16] + rsvd[15:5] + opcode[4:0]
-    trans.srcid = {1'b0, phase0[31:30]};  // Extend to 3 bits
-    trans.msgcode = phase0[23:16];
+    // Phase 0: phase0[31:29] srcid + phase0[28:27] rsvd + phase0[26:22] rsvd + 
+    // phase0[21:14] msgcode[7:0] + phase0[13:5] rsvd + phase0[4:0] opcode[4:0]
+    trans.srcid = phase0[31:29];       // [31:29] srcid
+    trans.msgcode = phase0[21:14];     // [21:14] msgcode[7:0]
     
-    // Phase 1: dp[31] + cp[30] + rsvd[29:24] + dstid[23:16] + msginfo[15:8] + msgsubcode[7:0]
-    trans.dp = phase1[31];
-    trans.cp = phase1[30];
-    trans.dstid = {phase1[23:21]};  // Extract 3-bit dstid
-    trans.msginfo = {phase1[15:8], 8'h00}; // MSBs in [15:8], LSBs assumed 0
-    trans.msgsubcode = phase1[7:0];
+    // Phase 1: phase1[31] dp + phase1[30] cp + phase1[29:27] rsvd + phase1[26:24] dstid +
+    // phase1[23:8] MsgInfo[15:0] + phase1[7:0] MsgSubcode[7:0]
+    trans.dp = phase1[31];             // [31] dp
+    trans.cp = phase1[30];             // [30] cp
+    trans.dstid = phase1[26:24];       // [26:24] dstid
+    trans.msginfo = phase1[23:8];      // [23:8] MsgInfo[15:0]
+    trans.msgsubcode = phase1[7:0];    // [7:0] MsgSubcode[7:0]
     
     `uvm_info("MONITOR", $sformatf("Decoded message: msgcode=0x%02h, msginfo=0x%04h, msgsubcode=0x%02h", 
               trans.msgcode, trans.msginfo, trans.msgsubcode), UVM_MEDIUM)
   end
   else begin
-    // Standard register access/completion format
-    // Extract fields from phase0
-    trans.srcid = phase0[31:29];
-    // phase0[28:27] reserved
-    trans.tag = phase0[26:22];
-    trans.be = phase0[21:14];
-    // phase0[13:11] reserved
-    trans.ep = phase0[10];
-    // phase0[4:0] reserved
+    // Standard register access/completion format (Figure 7-1/7-2)
+    // Phase 0: phase0[31:29] srcid + phase0[28:27] rsvd + phase0[26:22] tag[4:0] +
+    // phase0[21:14] be[7:0] + phase0[13:6] rsvd + phase0[5] ep + phase0[4:0] opcode[4:0]
+    trans.srcid = phase0[31:29];       // [31:29] srcid
+    trans.tag = phase0[26:22];         // [26:22] tag[4:0]
+    trans.be = phase0[21:14];          // [21:14] be[7:0]
+    trans.ep = phase0[5];              // [5] ep
     
-    // Extract fields from phase1
-    trans.dp = phase1[31];
-    trans.cp = phase1[30];
-    trans.cr = phase1[29];
-    // phase1[28:25] reserved
-    trans.dstid = phase1[24:22];
-    // phase1[21:16] reserved
-    trans.addr = {8'h00, phase1[15:0]}; // Extend to 24-bit address
+    // Phase 1 fields depend on packet type
+    trans.dp = phase1[31];             // [31] dp
+    trans.cp = phase1[30];             // [30] cp
+    trans.cr = phase1[29];             // [29] cr
+    trans.dstid = phase1[26:24];       // [26:24] dstid
+    
+    // Check if this is a completion (has status field)
+    if (detected_opcode == COMPLETION_NO_DATA || detected_opcode == COMPLETION_32B || detected_opcode == COMPLETION_64B) begin
+      // Figure 7-2: Completion format
+      // phase1[23:3] rsvd + phase1[2:0] Status
+      trans.status = {13'h0000, phase1[2:0]}; // [2:0] Status, extend to 16-bit
+      trans.addr = 24'h000000; // No address in completions
+    end else begin
+      // Figure 7-1: Register access request format
+      // phase1[23:0] addr[23:0]
+      trans.addr = phase1[23:0];       // [23:0] addr[23:0]
+      trans.status = 16'h0000;         // No status in requests
+    end
   end
   
   // Update packet information based on opcode

@@ -148,6 +148,14 @@ class ucie_sb_transaction extends uvm_sequence_item;
   extern function bit [63:0] get_clock_pattern_header();
   
   //-----------------------------------------------------------------------------
+  // FUNCTION: get_register_access_header
+  // Packs register access/completion fields into 64-bit header packet
+  // 
+  // RETURNS: 64-bit register access header packet ready for transmission
+  //-----------------------------------------------------------------------------
+  extern function bit [63:0] get_register_access_header();
+  
+  //-----------------------------------------------------------------------------
   // FUNCTION: get_srcid_name
   // Returns human-readable name for source ID
   //
@@ -389,8 +397,21 @@ endfunction
 // Calculates control parity (CP) and data parity (DP) per UCIe specification
 //-----------------------------------------------------------------------------
 function void ucie_sb_transaction::calculate_parity();
-  // Control parity (CP) - XOR of all control fields
-  cp = ^{opcode, srcid, dstid, tag, be, ep, cr, addr[15:0]};
+  // Control parity (CP) - XOR of all control fields based on packet type
+  if (is_clock_pattern) begin
+    // Clock pattern has fixed parity
+    cp = 1'b0;
+    dp = 1'b0;
+  end else if (pkt_type == MESSAGE && !has_data) begin
+    // Message without data parity calculation
+    cp = ^{opcode, srcid, dstid, msgcode, msginfo, msgsubcode};
+  end else if (pkt_type == COMPLETION) begin
+    // Completion parity calculation (Figure 7-2)
+    cp = ^{opcode, srcid, dstid, tag, be, ep, cr, status[2:0]};
+  end else begin
+    // Register access request parity calculation (Figure 7-1)
+    cp = ^{opcode, srcid, dstid, tag, be, ep, cr, addr[23:0]};
+  end
   
   // Data parity (DP) - XOR of data if present
   if (has_data) begin
@@ -414,17 +435,7 @@ function bit [63:0] ucie_sb_transaction::get_header();
     return get_message_header();
   end else begin
     // Standard register access and completion header format
-    bit [31:0] phase0, phase1;
-    
-    // Phase 0: opcode[4:0] + reserved[1:0] + ep + reserved[2:0] + be[7:0] + tag[4:0] + reserved[1:0] + srcid[2:0]
-    phase0 = {srcid, 2'b00, tag, be, 3'b000, ep, opcode, 2'b00};
-    
-    // Phase 1: addr[15:0] + reserved[5:0] + dstid[2:0] + reserved[3:0] + cr + cp + dp
-    phase1 = {dp, cp, cr, 4'b0000, dstid, 6'b000000, addr[15:0]};
-    
-    `uvm_info("TRANSACTION", $sformatf("Generated standard header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
-    
-    return {phase1, phase0};
+    return get_register_access_header();
   end
 endfunction
 
@@ -522,12 +533,24 @@ function bit [63:0] ucie_sb_transaction::get_message_header();
   bit [31:0] phase0, phase1;
   
   // Phase 0 (Bits 31 to 0) - Figure 7-3 format for Messages without Data
-  // srcid[31:30] + rsvd[29:24] + msgcode[23:16] + rsvd[15:5] + opcode[4:0]
-  phase0 = {srcid[1:0], 6'b000000, msgcode, 11'b00000000000, opcode};
+  // phase0[31:29] srcid + phase0[28:27] rsvd + phase0[26:22] rsvd + 
+  // phase0[21:14] msgcode[7:0] + phase0[13:5] rsvd + phase0[4:0] opcode[4:0]
+  phase0 = {srcid,           // [31:29]
+            2'b00,           // [28:27] reserved
+            5'b00000,        // [26:22] reserved 
+            msgcode,         // [21:14] msgcode[7:0]
+            9'b000000000,    // [13:5] reserved
+            opcode};         // [4:0] opcode[4:0]
   
   // Phase 1 (Bits 31 to 0) - Figure 7-3 format for Messages without Data  
-  // dp[31] + cp[30] + rsvd[29:24] + dstid[23:16] + msginfo[15:8] + msgsubcode[7:0]
-  phase1 = {dp, cp, 6'b000000, dstid, 5'b00000, msginfo[15:8], msgsubcode};
+  // phase1[31] dp + phase1[30] cp + phase1[29:27] rsvd + phase1[26:24] dstid +
+  // phase1[23:8] MsgInfo[15:0] + phase1[7:0] MsgSubcode[7:0]
+  phase1 = {dp,              // [31] dp
+            cp,              // [30] cp
+            3'b000,          // [29:27] reserved
+            dstid,           // [26:24] dstid
+            msginfo,         // [23:8] MsgInfo[15:0]
+            msgsubcode};     // [7:0] MsgSubcode[7:0]
   
   `uvm_info("TRANSACTION", $sformatf("Generated message header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
   
@@ -546,6 +569,63 @@ function bit [63:0] ucie_sb_transaction::get_clock_pattern_header();
   phase1 = CLOCK_PATTERN_PHASE1;
   
   `uvm_info("TRANSACTION", $sformatf("Generated clock pattern header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
+  
+  return {phase1, phase0};
+endfunction
+
+//-----------------------------------------------------------------------------
+// FUNCTION: get_register_access_header
+// Packs register access/completion fields into 64-bit header packet per Figure 7-1/7-2
+//-----------------------------------------------------------------------------
+function bit [63:0] ucie_sb_transaction::get_register_access_header();
+  bit [31:0] phase0, phase1;
+  
+  if (pkt_type == COMPLETION) begin
+    // Figure 7-2: Format for Register Access Completions
+    // Phase 0: phase0[31:29] srcid + phase0[28:27] rsvd + phase0[26:22] tag[4:0] +
+    // phase0[21:14] be[7:0] + phase0[13:6] rsvd + phase0[5] ep + phase0[4:0] opcode[4:0]
+    phase0 = {srcid,           // [31:29] srcid
+              2'b00,           // [28:27] reserved
+              tag,             // [26:22] tag[4:0]
+              be,              // [21:14] be[7:0]
+              8'b00000000,     // [13:6] reserved
+              ep,              // [5] ep
+              opcode};         // [4:0] opcode[4:0]
+    
+    // Phase 1: phase1[31] dp + phase1[30] cp + phase1[29] cr + phase1[28:27] rsvd +
+    // phase1[26:24] dstid + phase1[23:3] rsvd + phase1[2:0] Status
+    phase1 = {dp,              // [31] dp
+              cp,              // [30] cp
+              cr,              // [29] cr
+              2'b00,           // [28:27] reserved
+              dstid,           // [26:24] dstid
+              21'b000000000000000000000, // [23:3] reserved
+              status[2:0]};    // [2:0] Status
+              
+    `uvm_info("TRANSACTION", $sformatf("Generated completion header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
+  end else begin
+    // Figure 7-1: Format for Register Access Request
+    // Phase 0: phase0[31:29] srcid + phase0[28:27] rsvd + phase0[26:22] tag[4:0] +
+    // phase0[21:14] be[7:0] + phase0[13:6] rsvd + phase0[5] ep + phase0[4:0] opcode[4:0]
+    phase0 = {srcid,           // [31:29] srcid
+              2'b00,           // [28:27] reserved
+              tag,             // [26:22] tag[4:0]
+              be,              // [21:14] be[7:0]
+              8'b00000000,     // [13:6] reserved
+              ep,              // [5] ep
+              opcode};         // [4:0] opcode[4:0]
+    
+    // Phase 1: phase1[31] dp + phase1[30] cp + phase1[29] cr + phase1[28:27] rsvd +
+    // phase1[26:24] dstid + phase1[23:0] addr[23:0]
+    phase1 = {dp,              // [31] dp
+              cp,              // [30] cp
+              cr,              // [29] cr
+              2'b00,           // [28:27] reserved
+              dstid,           // [26:24] dstid
+              addr[23:0]};     // [23:0] addr[23:0]
+              
+    `uvm_info("TRANSACTION", $sformatf("Generated register access header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
+  end
   
   return {phase1, phase0};
 endfunction
