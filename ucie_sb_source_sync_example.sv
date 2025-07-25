@@ -6,20 +6,20 @@
 import uvm_pkg::*;
 
 // Include the sideband UVM agent
-`include "sideband_pkg_updated.sv"
+`include "ucie_sb_pkg_updated.sv"
 
-module sideband_source_sync_example;
+module ucie_sb_source_sync_example;
 
   // Testbench signals
   logic reset = 1;
   
   // Sideband interface - no external clocks needed
-  sideband_interface sb_intf(reset);
+  ucie_sb_interface sb_intf(reset);
   
   // Simple waveform monitor
   initial begin
-    $dumpfile("sideband_source_sync.vcd");
-    $dumpvars(0, sideband_source_sync_example);
+    $dumpfile("ucie_sb_source_sync.vcd");
+    $dumpvars(0, ucie_sb_source_sync_example);
   end
   
   // Reset generation
@@ -32,9 +32,9 @@ module sideband_source_sync_example;
   
   // Source-synchronous demonstration
   initial begin
-    sideband_driver driver;
-    sideband_driver_config cfg;
-    sideband_transaction trans;
+    ucie_sb_driver driver;
+    ucie_sb_driver_config cfg;
+    ucie_sb_transaction trans;
     
     // Wait for reset
     wait(!reset);
@@ -43,8 +43,8 @@ module sideband_source_sync_example;
     `uvm_info("TB", "=== UCIe Sideband Source-Synchronous Demo ===", UVM_LOW)
     
     // Create driver and configuration
-    driver = sideband_driver::type_id::create("driver", null);
-    cfg = sideband_driver_config::type_id::create("cfg");
+    driver = ucie_sb_driver::type_id::create("driver", null);
+    cfg = ucie_sb_driver_config::type_id::create("cfg");
     
     // Configure for 800MHz operation (UCIe standard)
     cfg.set_frequency(800e6);        // 800MHz (1.25ns period)
@@ -61,7 +61,7 @@ module sideband_source_sync_example;
               cfg.clock_period, cfg.clock_high_time, cfg.clock_low_time), UVM_LOW)
     
     // Create sample transactions
-    trans = sideband_transaction::type_id::create("trans");
+    trans = ucie_sb_transaction::type_id::create("trans");
     
     // Transaction 1: Memory Read 32-bit
     trans.randomize() with {
@@ -152,5 +152,5 @@ module sideband_source_sync_example;
 endmodule
 
 // Compile and run commands:
-// vcs -sverilog -ntb_opts uvm-1.2 +incdir+$UVM_HOME/src sideband_source_sync_example.sv
+// vcs -sverilog -ntb_opts uvm-1.2 +incdir+$UVM_HOME/src ucie_sb_source_sync_example.sv
 // ./simv +UVM_VERBOSITY=UVM_LOW

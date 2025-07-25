@@ -1,4 +1,4 @@
-package sideband_pkg;
+package ucie_sb_pkg;
   import uvm_pkg::*;
   `include "uvm_macros.svh"
 
@@ -23,7 +23,7 @@ package sideband_pkg;
     MGMT_MSG_DATA     = 5'b11000,
     COMPLETION_64B    = 5'b11001,
     MESSAGE_64B       = 5'b11011
-  } sideband_opcode_e;
+  } ucie_sb_opcode_e;
 
   // Packet types for easier categorization
   typedef enum {
@@ -34,14 +34,14 @@ package sideband_pkg;
   } packet_type_e;
 
   // Include all class files
-  `include "sideband_transaction.sv"
-  `include "sideband_sequences.sv"
-  `include "sideband_driver.sv"
-  `include "sideband_monitor.sv"
+  `include "ucie_sb_transaction.sv"
+  `include "ucie_sb_sequences.sv"
+  `include "ucie_sb_driver.sv"
+  `include "ucie_sb_monitor.sv"
   
   // Sequencer typedef
-  typedef uvm_sequencer #(sideband_transaction) sideband_sequencer;
+  typedef uvm_sequencer #(ucie_sb_transaction) ucie_sb_sequencer;
   
-  `include "sideband_agent.sv"
+  `include "ucie_sb_agent.sv"
 
 endpackage

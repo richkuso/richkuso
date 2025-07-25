@@ -1,6 +1,6 @@
-module sideband_testbench;
+module ucie_sb_testbench;
   import uvm_pkg::*;
-  import sideband_pkg::*;
+  import ucie_sb_pkg::*;
   `include "uvm_macros.svh"
   
   // Clock and reset generation
@@ -13,7 +13,7 @@ module sideband_testbench;
   end
   
   // Interface instantiation
-  sideband_interface sb_intf(sb_reset);
+  ucie_sb_interface sb_intf(sb_reset);
   
   // Clock generation for sideband TX and RX - higher frequency for serial transmission
   always #2.5 sb_intf.SBTX_CLK = ~sb_intf.SBTX_CLK; // 200MHz TX sideband clock
@@ -32,7 +32,7 @@ module sideband_testbench;
   end
   
   // Simple sideband receiver DUT for demonstration
-  sideband_receiver_dut dut (
+  ucie_sb_receiver_dut dut (
     .SBTX_CLK(sb_intf.SBTX_CLK),
     .SBTX_DATA(sb_intf.SBTX_DATA),
     .SBRX_CLK(sb_intf.SBRX_CLK),
@@ -41,28 +41,28 @@ module sideband_testbench;
   );
   
   // UVM Environment
-  class sideband_env extends uvm_env;
-    `uvm_component_utils(sideband_env)
+  class ucie_sb_env extends uvm_env;
+    `uvm_component_utils(ucie_sb_env)
     
-    sideband_agent agent;
+    ucie_sb_agent agent;
     
-    function new(string name = "sideband_env", uvm_component parent = null);
+    function new(string name = "ucie_sb_env", uvm_component parent = null);
       super.new(name, parent);
     endfunction
     
     virtual function void build_phase(uvm_phase phase);
       super.build_phase(phase);
-      agent = sideband_agent::type_id::create("agent", this);
+      agent = ucie_sb_agent::type_id::create("agent", this);
     endfunction
   endclass
   
   // Base test class
-  class sideband_base_test extends uvm_test;
-    `uvm_component_utils(sideband_base_test)
+  class ucie_sb_base_test extends uvm_test;
+    `uvm_component_utils(ucie_sb_base_test)
     
-    sideband_env env;
+    ucie_sb_env env;
     
-    function new(string name = "sideband_base_test", uvm_component parent = null);
+    function new(string name = "ucie_sb_base_test", uvm_component parent = null);
       super.new(name, parent);
     endfunction
     
@@ -70,13 +70,13 @@ module sideband_testbench;
       super.build_phase(phase);
       
       // Create environment
-      env = sideband_env::type_id::create("env", this);
+      env = ucie_sb_env::type_id::create("env", this);
       
       // Configure the agent as active
       uvm_config_db#(uvm_active_passive_enum)::set(this, "env.agent", "is_active", UVM_ACTIVE);
       
       // Set the virtual interface
-      uvm_config_db#(virtual sideband_interface)::set(this, "env.agent.*", "vif", sb_intf);
+      uvm_config_db#(virtual ucie_sb_interface)::set(this, "env.agent.*", "vif", sb_intf);
     endfunction
     
     virtual function void end_of_elaboration_phase(uvm_phase phase);
@@ -86,23 +86,23 @@ module sideband_testbench;
   endclass
   
   // Memory access test
-  class sideband_memory_test extends sideband_base_test;
-    `uvm_component_utils(sideband_memory_test)
+  class ucie_sb_memory_test extends ucie_sb_base_test;
+    `uvm_component_utils(ucie_sb_memory_test)
     
-    function new(string name = "sideband_memory_test", uvm_component parent = null);
+    function new(string name = "ucie_sb_memory_test", uvm_component parent = null);
       super.new(name, parent);
     endfunction
     
     virtual task run_phase(uvm_phase phase);
-      sideband_mem_write_seq write_seq;
-      sideband_mem_read_seq read_seq;
+      ucie_sb_mem_write_seq write_seq;
+      ucie_sb_mem_read_seq read_seq;
       
       phase.raise_objection(this);
       
       `uvm_info("MEMORY_TEST", "Starting memory access test", UVM_LOW)
       
       // Run memory write sequence
-      write_seq = sideband_mem_write_seq::type_id::create("write_seq");
+      write_seq = ucie_sb_mem_write_seq::type_id::create("write_seq");
       assert(write_seq.randomize() with {
         num_transactions == 5;
         use_64bit == 1'b0; // Use 32-bit first
@@ -112,7 +112,7 @@ module sideband_testbench;
       #1000; // Gap between sequences
       
       // Run memory read sequence
-      read_seq = sideband_mem_read_seq::type_id::create("read_seq");
+      read_seq = ucie_sb_mem_read_seq::type_id::create("read_seq");
       assert(read_seq.randomize() with {
         num_transactions == 5;
         use_64bit == 1'b0; // Use 32-bit first
@@ -122,7 +122,7 @@ module sideband_testbench;
       #1000;
       
       // Run 64-bit memory operations
-      write_seq = sideband_mem_write_seq::type_id::create("write_seq_64");
+      write_seq = ucie_sb_mem_write_seq::type_id::create("write_seq_64");
       assert(write_seq.randomize() with {
         num_transactions == 3;
         use_64bit == 1'b1; // Use 64-bit
@@ -131,7 +131,7 @@ module sideband_testbench;
       
       #1000;
       
-      read_seq = sideband_mem_read_seq::type_id::create("read_seq_64");
+      read_seq = ucie_sb_mem_read_seq::type_id::create("read_seq_64");
       assert(read_seq.randomize() with {
         num_transactions == 3;
         use_64bit == 1'b1; // Use 64-bit
@@ -147,22 +147,22 @@ module sideband_testbench;
   endclass
   
   // Configuration access test
-  class sideband_config_test extends sideband_base_test;
-    `uvm_component_utils(sideband_config_test)
+  class ucie_sb_config_test extends ucie_sb_base_test;
+    `uvm_component_utils(ucie_sb_config_test)
     
-    function new(string name = "sideband_config_test", uvm_component parent = null);
+    function new(string name = "ucie_sb_config_test", uvm_component parent = null);
       super.new(name, parent);
     endfunction
     
     virtual task run_phase(uvm_phase phase);
-      sideband_cfg_seq cfg_seq;
+      ucie_sb_cfg_seq cfg_seq;
       
       phase.raise_objection(this);
       
       `uvm_info("CONFIG_TEST", "Starting configuration access test", UVM_LOW)
       
       // Run 32-bit configuration sequence
-      cfg_seq = sideband_cfg_seq::type_id::create("cfg_seq_32");
+      cfg_seq = ucie_sb_cfg_seq::type_id::create("cfg_seq_32");
       assert(cfg_seq.randomize() with {
         num_reads == 3;
         num_writes == 3;
@@ -173,7 +173,7 @@ module sideband_testbench;
       #1000;
       
       // Run 64-bit configuration sequence
-      cfg_seq = sideband_cfg_seq::type_id::create("cfg_seq_64");
+      cfg_seq = ucie_sb_cfg_seq::type_id::create("cfg_seq_64");
       assert(cfg_seq.randomize() with {
         num_reads == 2;
         num_writes == 2;
@@ -190,15 +190,15 @@ module sideband_testbench;
   endclass
   
   // Mixed traffic test
-  class sideband_mixed_test extends sideband_base_test;
-    `uvm_component_utils(sideband_mixed_test)
+  class ucie_sb_mixed_test extends ucie_sb_base_test;
+    `uvm_component_utils(ucie_sb_mixed_test)
     
-    function new(string name = "sideband_mixed_test", uvm_component parent = null);
+    function new(string name = "ucie_sb_mixed_test", uvm_component parent = null);
       super.new(name, parent);
     endfunction
     
     virtual task run_phase(uvm_phase phase);
-      sideband_base_sequence sequences[];
+      ucie_sb_base_sequence sequences[];
       
       phase.raise_objection(this);
       
@@ -206,50 +206,50 @@ module sideband_testbench;
       
       // Create array of different sequences
       sequences = new[6];
-      sequences[0] = sideband_mem_write_seq::type_id::create("mem_wr_32");
-      sequences[1] = sideband_mem_read_seq::type_id::create("mem_rd_32");
-      sequences[2] = sideband_cfg_seq::type_id::create("cfg_32");
-      sequences[3] = sideband_mem_write_seq::type_id::create("mem_wr_64");
-      sequences[4] = sideband_mem_read_seq::type_id::create("mem_rd_64");
-      sequences[5] = sideband_cfg_seq::type_id::create("cfg_64");
+      sequences[0] = ucie_sb_mem_write_seq::type_id::create("mem_wr_32");
+      sequences[1] = ucie_sb_mem_read_seq::type_id::create("mem_rd_32");
+      sequences[2] = ucie_sb_cfg_seq::type_id::create("cfg_32");
+      sequences[3] = ucie_sb_mem_write_seq::type_id::create("mem_wr_64");
+      sequences[4] = ucie_sb_mem_read_seq::type_id::create("mem_rd_64");
+      sequences[5] = ucie_sb_cfg_seq::type_id::create("cfg_64");
       
       // Configure sequences
-      void'($cast(sequences[0], sideband_mem_write_seq::type_id::create("mem_wr_32")));
+      void'($cast(sequences[0], ucie_sb_mem_write_seq::type_id::create("mem_wr_32")));
       assert(sequences[0].randomize() with {
-        sideband_mem_write_seq::num_transactions == 2;
-        sideband_mem_write_seq::use_64bit == 1'b0;
+        ucie_sb_mem_write_seq::num_transactions == 2;
+        ucie_sb_mem_write_seq::use_64bit == 1'b0;
       });
       
-      void'($cast(sequences[1], sideband_mem_read_seq::type_id::create("mem_rd_32")));
+      void'($cast(sequences[1], ucie_sb_mem_read_seq::type_id::create("mem_rd_32")));
       assert(sequences[1].randomize() with {
-        sideband_mem_read_seq::num_transactions == 2;
-        sideband_mem_read_seq::use_64bit == 1'b0;
+        ucie_sb_mem_read_seq::num_transactions == 2;
+        ucie_sb_mem_read_seq::use_64bit == 1'b0;
       });
       
-      void'($cast(sequences[2], sideband_cfg_seq::type_id::create("cfg_32")));
+      void'($cast(sequences[2], ucie_sb_cfg_seq::type_id::create("cfg_32")));
       assert(sequences[2].randomize() with {
-        sideband_cfg_seq::num_reads == 1;
-        sideband_cfg_seq::num_writes == 1;
-        sideband_cfg_seq::use_64bit == 1'b0;
+        ucie_sb_cfg_seq::num_reads == 1;
+        ucie_sb_cfg_seq::num_writes == 1;
+        ucie_sb_cfg_seq::use_64bit == 1'b0;
       });
       
-      void'($cast(sequences[3], sideband_mem_write_seq::type_id::create("mem_wr_64")));
+      void'($cast(sequences[3], ucie_sb_mem_write_seq::type_id::create("mem_wr_64")));
       assert(sequences[3].randomize() with {
-        sideband_mem_write_seq::num_transactions == 2;
-        sideband_mem_write_seq::use_64bit == 1'b1;
+        ucie_sb_mem_write_seq::num_transactions == 2;
+        ucie_sb_mem_write_seq::use_64bit == 1'b1;
       });
       
-      void'($cast(sequences[4], sideband_mem_read_seq::type_id::create("mem_rd_64")));
+      void'($cast(sequences[4], ucie_sb_mem_read_seq::type_id::create("mem_rd_64")));
       assert(sequences[4].randomize() with {
-        sideband_mem_read_seq::num_transactions == 2;
-        sideband_mem_read_seq::use_64bit == 1'b1;
+        ucie_sb_mem_read_seq::num_transactions == 2;
+        ucie_sb_mem_read_seq::use_64bit == 1'b1;
       });
       
-      void'($cast(sequences[5], sideband_cfg_seq::type_id::create("cfg_64")));
+      void'($cast(sequences[5], ucie_sb_cfg_seq::type_id::create("cfg_64")));
       assert(sequences[5].randomize() with {
-        sideband_cfg_seq::num_reads == 1;
-        sideband_cfg_seq::num_writes == 1;
-        sideband_cfg_seq::use_64bit == 1'b1;
+        ucie_sb_cfg_seq::num_reads == 1;
+        ucie_sb_cfg_seq::num_writes == 1;
+        ucie_sb_cfg_seq::use_64bit == 1'b1;
       });
       
       // Run sequences in random order
@@ -276,7 +276,7 @@ module sideband_testbench;
     `endif
     
     // Set up UVM configuration
-    uvm_config_db#(virtual sideband_interface)::set(null, "*", "vif", sb_intf);
+    uvm_config_db#(virtual ucie_sb_interface)::set(null, "*", "vif", sb_intf);
     
     // Set verbosity
     uvm_top.set_report_verbosity_level_hier(UVM_MEDIUM);
@@ -287,8 +287,8 @@ module sideband_testbench;
   
   // Waveform dumping
   initial begin
-    $dumpfile("sideband_waves.vcd");
-    $dumpvars(0, sideband_testbench);
+    $dumpfile("ucie_sb_waves.vcd");
+    $dumpvars(0, ucie_sb_testbench);
   end
   
   // Timeout watchdog
@@ -300,7 +300,7 @@ module sideband_testbench;
 endmodule
 
 // Simple sideband receiver DUT for demonstration
-module sideband_receiver_dut (
+module ucie_sb_receiver_dut (
   input  logic sbtx_clk,
   input  logic sbtx_data,
   input  logic sbrx_clk,

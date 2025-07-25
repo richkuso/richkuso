@@ -3,10 +3,10 @@
 
 # Default simulator and test
 SIM ?= vcs
-TEST ?= sideband_memory_test
+TEST ?= ucie_sb_memory_test
 
 # Source files
-SOURCES = sideband_interface.sv sideband_pkg.sv sideband_testbench.sv
+SOURCES = ucie_sb_interface.sv ucie_sb_pkg.sv ucie_sb_testbench.sv
 
 # Common UVM arguments
 UVM_HOME ?= $(VCS_HOME)/etc/uvm-1.2
@@ -33,7 +33,7 @@ XCELIUM_ARGS = -sv -uvm +incdir+$(UVM_HOME)/src $(DEFINE_ARGS)
 XCELIUM_RUN_ARGS = +UVM_TESTNAME=$(TEST) +UVM_VERBOSITY=UVM_MEDIUM
 
 # Available tests
-TESTS = sideband_memory_test sideband_config_test sideband_mixed_test
+TESTS = ucie_sb_memory_test ucie_sb_config_test ucie_sb_mixed_test
 
 # Default target
 all: compile run
@@ -42,74 +42,74 @@ all: compile run
 compile: compile_$(SIM)
 
 compile_vcs:
-	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -o sideband_simv
+	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -o ucie_sb_simv
 
 compile_questa:
 	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(SOURCES)
-	vopt sideband_testbench -o sideband_testbench_opt
+	vopt ucie_sb_testbench -o ucie_sb_testbench_opt
 
 compile_xcelium:
 	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES)
-	xmelab sideband_testbench -access +rwc
+	xmelab ucie_sb_testbench -access +rwc
 
 # Run targets
 run: run_$(SIM)
 
 run_vcs:
-	./sideband_simv $(VCS_RUN_ARGS)
+	./ucie_sb_simv $(VCS_RUN_ARGS)
 
 run_questa:
-	vsim sideband_testbench_opt -c -do "run -all; quit" $(QUESTA_RUN_ARGS)
+	vsim ucie_sb_testbench_opt -c -do "run -all; quit" $(QUESTA_RUN_ARGS)
 
 run_xcelium:
-	xmsim sideband_testbench $(XCELIUM_RUN_ARGS) -exit
+	xmsim ucie_sb_testbench $(XCELIUM_RUN_ARGS) -exit
 
 # Test-specific targets
 test_memory: 
-	$(MAKE) TEST=sideband_memory_test run
+	$(MAKE) TEST=ucie_sb_memory_test run
 
 test_config:
-	$(MAKE) TEST=sideband_config_test run
+	$(MAKE) TEST=ucie_sb_config_test run
 
 test_mixed:
-	$(MAKE) TEST=sideband_mixed_test run
+	$(MAKE) TEST=ucie_sb_mixed_test run
 
 test_all:
 	@echo "Running all sideband tests..."
-	$(MAKE) TEST=sideband_memory_test run
-	$(MAKE) TEST=sideband_config_test run
-	$(MAKE) TEST=sideband_mixed_test run
+	$(MAKE) TEST=ucie_sb_memory_test run
+	$(MAKE) TEST=ucie_sb_config_test run
+	$(MAKE) TEST=ucie_sb_mixed_test run
 
 # Debug targets (with GUI)
 debug: debug_$(SIM)
 
 debug_vcs:
-	./sideband_simv $(VCS_RUN_ARGS) -gui
+	./ucie_sb_simv $(VCS_RUN_ARGS) -gui
 
 debug_questa:
-	vsim sideband_testbench_opt -gui $(QUESTA_RUN_ARGS)
+	vsim ucie_sb_testbench_opt -gui $(QUESTA_RUN_ARGS)
 
 debug_xcelium:
-	xmsim sideband_testbench $(XCELIUM_RUN_ARGS) -gui
+	xmsim ucie_sb_testbench $(XCELIUM_RUN_ARGS) -gui
 
 # Coverage targets
 coverage: coverage_$(SIM)
 
 coverage_vcs:
-	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -o sideband_simv_cov -cm line+cond+fsm+tgl+branch
-	./sideband_simv_cov $(VCS_RUN_ARGS) -cm line+cond+fsm+tgl+branch
+	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -o ucie_sb_simv_cov -cm line+cond+fsm+tgl+branch
+	./ucie_sb_simv_cov $(VCS_RUN_ARGS) -cm line+cond+fsm+tgl+branch
 	urg -dir simv.vdb -report coverage_report
 
 coverage_questa:
 	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(SOURCES) +cover
-	vopt sideband_testbench -o sideband_testbench_cov +cover
-	vsim sideband_testbench_cov -c -do "coverage save -onexit coverage.ucdb; run -all; quit" $(QUESTA_RUN_ARGS)
+	vopt ucie_sb_testbench -o ucie_sb_testbench_cov +cover
+	vsim ucie_sb_testbench_cov -c -do "coverage save -onexit coverage.ucdb; run -all; quit" $(QUESTA_RUN_ARGS)
 	vcover report coverage.ucdb -html -htmldir coverage_report
 
 coverage_xcelium:
 	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES) -coverage all
-	xmelab sideband_testbench -access +rwc -coverage all
-	xmsim sideband_testbench $(XCELIUM_RUN_ARGS) -coverage all
+	xmelab ucie_sb_testbench -access +rwc -coverage all
+	xmsim ucie_sb_testbench $(XCELIUM_RUN_ARGS) -coverage all
 	imc -load cov_work/scope/test -execcmd "report -summary"
 
 # Lint targets
@@ -128,7 +128,7 @@ lint_xcelium:
 clean: clean_$(SIM)
 
 clean_vcs:
-	rm -rf sideband_simv* csrc *.daidir *.log *.vpd *.vcd ucli.key vc_hdrs.h
+	rm -rf ucie_sb_simv* csrc *.daidir *.log *.vpd *.vcd ucli.key vc_hdrs.h
 	rm -rf simv.vdb coverage_report urgReport AN.DB
 
 clean_questa:
@@ -141,7 +141,7 @@ clean_all:
 	$(MAKE) clean_vcs
 	$(MAKE) clean_questa  
 	$(MAKE) clean_xcelium
-	rm -rf *.vcd waves.vcd sideband_waves.vcd
+	rm -rf *.vcd waves.vcd ucie_sb_waves.vcd
 
 # Regression target
 regress:
@@ -188,15 +188,15 @@ help:
 	@echo "  xcelium         - Cadence Xcelium"
 	@echo ""
 	@echo "Available tests (set TEST variable):"
-	@echo "  sideband_memory_test  - Memory read/write operations (default)"
-	@echo "  sideband_config_test  - Configuration register access"
-	@echo "  sideband_mixed_test   - Mixed traffic patterns"
+	@echo "  ucie_sb_memory_test  - Memory read/write operations (default)"
+	@echo "  ucie_sb_config_test  - Configuration register access"
+	@echo "  ucie_sb_mixed_test   - Mixed traffic patterns"
 	@echo ""
 	@echo "Options:"
 	@echo "  ENABLE_ASSERTIONS=1   - Enable protocol assertions (default: 1)"
 	@echo ""
 	@echo "Examples:"
-	@echo "  make SIM=vcs TEST=sideband_memory_test"
+	@echo "  make SIM=vcs TEST=ucie_sb_memory_test"
 	@echo "  make SIM=questa debug"
 	@echo "  make coverage"
 	@echo "  make regress"
@@ -217,7 +217,7 @@ waves_xcelium:
 # Source-synchronous example
 source_sync_demo:
 	@echo "Running source-synchronous demonstration..."
-	vcs -sverilog -ntb_opts uvm-1.2 +incdir+$(UVM_HOME)/src sideband_source_sync_example.sv -o source_sync_demo
+	vcs -sverilog -ntb_opts uvm-1.2 +incdir+$(UVM_HOME)/src ucie_sb_source_sync_example.sv -o source_sync_demo
 	./source_sync_demo +UVM_VERBOSITY=UVM_LOW
 
 .PHONY: all compile run clean help debug coverage lint regress test_memory test_config test_mixed test_all waves synth_check source_sync_demo

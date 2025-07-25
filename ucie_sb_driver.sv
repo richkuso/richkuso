@@ -6,7 +6,7 @@
 //=============================================================================
 
 //=============================================================================
-// CLASS: sideband_driver_config
+// CLASS: ucie_sb_driver_config
 //
 // DESCRIPTION:
 //   Configuration class for the UCIe sideband driver containing timing
@@ -23,8 +23,8 @@
 // VERSION: 1.0
 //=============================================================================
 
-class sideband_driver_config extends uvm_object;
-  `uvm_object_utils(sideband_driver_config)
+class ucie_sb_driver_config extends uvm_object;
+  `uvm_object_utils(ucie_sb_driver_config)
   
   //=============================================================================
   // CONFIGURATION FIELDS
@@ -56,7 +56,7 @@ class sideband_driver_config extends uvm_object;
   // PARAMETERS:
   //   name - Object name for UVM hierarchy
   //-----------------------------------------------------------------------------
-  function new(string name = "sideband_driver_config");
+  function new(string name = "ucie_sb_driver_config");
     super.new(name);
   endfunction
   
@@ -82,7 +82,7 @@ class sideband_driver_config extends uvm_object;
   //-----------------------------------------------------------------------------
   extern function void set_duty_cycle(real duty_percent);
 
-endclass : sideband_driver_config
+endclass : ucie_sb_driver_config
 
 //=============================================================================
 // MAIN DRIVER CLASS
@@ -110,16 +110,16 @@ endclass : sideband_driver_config
 // VERSION: 1.0
 //=============================================================================
 
-class sideband_driver extends uvm_driver #(sideband_transaction);
-  `uvm_component_utils(sideband_driver)
+class ucie_sb_driver extends uvm_driver #(ucie_sb_transaction);
+  `uvm_component_utils(ucie_sb_driver)
   
   //=============================================================================
   // CLASS FIELDS
   //=============================================================================
   
   // Configuration and interface
-  virtual sideband_interface vif;
-  sideband_driver_config cfg;
+  virtual ucie_sb_interface vif;
+  ucie_sb_driver_config cfg;
   
   // Parameters based on UCIe specification
   parameter int MIN_GAP_CYCLES = 32;
@@ -143,7 +143,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   //   name   - Component name for UVM hierarchy
   //   parent - Parent component reference
   //-----------------------------------------------------------------------------
-  function new(string name = "sideband_driver", uvm_component parent = null);
+  function new(string name = "ucie_sb_driver", uvm_component parent = null);
     super.new(name, parent);
   endfunction
   
@@ -183,9 +183,9 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   // Drives a complete transaction (header + optional data) with gaps
   //
   // PARAMETERS:
-  //   trans - Sideband transaction to drive
+  //   trans - UCIe sideband transaction to drive
   //-----------------------------------------------------------------------------
-  extern virtual task drive_transaction(sideband_transaction trans);
+  extern virtual task drive_transaction(ucie_sb_transaction trans);
   
   //-----------------------------------------------------------------------------
   // FUNCTION: drive_packet_with_clock
@@ -222,7 +222,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   //
   // RETURNS: 1 if valid, 0 if invalid
   //-----------------------------------------------------------------------------
-  extern virtual function bit validate_transaction(sideband_transaction trans);
+  extern virtual function bit validate_transaction(ucie_sb_transaction trans);
   
   //-----------------------------------------------------------------------------
   // FUNCTION: get_tx_clk_state
@@ -256,7 +256,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   // PARAMETERS:
   //   trans - Transaction to include in statistics
   //-----------------------------------------------------------------------------
-  extern virtual function void update_statistics(sideband_transaction trans);
+  extern virtual function void update_statistics(ucie_sb_transaction trans);
   
   //-----------------------------------------------------------------------------
   // FUNCTION: print_statistics
@@ -264,7 +264,7 @@ class sideband_driver extends uvm_driver #(sideband_transaction);
   //-----------------------------------------------------------------------------
   extern virtual function void print_statistics();
 
-endclass : sideband_driver
+endclass : ucie_sb_driver
 
 //=============================================================================
 // CONFIGURATION CLASS IMPLEMENTATION
@@ -274,7 +274,7 @@ endclass : sideband_driver
 // FUNCTION: set_frequency
 // Sets clock frequency and updates timing parameters accordingly
 //-----------------------------------------------------------------------------
-function void sideband_driver_config::set_frequency(real freq_hz);
+function void ucie_sb_driver_config::set_frequency(real freq_hz);
   clock_period = (1.0 / freq_hz) * 1e9; // Convert to ns
   clock_high_time = clock_period / 2.0;
   clock_low_time = clock_period / 2.0;
@@ -285,7 +285,7 @@ endfunction
 // FUNCTION: set_duty_cycle
 // Sets clock duty cycle while maintaining same period
 //-----------------------------------------------------------------------------
-function void sideband_driver_config::set_duty_cycle(real duty_percent);
+function void ucie_sb_driver_config::set_duty_cycle(real duty_percent);
   clock_high_time = clock_period * (duty_percent / 100.0);
   clock_low_time = clock_period - clock_high_time;
 endfunction
@@ -298,16 +298,16 @@ endfunction
 // FUNCTION: build_phase
 // UVM build phase - gets interface and configuration
 //-----------------------------------------------------------------------------
-virtual function void sideband_driver::build_phase(uvm_phase phase);
+virtual function void ucie_sb_driver::build_phase(uvm_phase phase);
   super.build_phase(phase);
   
   // Get virtual interface
-  if (!uvm_config_db#(virtual sideband_interface)::get(this, "", "vif", vif))
+  if (!uvm_config_db#(virtual ucie_sb_interface)::get(this, "", "vif", vif))
     `uvm_fatal("DRIVER", "Virtual interface not found")
   
   // Get configuration or create default
-  if (!uvm_config_db#(sideband_driver_config)::get(this, "", "cfg", cfg)) begin
-    cfg = sideband_driver_config::type_id::create("cfg");
+  if (!uvm_config_db#(ucie_sb_driver_config)::get(this, "", "cfg", cfg)) begin
+    cfg = ucie_sb_driver_config::type_id::create("cfg");
     `uvm_info("DRIVER", "Using default driver configuration", UVM_MEDIUM)
   end
   
@@ -325,8 +325,8 @@ endfunction
 // TASK: run_phase
 // UVM run phase - main driver loop for processing transactions
 //-----------------------------------------------------------------------------
-virtual task sideband_driver::run_phase(uvm_phase phase);
-  sideband_transaction trans;
+virtual task ucie_sb_driver::run_phase(uvm_phase phase);
+  ucie_sb_transaction trans;
   
   `uvm_info("DRIVER", "Starting sideband driver run phase", UVM_LOW)
   
@@ -361,7 +361,7 @@ endtask
 // FUNCTION: report_phase
 // UVM report phase - prints statistics if enabled
 //-----------------------------------------------------------------------------
-virtual function void sideband_driver::report_phase(uvm_phase phase);
+virtual function void ucie_sb_driver::report_phase(uvm_phase phase);
   super.report_phase(phase);
   if (cfg.enable_statistics) begin
     print_statistics();
@@ -372,7 +372,7 @@ endfunction
 // TASK: drive_transaction
 // Drives a complete transaction (header + optional data) with gaps
 //-----------------------------------------------------------------------------
-virtual task sideband_driver::drive_transaction(sideband_transaction trans);
+virtual task ucie_sb_driver::drive_transaction(ucie_sb_transaction trans);
   bit [63:0] header_packet;
   bit [63:0] data_packet;
   
@@ -432,7 +432,7 @@ endtask
 // FUNCTION: drive_packet_with_clock
 // Drives a 64-bit packet with source-synchronous clock generation
 //-----------------------------------------------------------------------------
-virtual function bit sideband_driver::drive_packet_with_clock(bit [63:0] packet);
+virtual function bit ucie_sb_driver::drive_packet_with_clock(bit [63:0] packet);
   if (vif.sb_reset) begin
     `uvm_warning("DRIVER", "Cannot drive packet during reset")
     return 0;
@@ -463,7 +463,7 @@ endfunction
 // TASK: drive_gap
 // Drives idle gap with both clock and data low
 //-----------------------------------------------------------------------------
-virtual task sideband_driver::drive_gap(int num_cycles = MIN_GAP_CYCLES);
+virtual task ucie_sb_driver::drive_gap(int num_cycles = MIN_GAP_CYCLES);
   `uvm_info("DRIVER", $sformatf("Driving %0d cycle gap (clock and data low)", num_cycles), UVM_DEBUG)
   
   // During gap: both clock and data are low
@@ -478,7 +478,7 @@ endtask
 // TASK: wait_for_reset_release
 // Waits for reset to be deasserted before starting operation
 //-----------------------------------------------------------------------------
-virtual task sideband_driver::wait_for_reset_release();
+virtual task ucie_sb_driver::wait_for_reset_release();
   if (vif.sb_reset) begin
     `uvm_info("DRIVER", "Waiting for reset release...", UVM_MEDIUM)
     wait (!vif.sb_reset);
@@ -493,7 +493,7 @@ endtask
 // FUNCTION: validate_transaction
 // Validates transaction against UCIe specification requirements
 //-----------------------------------------------------------------------------
-virtual function bit sideband_driver::validate_transaction(sideband_transaction trans);
+virtual function bit ucie_sb_driver::validate_transaction(ucie_sb_transaction trans);
   if (!cfg.enable_protocol_checking) return 1;
   
   // Basic validation checks
@@ -532,7 +532,7 @@ endfunction
 // FUNCTION: get_tx_clk_state
 // Returns current state of TX clock signal
 //-----------------------------------------------------------------------------
-virtual function bit sideband_driver::get_tx_clk_state();
+virtual function bit ucie_sb_driver::get_tx_clk_state();
   return vif.SBTX_CLK;
 endfunction
 
@@ -540,7 +540,7 @@ endfunction
 // FUNCTION: get_tx_data_state
 // Returns current state of TX data signal
 //-----------------------------------------------------------------------------
-virtual function bit sideband_driver::get_tx_data_state();
+virtual function bit ucie_sb_driver::get_tx_data_state();
   return vif.SBTX_DATA;
 endfunction
 
@@ -548,7 +548,7 @@ endfunction
 // TASK: drive_debug_pattern
 // Drives a debug pattern for testing purposes
 //-----------------------------------------------------------------------------
-virtual task sideband_driver::drive_debug_pattern(bit [63:0] pattern);
+virtual task ucie_sb_driver::drive_debug_pattern(bit [63:0] pattern);
   `uvm_info("DRIVER", $sformatf("Driving debug pattern: 0x%016h", pattern), UVM_LOW)
   drive_packet_with_clock(pattern);
   drive_gap();
@@ -558,7 +558,7 @@ endtask
 // FUNCTION: update_statistics
 // Updates driver statistics with transaction information
 //-----------------------------------------------------------------------------
-virtual function void sideband_driver::update_statistics(sideband_transaction trans);
+virtual function void ucie_sb_driver::update_statistics(ucie_sb_transaction trans);
   if (!cfg.enable_statistics) return;
   
   packets_driven++;
@@ -576,7 +576,7 @@ endfunction
 // FUNCTION: print_statistics
 // Prints current driver statistics to log
 //-----------------------------------------------------------------------------
-virtual function void sideband_driver::print_statistics();
+virtual function void ucie_sb_driver::print_statistics();
   `uvm_info("DRIVER", "=== Driver Statistics ===", UVM_LOW)
   `uvm_info("DRIVER", $sformatf("Packets driven: %0d", packets_driven), UVM_LOW)
   `uvm_info("DRIVER", $sformatf("Bits driven: %0d", bits_driven), UVM_LOW)

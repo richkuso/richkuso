@@ -1,10 +1,10 @@
 # Sideband UVM Agent Implementation
 
-This repository contains a comprehensive UVM agent implementation for the UCIe (Universal Chiplet Interconnect Express) sideband protocol using SystemVerilog and UVM 1.2 library.
+This repository contains a comprehensive UVM agent implementation for the UCIe (Universal Chiplet Interconnect Express) ucie_sb protocol using SystemVerilog and UVM 1.2 library.
 
 ## Overview
 
-The sideband agent implements the UCIe sideband transmission protocol as specified in Section 4.1.5 and Chapter 7.0 of the UCIe specification. It supports serial data transmission with proper packet formatting, timing, and protocol compliance.
+The ucie_sb agent implements the UCIe ucie_sb transmission protocol as specified in Section 4.1.5 and Chapter 7.0 of the UCIe specification. It supports serial data transmission with proper packet formatting, timing, and protocol compliance.
 
 ### Key Protocol Features
 
@@ -17,10 +17,10 @@ The sideband agent implements the UCIe sideband transmission protocol as specifi
 
 ## Key Features
 
-- **UCIe Compliant**: Implements UCIe 1.1 sideband protocol specification
+- **UCIe Compliant**: Implements UCIe 1.1 ucie_sb protocol specification
 - **Source-Synchronous**: Driver generates both clock and data per transaction (true UCIe behavior)
 - **Separate TX/RX Paths**: Full-duplex communication with independent clock domains
-- **19 Opcode Support**: All UCIe sideband opcodes (Register Access, Messages, Management, Completions)
+- **19 Opcode Support**: All UCIe ucie_sb opcodes (Register Access, Messages, Management, Completions)
 - **Comprehensive Validation**: Built-in protocol checking and error detection
 - **Modular Design**: Clean separation of transaction, sequences, driver, monitor, and agent
 - **Multi-Simulator Support**: Works with VCS, Questa, and Xcelium
@@ -28,7 +28,7 @@ The sideband agent implements the UCIe sideband transmission protocol as specifi
 
 ## Source-Synchronous Operation
 
-The UCIe sideband protocol is **source-synchronous**, meaning the transmitter generates both the clock and data signals. This is different from system-synchronous protocols where a common clock is shared.
+The UCIe ucie_sb protocol is **source-synchronous**, meaning the transmitter generates both the clock and data signals. This is different from system-synchronous protocols where a common clock is shared.
 
 ### How It Works
 
@@ -64,11 +64,11 @@ Data:   _____|B0|_|B1|_|B2|_|B3|________________________
 
 The agent follows standard UVM methodology and includes:
 
-- **`sideband_transaction`**: Transaction item with all packet fields and constraints
-- **`sideband_driver`**: Converts transactions to serial bit stream
-- **`sideband_monitor`**: Captures serial data and reconstructs transactions
-- **`sideband_sequencer`**: Controls sequence execution
-- **`sideband_agent`**: Container that manages all components
+- **`ucie_sb_transaction`**: Transaction item with all packet fields and constraints
+- **`ucie_sb_driver`**: Converts transactions to serial bit stream
+- **`ucie_sb_monitor`**: Captures serial data and reconstructs transactions
+- **`ucie_sb_sequencer`**: Controls sequence execution
+- **`ucie_sb_agent`**: Container that manages all components
 - **Sequences**: Pre-built sequences for different traffic patterns
 
 ### Packet Types Supported
@@ -100,11 +100,11 @@ Based on UCIe Table 7-1 opcode encodings:
 ## File Structure
 
 ```
-├── sideband_pkg.sv           # Main UVM agent package
-├── sideband_interface.sv     # SystemVerilog interface with protocol assertions
-├── sideband_testbench.sv     # Complete testbench with multiple test scenarios
-├── sideband_Makefile         # Build system with multi-simulator support
-└── sideband_README.md        # This documentation
+├── ucie_sb_pkg.sv           # Main UVM agent package
+├── ucie_sb_interface.sv     # SystemVerilog interface with protocol assertions
+├── ucie_sb_testbench.sv     # Complete testbench with multiple test scenarios
+├── ucie_sb_Makefile         # Build system with multi-simulator support
+└── ucie_sb_README.md        # This documentation
 ```
 
 ## Transaction Fields
@@ -112,9 +112,9 @@ Based on UCIe Table 7-1 opcode encodings:
 ### Header Fields (64-bit)
 
 ```systemverilog
-class sideband_transaction extends uvm_sequence_item;
+class ucie_sb_transaction extends uvm_sequence_item;
   // Packet identification
-  rand sideband_opcode_e opcode;    // 5-bit opcode
+  rand ucie_sb_opcode_e opcode;    // 5-bit opcode
   rand bit [2:0]         srcid;     // Source identifier
   rand bit [2:0]         dstid;     // Destination identifier
   rand bit [4:0]         tag;       // Transaction tag
@@ -166,14 +166,14 @@ Following UCIe specification Section 7.1.2:
 
 ```systemverilog
 // Memory write sequence
-sideband_mem_write_seq write_seq;
+ucie_sb_mem_write_seq write_seq;
 write_seq.randomize() with {
   num_transactions == 5;
   use_64bit == 1'b1;  // Use 64-bit operations
 };
 
 // Memory read sequence  
-sideband_mem_read_seq read_seq;
+ucie_sb_mem_read_seq read_seq;
 read_seq.randomize() with {
   num_transactions == 5;
   use_64bit == 1'b0;  // Use 32-bit operations
@@ -184,7 +184,7 @@ read_seq.randomize() with {
 
 ```systemverilog
 // Configuration access sequence
-sideband_cfg_seq cfg_seq;
+ucie_sb_cfg_seq cfg_seq;
 cfg_seq.randomize() with {
   num_reads == 3;
   num_writes == 3;
@@ -198,23 +198,23 @@ cfg_seq.randomize() with {
 
 ```systemverilog
 class my_test extends uvm_test;
-  sideband_agent agent;
+  ucie_sb_agent agent;
   
   function void build_phase(uvm_phase phase);
-    agent = sideband_agent::type_id::create("agent", this);
+    agent = ucie_sb_agent::type_id::create("agent", this);
     
     // Configure as active agent
     uvm_config_db#(uvm_active_passive_enum)::set(
       this, "agent", "is_active", UVM_ACTIVE);
     
     // Set virtual interface
-    uvm_config_db#(virtual sideband_interface)::set(
-      this, "agent.*", "vif", sideband_intf);
+    uvm_config_db#(virtual ucie_sb_interface)::set(
+      this, "agent.*", "vif", ucie_sb_intf);
   endfunction
   
   task run_phase(uvm_phase phase);
-    sideband_mem_write_seq seq;
-    seq = sideband_mem_write_seq::type_id::create("seq");
+    ucie_sb_mem_write_seq seq;
+    seq = ucie_sb_mem_write_seq::type_id::create("seq");
     seq.start(agent.sequencer);
   endtask
 endclass
@@ -223,7 +223,7 @@ endclass
 ### Custom Transaction Creation
 
 ```systemverilog
-sideband_transaction trans = sideband_transaction::type_id::create("trans");
+ucie_sb_transaction trans = ucie_sb_transaction::type_id::create("trans");
 assert(trans.randomize() with {
   opcode == CFG_WRITE_64B;
   addr inside {[0:24'hFFFF]};
@@ -247,10 +247,10 @@ assert(trans.randomize() with {
 make
 
 # Run specific test
-make TEST=sideband_config_test
+make TEST=ucie_sb_config_test
 
 # Run with different simulator
-make SIM=questa TEST=sideband_mixed_test
+make SIM=questa TEST=ucie_sb_mixed_test
 
 # Run all tests
 make test_all
@@ -264,9 +264,9 @@ make coverage
 
 ### Available Tests
 
-1. **`sideband_memory_test`** - Memory read/write operations (32-bit and 64-bit)
-2. **`sideband_config_test`** - Configuration register access
-3. **`sideband_mixed_test`** - Mixed traffic with randomized packet types
+1. **`ucie_sb_memory_test`** - Memory read/write operations (32-bit and 64-bit)
+2. **`ucie_sb_config_test`** - Configuration register access
+3. **`ucie_sb_mixed_test`** - Mixed traffic with randomized packet types
 
 ### Makefile Targets
 
@@ -287,7 +287,7 @@ make coverage
 
 - **Serial Transmission**: Each packet transmitted as 64 consecutive bits
 - **Minimum Gap**: 32 clock cycles low between packets
-- **Clock Domain**: Separate sideband clock (typically higher frequency)
+- **Clock Domain**: Separate ucie_sb clock (typically higher frequency)
 
 ### Error Checking
 
@@ -340,14 +340,14 @@ make ENABLE_ASSERTIONS=0
 ### Adding Custom Sequences
 
 ```systemverilog
-class my_custom_seq extends sideband_base_sequence;
+class my_custom_seq extends ucie_sb_base_sequence;
   `uvm_object_utils(my_custom_seq)
   
   task body();
-    sideband_transaction trans;
+    ucie_sb_transaction trans;
     // Custom sequence implementation
     repeat(10) begin
-      trans = sideband_transaction::type_id::create("trans");
+      trans = ucie_sb_transaction::type_id::create("trans");
       start_item(trans);
       assert(trans.randomize() with {
         // Custom constraints
@@ -363,10 +363,10 @@ endclass
 ### Extending Transaction Fields
 
 ```systemverilog
-class extended_sideband_transaction extends sideband_transaction;
+class extended_ucie_sb_transaction extends ucie_sb_transaction;
   rand bit [7:0] custom_field;
   
-  `uvm_object_utils_begin(extended_sideband_transaction)
+  `uvm_object_utils_begin(extended_ucie_sb_transaction)
     `uvm_field_int(custom_field, UVM_ALL_ON)
   `uvm_object_utils_end
   
@@ -440,4 +440,4 @@ This implementation follows:
 
 ## License
 
-This code is provided as an educational example of UCIe sideband protocol implementation using SystemVerilog and UVM 1.2 library.
+This code is provided as an educational example of UCIe ucie_sb protocol implementation using SystemVerilog and UVM 1.2 library.

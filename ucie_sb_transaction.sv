@@ -1,14 +1,35 @@
 // UCIe Sideband Transaction Class - Refactored with extern methods
-// This example shows improved code organization using extern declarations
+// Contains all packet fields and methods for sideband protocol transactions
 
-class sideband_transaction extends uvm_sequence_item;
+//=============================================================================
+// CLASS: sideband_transaction
+//
+// DESCRIPTION:
+//   UCIe sideband transaction item containing all packet fields and methods
+//   for creating, manipulating, and validating sideband protocol transactions.
+//   Supports all 19 UCIe opcodes with proper parity calculation and field
+//   validation according to UCIe specification.
+//
+// FEATURES:
+//   - Complete UCIe sideband packet format support
+//   - Automatic parity calculation (CP and DP)
+//   - Address alignment validation
+//   - Byte enable validation for 32-bit operations
+//   - Support for all packet types (Register Access, Completion, Message)
+//   - UCIe Table 7-4 compliant srcid/dstid constraints
+//
+// AUTHOR: UCIe Sideband UVM Agent
+// VERSION: 1.0
+//=============================================================================
+
+class ucie_sb_transaction extends uvm_sequence_item;
   
   //=============================================================================
   // CLASS FIELDS
   //=============================================================================
   
   // Header fields
-  rand sideband_opcode_e opcode;
+  rand ucie_sb_opcode_e opcode;
   rand bit [2:0]         srcid;
   rand bit [2:0]         dstid;
   rand bit [4:0]         tag;
@@ -17,7 +38,9 @@ class sideband_transaction extends uvm_sequence_item;
   rand bit               cr;        // Credit return
   rand bit [23:0]        addr;      // Address (for register access)
   rand bit [15:0]        status;    // Status (for completions)
-  rand bit [63:0]        data;      // Data payload
+  
+  // Data payload
+  rand bit [63:0]        data;
   
   // Control bits
   bit                    cp;        // Control parity
@@ -32,8 +55,8 @@ class sideband_transaction extends uvm_sequence_item;
   // UVM FACTORY REGISTRATION
   //=============================================================================
   
-  `uvm_object_utils_begin(sideband_transaction)
-    `uvm_field_enum(sideband_opcode_e, opcode, UVM_ALL_ON)
+  `uvm_object_utils_begin(ucie_sb_transaction)
+    `uvm_field_enum(ucie_sb_opcode_e, opcode, UVM_ALL_ON)
     `uvm_field_int(srcid, UVM_ALL_ON)
     `uvm_field_int(dstid, UVM_ALL_ON)
     `uvm_field_int(tag, UVM_ALL_ON)
@@ -53,37 +76,103 @@ class sideband_transaction extends uvm_sequence_item;
   //=============================================================================
   // CONSTRUCTOR
   //=============================================================================
-  
-  function new(string name = "sideband_transaction");
+
+  //-----------------------------------------------------------------------------
+  // FUNCTION: new
+  // Creates a new sideband transaction object
+  //
+  // PARAMETERS:
+  //   name - Object name for UVM hierarchy
+  //-----------------------------------------------------------------------------
+  function new(string name = "ucie_sb_transaction");
     super.new(name);
   endfunction
 
   //=============================================================================
-  // EXTERN FUNCTION/TASK DECLARATIONS
+  // EXTERN FUNCTION DECLARATIONS
   //=============================================================================
   
-  // Core transaction methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: post_randomize
+  // Called automatically after randomization to update derived fields
+  // Updates packet info and calculates parity bits
+  //-----------------------------------------------------------------------------
   extern function void post_randomize();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: update_packet_info
+  // Updates derived packet information based on opcode
+  // Sets pkt_type, has_data, and is_64bit fields
+  //-----------------------------------------------------------------------------
   extern function void update_packet_info();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: calculate_parity
+  // Calculates control parity (CP) and data parity (DP) per UCIe specification
+  // CP = XOR of all control fields, DP = XOR of data if present
+  //-----------------------------------------------------------------------------
   extern function void calculate_parity();
   
-  // Packet generation methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_header
+  // Packs transaction fields into 64-bit header packet format
+  // 
+  // RETURNS: 64-bit header packet ready for transmission
+  //-----------------------------------------------------------------------------
   extern function bit [63:0] get_header();
   
-  // Helper/utility methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_srcid_name
+  // Returns human-readable name for source ID
+  //
+  // RETURNS: String representation of srcid (e.g., "D2D_ADAPTER")
+  //-----------------------------------------------------------------------------
   extern function string get_srcid_name();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_dstid_name
+  // Returns human-readable name for destination ID
+  //
+  // RETURNS: String representation of dstid (e.g., "LOCAL_DIE")
+  //-----------------------------------------------------------------------------
   extern function string get_dstid_name();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: is_remote_die_packet
+  // Checks if packet is destined for remote die
+  //
+  // RETURNS: 1 if remote die packet, 0 if local die
+  //-----------------------------------------------------------------------------
   extern function bit is_remote_die_packet();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: is_poison_set
+  // Checks if error poison bit is set
+  //
+  // RETURNS: 1 if poison bit set, 0 otherwise
+  //-----------------------------------------------------------------------------
   extern function bit is_poison_set();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: has_credit_return
+  // Checks if credit return bit is set
+  //
+  // RETURNS: 1 if credit return set, 0 otherwise
+  //-----------------------------------------------------------------------------
   extern function bit has_credit_return();
   
-  // Debug/display methods
+  //-----------------------------------------------------------------------------
+  // FUNCTION: convert2string
+  // Converts transaction to formatted string for debugging/logging
+  //
+  // RETURNS: Multi-line formatted string with all transaction details
+  //-----------------------------------------------------------------------------
   extern function string convert2string();
-  
+
   //=============================================================================
   // CONSTRAINTS (Keep inline for readability)
   //=============================================================================
-  
+
   // UCIe specification compliant constraints
   constraint srcid_c { 
     srcid inside {
@@ -100,6 +189,9 @@ class sideband_transaction extends uvm_sequence_item;
       } else {
         dstid == 3'b000;
       }
+    }
+    if (pkt_type == COMPLETION) {
+      dstid == srcid;  // Completions return to requester
     }
   }
   
@@ -119,20 +211,27 @@ class sideband_transaction extends uvm_sequence_item;
     }
   }
 
-endclass : sideband_transaction
+endclass : ucie_sb_transaction
 
 //=============================================================================
 // IMPLEMENTATION SECTION
 //=============================================================================
 
-// Core transaction methods
-function void sideband_transaction::post_randomize();
+//-----------------------------------------------------------------------------
+// FUNCTION: post_randomize
+// Called automatically after randomization to update derived fields
+//-----------------------------------------------------------------------------
+function void ucie_sb_transaction::post_randomize();
   update_packet_info();
   calculate_parity();
   `uvm_info("TRANSACTION", {"Post-randomize: ", convert2string()}, UVM_HIGH)
 endfunction
 
-function void sideband_transaction::update_packet_info();
+//-----------------------------------------------------------------------------
+// FUNCTION: update_packet_info
+// Updates derived packet information based on opcode
+//-----------------------------------------------------------------------------
+function void ucie_sb_transaction::update_packet_info();
   // Determine packet type and data characteristics based on opcode
   case (opcode)
     // 32-bit Register Access Operations
@@ -205,7 +304,11 @@ function void sideband_transaction::update_packet_info();
             pkt_type.name(), has_data, is_64bit), UVM_DEBUG)
 endfunction
 
-function void sideband_transaction::calculate_parity();
+//-----------------------------------------------------------------------------
+// FUNCTION: calculate_parity
+// Calculates control parity (CP) and data parity (DP) per UCIe specification
+//-----------------------------------------------------------------------------
+function void ucie_sb_transaction::calculate_parity();
   // Control parity (CP) - XOR of all control fields
   cp = ^{opcode, srcid, dstid, tag, be, ep, cr, addr[15:0]};
   
@@ -219,8 +322,11 @@ function void sideband_transaction::calculate_parity();
   `uvm_info("TRANSACTION", $sformatf("Calculated parity: CP=%0b, DP=%0b", cp, dp), UVM_DEBUG)
 endfunction
 
-// Packet generation methods
-function bit [63:0] sideband_transaction::get_header();
+//-----------------------------------------------------------------------------
+// FUNCTION: get_header
+// Packs transaction fields into 64-bit header packet format
+//-----------------------------------------------------------------------------
+function bit [63:0] ucie_sb_transaction::get_header();
   bit [31:0] phase0, phase1;
   
   // Phase 0: opcode[4:0] + reserved[1:0] + ep + reserved[2:0] + be[7:0] + tag[4:0] + reserved[1:0] + srcid[2:0]
@@ -234,8 +340,11 @@ function bit [63:0] sideband_transaction::get_header();
   return {phase1, phase0};
 endfunction
 
-// Helper/utility methods
-function string sideband_transaction::get_srcid_name();
+//-----------------------------------------------------------------------------
+// FUNCTION: get_srcid_name
+// Returns human-readable name for source ID
+//-----------------------------------------------------------------------------
+function string ucie_sb_transaction::get_srcid_name();
   case (srcid)
     3'b001: return "D2D_ADAPTER";
     3'b010: return "PHYSICAL_LAYER";
@@ -244,7 +353,11 @@ function string sideband_transaction::get_srcid_name();
   endcase
 endfunction
 
-function string sideband_transaction::get_dstid_name();
+//-----------------------------------------------------------------------------
+// FUNCTION: get_dstid_name
+// Returns human-readable name for destination ID
+//-----------------------------------------------------------------------------
+function string ucie_sb_transaction::get_dstid_name();
   case (dstid)
     3'b000: return "LOCAL_DIE";
     3'b001: return "REMOTE_DIE_1";
@@ -254,20 +367,35 @@ function string sideband_transaction::get_dstid_name();
   endcase
 endfunction
 
-function bit sideband_transaction::is_remote_die_packet();
+//-----------------------------------------------------------------------------
+// FUNCTION: is_remote_die_packet
+// Checks if packet is destined for remote die
+//-----------------------------------------------------------------------------
+function bit ucie_sb_transaction::is_remote_die_packet();
   return (dstid != 3'b000);
 endfunction
 
-function bit sideband_transaction::is_poison_set();
+//-----------------------------------------------------------------------------
+// FUNCTION: is_poison_set
+// Checks if error poison bit is set
+//-----------------------------------------------------------------------------
+function bit ucie_sb_transaction::is_poison_set();
   return ep;
 endfunction
 
-function bit sideband_transaction::has_credit_return();
+//-----------------------------------------------------------------------------
+// FUNCTION: has_credit_return
+// Checks if credit return bit is set
+//-----------------------------------------------------------------------------
+function bit ucie_sb_transaction::has_credit_return();
   return cr;
 endfunction
 
-// Debug/display methods
-function string sideband_transaction::convert2string();
+//-----------------------------------------------------------------------------
+// FUNCTION: convert2string
+// Converts transaction to formatted string for debugging/logging
+//-----------------------------------------------------------------------------
+function string ucie_sb_transaction::convert2string();
   string s;
   s = $sformatf("\n=== UCIe Sideband Transaction ===");
   s = {s, $sformatf("\n  Opcode    : %s (0x%02h)", opcode.name(), opcode)};
