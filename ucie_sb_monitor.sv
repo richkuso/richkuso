@@ -401,8 +401,9 @@ virtual function ucie_sb_transaction ucie_sb_monitor::decode_header(bit [63:0] h
   ucie_sb_opcode_e detected_opcode = ucie_sb_opcode_e'(phase0[4:0]);
   trans.opcode = detected_opcode;
   
-  // Check if this is a clock pattern by opcode
-  if (detected_opcode == CLOCK_PATTERN) begin
+  // Check if this is a clock pattern by matching the fixed pattern
+  if (header == {CLOCK_PATTERN_PHASE1, CLOCK_PATTERN_PHASE0}) begin
+    trans.opcode = CLOCK_PATTERN;
     trans.is_clock_pattern = 1;
     `uvm_info("MONITOR", "Detected clock pattern transaction", UVM_MEDIUM)
   end

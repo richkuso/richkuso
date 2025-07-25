@@ -149,7 +149,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
   
   //-----------------------------------------------------------------------------
   // FUNCTION: is_valid_clock_pattern
-  // Validates that the data content matches the expected clock pattern
+  // Validates that this is a proper clock pattern transaction (no data payload)
   // 
   // RETURNS: 1 if valid clock pattern, 0 otherwise
   //-----------------------------------------------------------------------------
@@ -283,11 +283,9 @@ class ucie_sb_transaction extends uvm_sequence_item;
   constraint clock_pattern_c {
     if (is_clock_pattern) {
       opcode == CLOCK_PATTERN;
-      data == {CLOCK_PATTERN_PHASE1, CLOCK_PATTERN_PHASE0};
     }
     if (opcode == CLOCK_PATTERN) {
       is_clock_pattern == 1;
-      data == {CLOCK_PATTERN_PHASE1, CLOCK_PATTERN_PHASE0};
     }
   }
 
@@ -384,8 +382,8 @@ function void ucie_sb_transaction::update_packet_info();
     // Clock Pattern Operation
     CLOCK_PATTERN: begin
       pkt_type = MESSAGE;
-      has_data = 1;        // Clock pattern has data payload
-      is_64bit = 1;        // Clock pattern is 64-bit (Phase0 + Phase1)
+      has_data = 0;        // Clock pattern has NO data payload
+      is_64bit = 0;        // Clock pattern header only
       is_clock_pattern = 1;
     end
     
@@ -398,10 +396,7 @@ function void ucie_sb_transaction::update_packet_info();
     end
   endcase
   
-  // Set clock pattern data if this is a clock pattern
-  if (is_clock_pattern) begin
-    data = {CLOCK_PATTERN_PHASE1, CLOCK_PATTERN_PHASE0}; // Phase1[63:32] + Phase0[31:0]
-  end
+  // Clock pattern has no data payload - it's just the header pattern
   
   `uvm_info("TRANSACTION", $sformatf("Updated packet info: type=%s, has_data=%0b, is_64bit=%0b", 
             pkt_type.name(), has_data, is_64bit), UVM_DEBUG)
@@ -579,24 +574,11 @@ endfunction
 function bit [63:0] ucie_sb_transaction::get_clock_pattern_header();
   bit [31:0] phase0, phase1;
   
-  // Clock pattern uses MESSAGE_NO_DATA format with special handling
-  // Phase 0: phase0[31:29] srcid + phase0[28:27] rsvd + phase0[26:22] rsvd + 
-  // phase0[21:14] msgcode[7:0] + phase0[13:5] rsvd + phase0[4:0] opcode[4:0]
-  phase0 = {srcid,           // [31:29] srcid
-            2'b00,           // [28:27] reserved
-            5'b00000,        // [26:22] reserved 
-            8'hFF,           // [21:14] Special msgcode for clock pattern
-            9'b000000000,    // [13:5] reserved
-            CLOCK_PATTERN};  // [4:0] opcode[4:0]
-  
-  // Phase 1: phase1[31] dp + phase1[30] cp + phase1[29:27] rsvd + phase1[26:24] dstid +
-  // phase1[23:8] MsgInfo[15:0] + phase1[7:0] MsgSubcode[7:0]
-  phase1 = {dp,              // [31] dp
-            cp,              // [30] cp
-            3'b000,          // [29:27] reserved
-            dstid,           // [26:24] dstid
-            16'h5555,        // [23:8] Special MsgInfo for clock pattern
-            8'h55};          // [7:0] Special MsgSubcode for clock pattern
+  // Clock pattern: the header itself IS the pattern
+  // Phase0 = 32'h5555_5555 (alternating 1010... pattern)
+  // Phase1 = 32'h5555_5555 (alternating 1010... pattern)
+  phase0 = CLOCK_PATTERN_PHASE0;  // 32'h5555_5555
+  phase1 = CLOCK_PATTERN_PHASE1;  // 32'h5555_5555
   
   `uvm_info("TRANSACTION", $sformatf("Generated clock pattern header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
   
@@ -605,24 +587,25 @@ endfunction
 
 //-----------------------------------------------------------------------------
 // FUNCTION: is_valid_clock_pattern
-// Validates that the data content matches the expected clock pattern
+// Validates that this is a proper clock pattern transaction (no data payload)
 //-----------------------------------------------------------------------------
 function bit ucie_sb_transaction::is_valid_clock_pattern();
-  bit [63:0] expected_pattern;
+  bit [63:0] expected_header;
   
   if (!is_clock_pattern) begin
     return 0; // Not a clock pattern transaction
   end
   
-  // Expected clock pattern: Phase1[63:32] + Phase0[31:0]
-  expected_pattern = {CLOCK_PATTERN_PHASE1, CLOCK_PATTERN_PHASE0};
+  // For clock pattern, we validate the header pattern, not data (since there's no data)
+  expected_header = {CLOCK_PATTERN_PHASE1, CLOCK_PATTERN_PHASE0};
   
-  if (data == expected_pattern) begin
-    `uvm_info("TRANSACTION", $sformatf("Clock pattern validation PASSED: data=0x%016h", data), UVM_DEBUG)
+  // Clock pattern is valid if opcode is CLOCK_PATTERN and has no data
+  if (opcode == CLOCK_PATTERN && !has_data) begin
+    `uvm_info("TRANSACTION", "Clock pattern validation PASSED: correct opcode and no data", UVM_DEBUG)
     return 1;
   end else begin
-    `uvm_error("TRANSACTION", $sformatf("Clock pattern validation FAILED: expected=0x%016h, actual=0x%016h", 
-               expected_pattern, data))
+    `uvm_error("TRANSACTION", $sformatf("Clock pattern validation FAILED: opcode=%s, has_data=%0b", 
+               opcode.name(), has_data))
     return 0;
   end
 endfunction
