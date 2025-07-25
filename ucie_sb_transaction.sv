@@ -39,6 +39,11 @@ class ucie_sb_transaction extends uvm_sequence_item;
   rand bit [23:0]        addr;      // Address (for register access)
   rand bit [15:0]        status;    // Status (for completions)
   
+  // Message-specific fields (for messages without data)
+  rand bit [7:0]         msgcode;   // Message Code (for messages)
+  rand bit [15:0]        msginfo;   // Message Info (for messages)
+  rand bit [7:0]         msgsubcode; // Message Subcode (for messages)
+  
   // Data payload
   rand bit [63:0]        data;
   
@@ -50,6 +55,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
   packet_type_e          pkt_type;
   bit                    has_data;
   bit                    is_64bit;
+  bit                    is_clock_pattern; // Special clock pattern transaction
   
   //=============================================================================
   // UVM FACTORY REGISTRATION
@@ -65,12 +71,16 @@ class ucie_sb_transaction extends uvm_sequence_item;
     `uvm_field_int(cr, UVM_ALL_ON)
     `uvm_field_int(addr, UVM_ALL_ON)
     `uvm_field_int(status, UVM_ALL_ON)
+    `uvm_field_int(msgcode, UVM_ALL_ON)
+    `uvm_field_int(msginfo, UVM_ALL_ON)
+    `uvm_field_int(msgsubcode, UVM_ALL_ON)
     `uvm_field_int(data, UVM_ALL_ON)
     `uvm_field_int(cp, UVM_ALL_ON)
     `uvm_field_int(dp, UVM_ALL_ON)
     `uvm_field_enum(packet_type_e, pkt_type, UVM_ALL_ON)
     `uvm_field_int(has_data, UVM_ALL_ON)
     `uvm_field_int(is_64bit, UVM_ALL_ON)
+    `uvm_field_int(is_clock_pattern, UVM_ALL_ON)
   `uvm_object_utils_end
 
   //=============================================================================
@@ -120,6 +130,22 @@ class ucie_sb_transaction extends uvm_sequence_item;
   // RETURNS: 64-bit header packet ready for transmission
   //-----------------------------------------------------------------------------
   extern function bit [63:0] get_header();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_message_header
+  // Packs message fields into 64-bit header packet for messages without data
+  // 
+  // RETURNS: 64-bit message header packet ready for transmission
+  //-----------------------------------------------------------------------------
+  extern function bit [63:0] get_message_header();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_clock_pattern_header
+  // Returns the special clock pattern header (Phase0=0x55555555, Phase1=0x55555555)
+  // 
+  // RETURNS: 64-bit clock pattern packet
+  //-----------------------------------------------------------------------------
+  extern function bit [63:0] get_clock_pattern_header();
   
   //-----------------------------------------------------------------------------
   // FUNCTION: get_srcid_name
@@ -210,6 +236,42 @@ class ucie_sb_transaction extends uvm_sequence_item;
       be[7:4] == 4'b0000;   // Upper BE reserved for 32-bit
     }
   }
+  
+  // Message constraints for messages without data
+  constraint message_c {
+    if (pkt_type == MESSAGE && !has_data && !is_clock_pattern) {
+      msgcode inside {MSG_SBINIT_OUT_OF_RESET, MSG_SBINIT_DONE_REQ, MSG_SBINIT_DONE_RESP};
+      
+      // Constrain msgsubcode based on msgcode
+      if (msgcode == MSG_SBINIT_OUT_OF_RESET) {
+        msgsubcode == SUBCODE_SBINIT_OUT_OF_RESET;
+      }
+      if (msgcode == MSG_SBINIT_DONE_REQ) {
+        msgsubcode == SUBCODE_SBINIT_DONE_REQ;
+      }
+      if (msgcode == MSG_SBINIT_DONE_RESP) {
+        msgsubcode == SUBCODE_SBINIT_DONE_RESP;
+      }
+      
+      // MsgInfo constraints based on message type
+      if (msgcode == MSG_SBINIT_OUT_OF_RESET) {
+        msginfo[15:4] == 12'h000;  // Reserved bits
+        msginfo[3:0] inside {4'h0, 4'h1, 4'h2, 4'h3, 4'h4, 4'h5, 4'h6, 4'h7, 4'h8, 4'h9, 4'hA, 4'hB, 4'hC, 4'hD, 4'hE, 4'hF}; // Result field
+      } else {
+        msginfo == 16'h0000;  // Other messages have 0000h
+      }
+    }
+  }
+  
+  // Clock pattern constraints
+  constraint clock_pattern_c {
+    if (is_clock_pattern) {
+      opcode == CLOCK_PATTERN;
+    }
+    if (opcode == CLOCK_PATTERN) {
+      is_clock_pattern == 1;
+    }
+  }
 
 endclass : ucie_sb_transaction
 
@@ -239,12 +301,14 @@ function void ucie_sb_transaction::update_packet_info();
       pkt_type = REGISTER_ACCESS;
       has_data = 0;
       is_64bit = 0;
+      is_clock_pattern = 0;
     end
     
     MEM_WRITE_32B, DMS_WRITE_32B, CFG_WRITE_32B: begin
       pkt_type = REGISTER_ACCESS;
       has_data = 1;
       is_64bit = 0;
+      is_clock_pattern = 0;
     end
     
     // 64-bit Register Access Operations
@@ -252,12 +316,14 @@ function void ucie_sb_transaction::update_packet_info();
       pkt_type = REGISTER_ACCESS;
       has_data = 0;
       is_64bit = 1;
+      is_clock_pattern = 0;
     end
     
     MEM_WRITE_64B, DMS_WRITE_64B, CFG_WRITE_64B: begin
       pkt_type = REGISTER_ACCESS;
       has_data = 1;
       is_64bit = 1;
+      is_clock_pattern = 0;
     end
     
     // Completion Operations
@@ -265,18 +331,21 @@ function void ucie_sb_transaction::update_packet_info();
       pkt_type = COMPLETION;
       has_data = 0;
       is_64bit = 0;
+      is_clock_pattern = 0;
     end
     
     COMPLETION_32B: begin
       pkt_type = COMPLETION;
       has_data = 1;
       is_64bit = 0;
+      is_clock_pattern = 0;
     end
     
     COMPLETION_64B: begin
       pkt_type = COMPLETION;
       has_data = 1;
       is_64bit = 1;
+      is_clock_pattern = 0;
     end
     
     // Message Operations
@@ -284,12 +353,22 @@ function void ucie_sb_transaction::update_packet_info();
       pkt_type = MESSAGE;
       has_data = 0;
       is_64bit = 0;
+      is_clock_pattern = 0;
     end
     
     MESSAGE_64B, MGMT_MSG_DATA: begin
       pkt_type = MESSAGE;
       has_data = 1;
       is_64bit = 1;
+      is_clock_pattern = 0;
+    end
+    
+    // Clock Pattern Operation
+    CLOCK_PATTERN: begin
+      pkt_type = MESSAGE;
+      has_data = 0;
+      is_64bit = 0;
+      is_clock_pattern = 1;
     end
     
     default: begin
@@ -297,6 +376,7 @@ function void ucie_sb_transaction::update_packet_info();
       pkt_type = REGISTER_ACCESS;
       has_data = 0;
       is_64bit = 0;
+      is_clock_pattern = 0;
     end
   endcase
   
@@ -327,17 +407,25 @@ endfunction
 // Packs transaction fields into 64-bit header packet format
 //-----------------------------------------------------------------------------
 function bit [63:0] ucie_sb_transaction::get_header();
-  bit [31:0] phase0, phase1;
-  
-  // Phase 0: opcode[4:0] + reserved[1:0] + ep + reserved[2:0] + be[7:0] + tag[4:0] + reserved[1:0] + srcid[2:0]
-  phase0 = {srcid, 2'b00, tag, be, 3'b000, ep, opcode, 2'b00};
-  
-  // Phase 1: addr[15:0] + reserved[5:0] + dstid[2:0] + reserved[3:0] + cr + cp + dp
-  phase1 = {dp, cp, cr, 4'b0000, dstid, 6'b000000, addr[15:0]};
-  
-  `uvm_info("TRANSACTION", $sformatf("Generated header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
-  
-  return {phase1, phase0};
+  // Route to appropriate header generation based on packet type
+  if (is_clock_pattern) begin
+    return get_clock_pattern_header();
+  end else if (pkt_type == MESSAGE && !has_data) begin
+    return get_message_header();
+  end else begin
+    // Standard register access and completion header format
+    bit [31:0] phase0, phase1;
+    
+    // Phase 0: opcode[4:0] + reserved[1:0] + ep + reserved[2:0] + be[7:0] + tag[4:0] + reserved[1:0] + srcid[2:0]
+    phase0 = {srcid, 2'b00, tag, be, 3'b000, ep, opcode, 2'b00};
+    
+    // Phase 1: addr[15:0] + reserved[5:0] + dstid[2:0] + reserved[3:0] + cr + cp + dp
+    phase1 = {dp, cp, cr, 4'b0000, dstid, 6'b000000, addr[15:0]};
+    
+    `uvm_info("TRANSACTION", $sformatf("Generated standard header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
+    
+    return {phase1, phase0};
+  end
 endfunction
 
 //-----------------------------------------------------------------------------
@@ -416,6 +504,48 @@ function string ucie_sb_transaction::convert2string();
   end
   s = {s, $sformatf("\n  Has Data  : %0b", has_data)};
   s = {s, $sformatf("\n  Is 64-bit : %0b", is_64bit)};
+  s = {s, $sformatf("\n  Clock Pattern: %0b", is_clock_pattern)};
+  if (pkt_type == MESSAGE && !has_data) begin
+    s = {s, $sformatf("\n  MsgCode   : 0x%02h", msgcode)};
+    s = {s, $sformatf("\n  MsgInfo   : 0x%04h", msginfo)};
+    s = {s, $sformatf("\n  MsgSubcode: 0x%02h", msgsubcode)};
+  end
   s = {s, $sformatf("\n================================")};
   return s;
+endfunction
+
+//-----------------------------------------------------------------------------
+// FUNCTION: get_message_header
+// Packs message fields into 64-bit header packet for messages without data
+//-----------------------------------------------------------------------------
+function bit [63:0] ucie_sb_transaction::get_message_header();
+  bit [31:0] phase0, phase1;
+  
+  // Phase 0 (Bits 31 to 0) - Figure 7-3 format for Messages without Data
+  // srcid[31:30] + rsvd[29:24] + msgcode[23:16] + rsvd[15:5] + opcode[4:0]
+  phase0 = {srcid[1:0], 6'b000000, msgcode, 11'b00000000000, opcode};
+  
+  // Phase 1 (Bits 31 to 0) - Figure 7-3 format for Messages without Data  
+  // dp[31] + cp[30] + rsvd[29:24] + dstid[23:16] + msginfo[15:8] + msgsubcode[7:0]
+  phase1 = {dp, cp, 6'b000000, dstid, 5'b00000, msginfo[15:8], msgsubcode};
+  
+  `uvm_info("TRANSACTION", $sformatf("Generated message header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
+  
+  return {phase1, phase0};
+endfunction
+
+//-----------------------------------------------------------------------------
+// FUNCTION: get_clock_pattern_header
+// Returns the special clock pattern header (Phase0=0x55555555, Phase1=0x55555555)
+//-----------------------------------------------------------------------------
+function bit [63:0] ucie_sb_transaction::get_clock_pattern_header();
+  bit [31:0] phase0, phase1;
+  
+  // Clock pattern: both phases are 0x55555555 (alternating 1010... pattern)
+  phase0 = CLOCK_PATTERN_PHASE0;
+  phase1 = CLOCK_PATTERN_PHASE1;
+  
+  `uvm_info("TRANSACTION", $sformatf("Generated clock pattern header: phase0=0x%08h, phase1=0x%08h", phase0, phase1), UVM_DEBUG)
+  
+  return {phase1, phase0};
 endfunction
