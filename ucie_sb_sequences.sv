@@ -334,34 +334,309 @@ class ucie_sb_clock_pattern_seq extends ucie_sb_base_sequence;
   endtask
 endclass
 
-// UCIe sideband initialization sequence - combines clock pattern and initialization messages
+// UCIe sideband advanced package initialization sequence with redundant lanes
 class ucie_sb_init_seq extends ucie_sb_base_sequence;
   `uvm_object_utils(ucie_sb_init_seq)
   
+  // Configuration parameters
   rand bit [2:0] init_srcid;
   rand bit [2:0] init_dstid;
-  rand bit [3:0] reset_result;  // Result code for SBINIT out of reset
-  rand int num_clock_patterns;
-  rand bit include_done_handshake;
+  rand bit [3:0] reset_result;           // Result code for SBINIT out of reset
+  rand bit enable_advanced_package;     // Enable advanced package sequence
+  rand bit simulate_detection_failure;  // Simulate pattern detection failure for testing
+  rand bit [3:0] lane_detection_result; // Simulated detection result [3:0]
+  
+  // Timing parameters
+  rand int pattern_iterations;          // Number of initial pattern iterations
+  rand int timeout_ms;                  // Timeout in milliseconds
+  rand int pattern_cycle_ms;            // Pattern cycle time in ms
   
   constraint init_c { 
-    num_clock_patterns inside {[1:3]};
-    reset_result inside {[0:15]};  // 4-bit result field
-    init_srcid != init_dstid;     // Source != Destination
+    pattern_iterations inside {[4:10]};
+    timeout_ms inside {[8:8]};           // Fixed 8ms timeout per spec
+    pattern_cycle_ms inside {[1:1]};     // Fixed 1ms cycle per spec
+    reset_result inside {[0:15]};        // 4-bit result field
+    init_srcid != init_dstid;           // Source != Destination
+    lane_detection_result inside {[1:15]}; // At least one lane must work for success
   }
+  
+  // Internal variables
+  typedef enum {
+    LANE_DATASB_CKSB,      // Primary lane
+    LANE_DATASB_CKSBRD,    // DATASB with redundant clock
+    LANE_DATASBRD_CKSB,    // Redundant data with primary clock  
+    LANE_DATASBRD_CKSBRD   // Redundant lane
+  } lane_selection_e;
+  
+  lane_selection_e selected_lane;
+  bit pattern_detected;
+  bit timeout_occurred;
   
   function new(string name = "ucie_sb_init_seq");
     super.new(name);
   endfunction
   
   virtual task body();
+    if (enable_advanced_package) begin
+      advanced_package_init();
+    end else begin
+      basic_package_init();
+    end
+  endtask
+  
+  // Advanced package initialization sequence
+  virtual task advanced_package_init();
+    `uvm_info("INIT_SEQ", "Starting UCIe Advanced Package SBINIT sequence", UVM_LOW)
+    
+    // Step 1-3: Clock pattern transmission and detection
+    clock_pattern_detection_phase();
+    
+    if (pattern_detected && !timeout_occurred) begin
+      // Step 4: Stop after 4 more iterations
+      send_final_pattern_iterations();
+      
+      // Step 6: Lane selection based on detection results
+      select_functional_lane();
+      
+      // Step 7: Send SBINIT Out of Reset messages
+      send_sbinit_out_of_reset_phase();
+      
+      // Step 8-10: Apply lane assignment and complete handshake
+      complete_initialization_handshake();
+      
+    end else begin
+      // Step 5: Timeout occurred - enter TRAINERROR state
+      handle_initialization_timeout();
+    end
+    
+    `uvm_info("INIT_SEQ", "UCIe Advanced Package SBINIT sequence completed", UVM_LOW)
+  endtask
+  
+  // Steps 1-3: Clock pattern detection phase
+  virtual task clock_pattern_detection_phase();
+    ucie_sb_transaction trans;
+    int cycle_count = 0;
+    int max_cycles = timeout_ms; // 8ms timeout
+    
+    `uvm_info("INIT_SEQ", "Phase 1-3: Clock pattern transmission and detection", UVM_MEDIUM)
+    
+    pattern_detected = 0;
+    timeout_occurred = 0;
+    
+    // Continue pattern transmission until detection or timeout
+    while (!pattern_detected && cycle_count < max_cycles) begin
+      `uvm_info("INIT_SEQ", $sformatf("Pattern cycle %0d/%0d", cycle_count + 1, max_cycles), UVM_HIGH)
+      
+      // Send pattern iterations for 1ms
+      send_pattern_burst(pattern_cycle_ms);
+      
+      // Hold low for 1ms (simulated by delay)
+      `uvm_info("INIT_SEQ", "Holding sideband low for 1ms", UVM_HIGH)
+      #(1ms);
+      
+      // Simulate pattern detection check
+      check_pattern_detection();
+      
+      cycle_count++;
+    end
+    
+    if (cycle_count >= max_cycles) begin
+      timeout_occurred = 1;
+      `uvm_warning("INIT_SEQ", "Pattern detection timeout after 8ms")
+    end
+  endtask
+  
+  // Send burst of clock patterns
+  virtual task send_pattern_burst(int duration_ms);
+    ucie_sb_transaction trans;
+    int num_patterns = duration_ms * 800; // Approximate patterns per ms at 800MHz
+    
+    repeat(num_patterns) begin
+      trans = ucie_sb_transaction::type_id::create("clock_pattern");
+      start_item(trans);
+      assert(trans.randomize() with {
+        opcode == CLOCK_PATTERN;
+        is_clock_pattern == 1;
+        srcid == init_srcid;
+        dstid == init_dstid;
+      });
+      finish_item(trans);
+      
+      // 64 UI pattern + 32 UI gap = 96 UI = 120ns at 800MHz
+      #(120ns);
+    end
+  endtask
+  
+  // Simulate pattern detection (would be hardware-based in real implementation)
+  virtual task check_pattern_detection();
+    if (simulate_detection_failure) begin
+      // Simulate random detection for testing
+      pattern_detected = ($urandom_range(0, 100) > 70); // 30% success rate
+    end else begin
+      // Normal operation - assume detection succeeds
+      pattern_detected = 1;
+    end
+    
+    if (pattern_detected) begin
+      `uvm_info("INIT_SEQ", "128 UI clock pattern detected successfully", UVM_MEDIUM)
+    end
+  endtask
+  
+  // Step 4: Send final 4 pattern iterations
+  virtual task send_final_pattern_iterations();
     ucie_sb_transaction trans;
     
-    `uvm_info("INIT_SEQ", $sformatf("Starting UCIe sideband initialization sequence: srcid=%0d, dstid=%0d", 
-              init_srcid, init_dstid), UVM_LOW)
+    `uvm_info("INIT_SEQ", "Step 4: Sending final 4 pattern iterations", UVM_MEDIUM)
+    
+    repeat(4) begin
+      trans = ucie_sb_transaction::type_id::create("final_pattern");
+      start_item(trans);
+      assert(trans.randomize() with {
+        opcode == CLOCK_PATTERN;
+        is_clock_pattern == 1;
+        srcid == init_srcid;
+        dstid == init_dstid;
+      });
+      finish_item(trans);
+      
+      `uvm_info("INIT_SEQ", "Sent final pattern iteration", UVM_HIGH)
+      #(120ns); // 64 UI pattern + 32 UI gap
+    end
+  endtask
+  
+  // Step 6: Lane selection based on detection results
+  virtual task select_functional_lane();
+    `uvm_info("INIT_SEQ", "Step 6: Selecting functional sideband lane", UVM_MEDIUM)
+    
+    // Pseudocode implementation from spec:
+    // Result[0] = CKSB sampling DATASB
+    // Result[1] = CKSBRD sampling DATASB  
+    // Result[2] = CKSB sampling DATASBRD
+    // Result[3] = CKSBRD sampling DATASBRD
+    
+    case (1'b1)
+      lane_detection_result[0]: begin // XXX1
+        selected_lane = LANE_DATASB_CKSB;
+        `uvm_info("INIT_SEQ", "Selected lane: DATASB/CKSB (primary)", UVM_MEDIUM)
+      end
+      lane_detection_result[1]: begin // XX10  
+        selected_lane = LANE_DATASB_CKSBRD;
+        `uvm_info("INIT_SEQ", "Selected lane: DATASB/CKSBRD", UVM_MEDIUM)
+      end
+      lane_detection_result[2]: begin // X100
+        selected_lane = LANE_DATASBRD_CKSB;
+        `uvm_info("INIT_SEQ", "Selected lane: DATASBRD/CKSB", UVM_MEDIUM)
+      end
+      lane_detection_result[3]: begin // 1000
+        selected_lane = LANE_DATASBRD_CKSBRD;  
+        `uvm_info("INIT_SEQ", "Selected lane: DATASBRD/CKSBRD (redundant)", UVM_MEDIUM)
+      end
+      default: begin
+        `uvm_error("INIT_SEQ", "No functional sideband detected - all lanes failed")
+        return;
+      end
+    endcase
+    
+    `uvm_info("INIT_SEQ", $sformatf("Lane detection result: 4'b%04b, Selected: %s", 
+              lane_detection_result, selected_lane.name()), UVM_LOW)
+  endtask
+  
+  // Step 7: Send SBINIT Out of Reset messages
+  virtual task send_sbinit_out_of_reset_phase();
+    ucie_sb_transaction trans;
+    int cycle_count = 0;
+    int max_cycles = 8; // 8ms timeout
+    bit message_detected = 0;
+    
+    `uvm_info("INIT_SEQ", "Step 7: Sending SBINIT Out of Reset messages", UVM_MEDIUM)
+    
+    while (!message_detected && cycle_count < max_cycles) begin
+      // Send SBINIT Out of Reset message
+      trans = ucie_sb_transaction::type_id::create("sbinit_out_of_reset");
+      start_item(trans);
+      assert(trans.randomize() with {
+        opcode == MESSAGE_NO_DATA;
+        msgcode == MSG_SBINIT_OUT_OF_RESET;  // 0x91
+        msgsubcode == SUBCODE_SBINIT_OUT_OF_RESET;  // 0x00
+        msginfo == {12'h000, reset_result};  // Result includes lane info
+        srcid == init_srcid;
+        dstid == init_dstid;
+      });
+      finish_item(trans);
+      
+      `uvm_info("INIT_SEQ", $sformatf("Sent SBINIT Out of Reset: result=0x%01h", reset_result), UVM_HIGH)
+      
+      // Simulate message detection (would check receiver in real implementation)
+      #(1ms);
+      message_detected = ($urandom_range(0, 100) > 20); // 80% success rate
+      cycle_count++;
+    end
+    
+    if (!message_detected) begin
+      `uvm_error("INIT_SEQ", "SBINIT Out of Reset message detection timeout")
+    end else begin
+      `uvm_info("INIT_SEQ", "SBINIT Out of Reset message detected successfully", UVM_MEDIUM)
+    end
+  endtask
+  
+  // Steps 8-10: Complete initialization handshake
+  virtual task complete_initialization_handshake();
+    ucie_sb_transaction trans;
+    
+    `uvm_info("INIT_SEQ", "Steps 8-10: Completing initialization handshake", UVM_MEDIUM)
+    
+    // Step 8: Apply functional sideband assignment (simulated)
+    `uvm_info("INIT_SEQ", $sformatf("Applied functional sideband: %s", selected_lane.name()), UVM_MEDIUM)
+    
+    // Step 10: SBINIT done handshake
+    // Send SBINIT done request
+    trans = ucie_sb_transaction::type_id::create("sbinit_done_req");
+    start_item(trans);
+    assert(trans.randomize() with {
+      opcode == MESSAGE_NO_DATA;
+      msgcode == MSG_SBINIT_DONE_REQ;  // 0x95
+      msgsubcode == SUBCODE_SBINIT_DONE_REQ;  // 0x01
+      msginfo == 16'h0000;  // Always 0000h for done request
+      srcid == init_srcid;
+      dstid == init_dstid;
+    });
+    finish_item(trans);
+    
+    `uvm_info("INIT_SEQ", "Sent SBINIT done request", UVM_MEDIUM)
+    
+    // Simulate processing delay
+    #(100ns);
+    
+    // Send SBINIT done response
+    trans = ucie_sb_transaction::type_id::create("sbinit_done_resp");
+    start_item(trans);
+    assert(trans.randomize() with {
+      opcode == MESSAGE_NO_DATA;
+      msgcode == MSG_SBINIT_DONE_RESP;  // 0x9A
+      msgsubcode == SUBCODE_SBINIT_DONE_RESP;  // 0x01
+      msginfo == 16'h0000;  // Always 0000h for done response
+      srcid == init_dstid;  // Response comes from destination
+      dstid == init_srcid;  // Back to original source
+    });
+    finish_item(trans);
+    
+    `uvm_info("INIT_SEQ", "Sent SBINIT done response - Ready to exit to MBINIT", UVM_MEDIUM)
+  endtask
+  
+  // Step 5: Handle timeout and enter TRAINERROR state
+  virtual task handle_initialization_timeout();
+    `uvm_error("INIT_SEQ", "SBINIT timeout occurred - entering TRAINERROR state")
+    `uvm_info("INIT_SEQ", "Sideband initialization FAILED due to timeout", UVM_LOW)
+  endtask
+  
+  // Basic package initialization (original sequence for compatibility)
+  virtual task basic_package_init();
+    ucie_sb_transaction trans;
+    
+    `uvm_info("INIT_SEQ", "Starting basic UCIe sideband initialization sequence", UVM_LOW)
     
     // Step 1: Generate clock patterns for synchronization
-    repeat(num_clock_patterns) begin
+    repeat(pattern_iterations) begin
       trans = ucie_sb_transaction::type_id::create("init_clock_pattern");
       start_item(trans);
       assert(trans.randomize() with {
@@ -373,8 +648,6 @@ class ucie_sb_init_seq extends ucie_sb_base_sequence;
       finish_item(trans);
       
       `uvm_info("INIT_SEQ", "Generated initialization clock pattern", UVM_MEDIUM)
-      
-      // Small gap between clock patterns
       #(40 * 1.25ns); // 40 UI gap
     end
     
@@ -393,44 +666,12 @@ class ucie_sb_init_seq extends ucie_sb_base_sequence;
     
     `uvm_info("INIT_SEQ", $sformatf("Generated SBINIT out of reset: result=0x%01h", reset_result), UVM_MEDIUM)
     
-    // Step 3: Optional SBINIT done handshake
-    if (include_done_handshake) begin
-      // Send SBINIT done request
-      trans = ucie_sb_transaction::type_id::create("sbinit_done_req");
-      start_item(trans);
-      assert(trans.randomize() with {
-        opcode == MESSAGE_NO_DATA;
-        msgcode == MSG_SBINIT_DONE_REQ;  // 0x95
-        msgsubcode == SUBCODE_SBINIT_DONE_REQ;  // 0x01
-        msginfo == 16'h0000;  // Always 0000h for done request
-        srcid == init_srcid;
-        dstid == init_dstid;
-      });
-      finish_item(trans);
-      
-      `uvm_info("INIT_SEQ", "Generated SBINIT done request", UVM_MEDIUM)
-      
-      // Small delay before response
-      #(50 * 1.25ns); // 50 UI delay
-      
-      // Send SBINIT done response
-      trans = ucie_sb_transaction::type_id::create("sbinit_done_resp");
-      start_item(trans);
-      assert(trans.randomize() with {
-        opcode == MESSAGE_NO_DATA;
-        msgcode == MSG_SBINIT_DONE_RESP;  // 0x9A
-        msgsubcode == SUBCODE_SBINIT_DONE_RESP;  // 0x01
-        msginfo == 16'h0000;  // Always 0000h for done response
-        srcid == init_dstid;  // Response comes from destination
-        dstid == init_srcid;  // Back to original source
-      });
-      finish_item(trans);
-      
-      `uvm_info("INIT_SEQ", "Generated SBINIT done response", UVM_MEDIUM)
-    end
+    // Step 3: SBINIT done handshake
+    complete_initialization_handshake();
     
-    `uvm_info("INIT_SEQ", "UCIe sideband initialization sequence completed", UVM_LOW)
+    `uvm_info("INIT_SEQ", "Basic UCIe sideband initialization sequence completed", UVM_LOW)
   endtask
+  
 endclass
 
 // Burst sequence - generates back-to-back transactions

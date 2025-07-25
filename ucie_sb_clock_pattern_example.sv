@@ -49,15 +49,32 @@ class ucie_sb_clock_pattern_test extends uvm_test;
     
     #200ns; // Wait between tests
     
-    // Test 2: UCIe initialization sequence with clock patterns
-    `uvm_info("TEST", "=== Test 2: UCIe Initialization Sequence ===", UVM_LOW)
-    init_seq = ucie_sb_init_seq::type_id::create("init_seq");
+    // Test 2: UCIe basic initialization sequence
+    `uvm_info("TEST", "=== Test 2: UCIe Basic Initialization Sequence ===", UVM_LOW)
+    init_seq = ucie_sb_init_seq::type_id::create("basic_init_seq");
     assert(init_seq.randomize() with {
-      init_srcid == 3'b001;      // D2D_ADAPTER
-      init_dstid == 3'b000;      // LOCAL_DIE
-      reset_result == 4'h5;      // Example result code
-      num_clock_patterns == 2;
-      include_done_handshake == 1;
+      init_srcid == 3'b001;           // D2D_ADAPTER
+      init_dstid == 3'b000;           // LOCAL_DIE
+      reset_result == 4'h5;           // Example result code
+      enable_advanced_package == 0;   // Basic package
+      pattern_iterations == 3;
+    });
+    init_seq.start(agent.sequencer);
+    
+    #300ns; // Wait between tests
+    
+    // Test 2b: UCIe advanced package initialization sequence
+    `uvm_info("TEST", "=== Test 2b: UCIe Advanced Package Initialization ===", UVM_LOW)
+    init_seq = ucie_sb_init_seq::type_id::create("advanced_init_seq");
+    assert(init_seq.randomize() with {
+      init_srcid == 3'b001;              // D2D_ADAPTER
+      init_dstid == 3'b000;              // LOCAL_DIE
+      reset_result == 4'h3;              // Example result code with lane info
+      enable_advanced_package == 1;      // Advanced package
+      simulate_detection_failure == 0;   // Successful detection
+      lane_detection_result == 4'b0001;  // Primary lane working
+      timeout_ms == 8;
+      pattern_cycle_ms == 1;
     });
     init_seq.start(agent.sequencer);
     
