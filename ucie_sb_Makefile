@@ -200,6 +200,8 @@ help:
 	@echo "  make SIM=questa debug"
 	@echo "  make coverage"
 	@echo "  make regress"
+	@echo "  make source_sync_demo"
+	@echo "  make clock_pattern_demo"
 	@echo "  make clean_all"
 
 # Wave viewing targets
@@ -220,7 +222,13 @@ source_sync_demo:
 	vcs -sverilog -ntb_opts uvm-1.2 +incdir+$(UVM_HOME)/src ucie_sb_source_sync_example.sv -o source_sync_demo
 	./source_sync_demo +UVM_VERBOSITY=UVM_LOW
 
-.PHONY: all compile run clean help debug coverage lint regress test_memory test_config test_mixed test_all waves synth_check source_sync_demo
+# Clock pattern example
+clock_pattern_demo:
+	@echo "Running clock pattern demonstration..."
+	vcs -sverilog -ntb_opts uvm-1.2 +incdir+$(UVM_HOME)/src ucie_sb_clock_pattern_example.sv -o clock_pattern_demo
+	./clock_pattern_demo +UVM_VERBOSITY=UVM_LOW +UVM_TESTNAME=ucie_sb_clock_pattern_test
+
+.PHONY: all compile run clean help debug coverage lint regress test_memory test_config test_mixed test_all waves synth_check source_sync_demo clock_pattern_demo
 .PHONY: compile_vcs compile_questa compile_xcelium run_vcs run_questa run_xcelium
 .PHONY: clean_vcs clean_questa clean_xcelium clean_all debug_vcs debug_questa debug_xcelium
 .PHONY: coverage_vcs coverage_questa coverage_xcelium lint_vcs lint_questa lint_xcelium
