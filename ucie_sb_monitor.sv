@@ -401,9 +401,8 @@ virtual function ucie_sb_transaction ucie_sb_monitor::decode_header(bit [63:0] h
   ucie_sb_opcode_e detected_opcode = ucie_sb_opcode_e'(phase0[4:0]);
   trans.opcode = detected_opcode;
   
-  // Check if this is a clock pattern
-  if (header == {CLOCK_PATTERN_PHASE1, CLOCK_PATTERN_PHASE0}) begin
-    trans.opcode = CLOCK_PATTERN;
+  // Check if this is a clock pattern by opcode
+  if (detected_opcode == CLOCK_PATTERN) begin
     trans.is_clock_pattern = 1;
     `uvm_info("MONITOR", "Detected clock pattern transaction", UVM_MEDIUM)
   end
@@ -510,6 +509,16 @@ virtual function void ucie_sb_monitor::check_transaction_validity(ucie_sb_transa
   if (!trans.is_64bit && (trans.be[7:4] != 4'b0000)) begin
     `uvm_error("MONITOR", $sformatf("32-bit transaction has invalid BE[7:4]=0x%h (should be 0)", trans.be[7:4]))
     protocol_errors++;
+  end
+  
+  // Check clock pattern validity
+  if (trans.is_clock_pattern) begin
+    if (!trans.is_valid_clock_pattern()) begin
+      `uvm_error("MONITOR", "Clock pattern transaction has invalid data pattern")
+      protocol_errors++;
+    end else begin
+      `uvm_info("MONITOR", "Clock pattern validation PASSED", UVM_HIGH)
+    end
   end
 endfunction
 
