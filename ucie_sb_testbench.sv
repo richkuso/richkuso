@@ -13,7 +13,7 @@ module ucie_sb_testbench;
   end
   
   // Interface instantiation
-  ucie_sb_interface sb_intf(sb_reset);
+  ucie_sb_interface sb_intf(.clk(1'b0), .reset(sb_reset));
   
   // Clock generation for sideband TX and RX - higher frequency for serial transmission
   always #2.5 sb_intf.SBTX_CLK = ~sb_intf.SBTX_CLK; // 200MHz TX sideband clock

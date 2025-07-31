@@ -225,7 +225,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
   }
   
   constraint dstid_c {
-    if (pkt_type == REGISTER_ACCESS) {
+    if (pkt_type == PKT_REG_ACCESS) {
       if (is_remote_die_packet()) {
         dstid inside {3'b000, 3'b001, 3'b010, 3'b011};
       } else {
@@ -314,14 +314,14 @@ function void ucie_sb_transaction::update_packet_info();
   case (opcode)
     // 32-bit Register Access Operations
     MEM_READ_32B, DMS_READ_32B, CFG_READ_32B: begin
-      pkt_type = REGISTER_ACCESS;
+      pkt_type = PKT_REG_ACCESS;
       has_data = 0;
       is_64bit = 0;
       is_clock_pattern = 0;
     end
     
     MEM_WRITE_32B, DMS_WRITE_32B, CFG_WRITE_32B: begin
-      pkt_type = REGISTER_ACCESS;
+      pkt_type = PKT_REG_ACCESS;
       has_data = 1;
       is_64bit = 0;
       is_clock_pattern = 0;
@@ -329,14 +329,14 @@ function void ucie_sb_transaction::update_packet_info();
     
     // 64-bit Register Access Operations
     MEM_READ_64B, DMS_READ_64B, CFG_READ_64B: begin
-      pkt_type = REGISTER_ACCESS;
+      pkt_type = PKT_REG_ACCESS;
       has_data = 0;
       is_64bit = 1;
       is_clock_pattern = 0;
     end
     
     MEM_WRITE_64B, DMS_WRITE_64B, CFG_WRITE_64B: begin
-      pkt_type = REGISTER_ACCESS;
+      pkt_type = PKT_REG_ACCESS;
       has_data = 1;
       is_64bit = 1;
       is_clock_pattern = 0;
@@ -389,7 +389,7 @@ function void ucie_sb_transaction::update_packet_info();
     
     default: begin
       `uvm_error("TRANSACTION", $sformatf("Unknown opcode: %s", opcode.name()))
-      pkt_type = REGISTER_ACCESS;
+      pkt_type = PKT_REG_ACCESS;
       has_data = 0;
       is_64bit = 0;
       is_clock_pattern = 0;
