@@ -5,20 +5,22 @@
 // CLASS: ucie_sb_reg_access_checker
 //
 // DESCRIPTION:
-//   Checker that monitors sideband TX side for register access requests and
-//   RX side for corresponding completions. Ensures proper request-completion
-//   pairing with correct tag matching and validates protocol compliance.
+//   Checker that monitors bidirectional sideband register access transactions.
+//   Handles both TX→RX and RX→TX request-completion flows. Ensures proper 
+//   request-completion pairing with correct tag matching and validates protocol 
+//   compliance for both directions.
 //
 // FEATURES:
-//   - Tracks outstanding register access requests by tag
-//   - Matches requests with corresponding completions
-//   - Validates tag consistency and completion ordering
-//   - Supports timeout detection for missing completions
-//   - Statistics collection and reporting
-//   - Configurable checking parameters
+//   - Bidirectional request-completion tracking (TX↔RX)
+//   - Separate tracking for TX-initiated and RX-initiated transactions
+//   - Tag-based matching with direction awareness
+//   - Validates proper source/destination swapping for both directions
+//   - Timeout detection for missing completions
+//   - Comprehensive statistics for both directions
+//   - FIFO buffering for concurrent transaction handling
 //
 // AUTHOR: UCIe Sideband UVM Agent
-// VERSION: 1.0
+// VERSION: 2.0 - Bidirectional Support
 //=============================================================================
 
 class ucie_sb_reg_access_checker extends uvm_component;
@@ -42,7 +44,7 @@ class ucie_sb_reg_access_checker extends uvm_component;
   real timeout_ns = 1000.0;  // 1us timeout for completions
   bit enable_statistics = 1;
   
-  // Outstanding request tracking
+  // Outstanding request tracking with direction awareness
   typedef struct {
     ucie_sb_transaction req_trans;
     realtime req_time;
@@ -51,28 +53,50 @@ class ucie_sb_reg_access_checker extends uvm_component;
     bit [23:0] addr;
     bit is_read;
     bit is_64bit;
+    bit is_tx_initiated;  // 1=TX→RX request, 0=RX→TX request
   } outstanding_req_t;
   
-  // Tag-based request tracking (5-bit tag = 32 entries)
-  outstanding_req_t outstanding_requests[32];
-  bit tag_in_use[32];
+  // Tag-based request tracking (5-bit tag = 32 entries per direction)
+  // TX-initiated requests (TX sends request, expects RX completion)
+  outstanding_req_t tx_outstanding_requests[32];
+  bit tx_tag_in_use[32];
   
-  // Statistics
-  int requests_sent = 0;
-  int completions_received = 0;
-  int matched_transactions = 0;
-  int tag_mismatches = 0;
-  int timeout_errors = 0;
+  // RX-initiated requests (RX sends request, expects TX completion)  
+  outstanding_req_t rx_outstanding_requests[32];
+  bit rx_tag_in_use[32];
+  
+  // Statistics - Bidirectional
+  // TX-initiated flows (TX request → RX completion)
+  int tx_requests_sent = 0;
+  int tx_completions_received = 0;
+  int tx_matched_transactions = 0;
+  int tx_tag_mismatches = 0;
+  int tx_timeout_errors = 0;
+  
+  // RX-initiated flows (RX request → TX completion)
+  int rx_requests_sent = 0;
+  int rx_completions_received = 0;
+  int rx_matched_transactions = 0;
+  int rx_tag_mismatches = 0;
+  int rx_timeout_errors = 0;
+  
+  // General statistics
   int protocol_errors = 0;
   int tx_transactions_queued = 0;
   int rx_transactions_queued = 0;
   int max_tx_fifo_depth = 0;
   int max_rx_fifo_depth = 0;
   
-  // Timing tracking
-  realtime total_response_time = 0;
-  realtime min_response_time = 0;
-  realtime max_response_time = 0;
+  // Timing tracking - Bidirectional
+  // TX-initiated timing
+  realtime tx_total_response_time = 0;
+  realtime tx_min_response_time = 0;
+  realtime tx_max_response_time = 0;
+  
+  // RX-initiated timing
+  realtime rx_total_response_time = 0;
+  realtime rx_min_response_time = 0;
+  realtime rx_max_response_time = 0;
   
   //=============================================================================
   // CONSTRUCTOR
@@ -81,9 +105,10 @@ class ucie_sb_reg_access_checker extends uvm_component;
   function new(string name = "ucie_sb_reg_access_checker", uvm_component parent = null);
     super.new(name, parent);
     
-    // Initialize tracking arrays
+    // Initialize tracking arrays for both directions
     for (int i = 0; i < 32; i++) begin
-      tag_in_use[i] = 0;
+      tx_tag_in_use[i] = 0;
+      rx_tag_in_use[i] = 0;
     end
   endfunction
   
@@ -175,7 +200,7 @@ class ucie_sb_reg_access_checker extends uvm_component;
   // FIFO PROCESSORS (ASYNCHRONOUS)
   //=============================================================================
   
-  // TX FIFO processor - handles register access requests
+  // TX FIFO processor - handles both requests and completions
   virtual task tx_processor();
     ucie_sb_transaction trans;
     
@@ -183,14 +208,18 @@ class ucie_sb_reg_access_checker extends uvm_component;
       // Get transaction from TX FIFO (blocking)
       tx_fifo.get(trans);
       
-      // Process only register access requests
+      // Process register access requests (TX→RX flow)
       if (is_register_access_request(trans)) begin
-        process_request(trans);
+        process_tx_request(trans);
+      end
+      // Process completions (RX→TX response)
+      else if (is_completion(trans)) begin
+        process_rx_completion(trans);
       end
     end
   endtask
   
-  // RX FIFO processor - handles completions
+  // RX FIFO processor - handles both requests and completions
   virtual task rx_processor();
     ucie_sb_transaction trans;
     
@@ -198,76 +227,148 @@ class ucie_sb_reg_access_checker extends uvm_component;
       // Get transaction from RX FIFO (blocking)
       rx_fifo.get(trans);
       
-      // Process only completions
-      if (is_completion(trans)) begin
-        process_completion(trans);
+      // Process register access requests (RX→TX flow)
+      if (is_register_access_request(trans)) begin
+        process_rx_request(trans);
+      end
+      // Process completions (TX→RX response)
+      else if (is_completion(trans)) begin
+        process_tx_completion(trans);
       end
     end
   endtask
   
   //=============================================================================
-  // REQUEST/COMPLETION PROCESSING
+  // BIDIRECTIONAL REQUEST/COMPLETION PROCESSING
   //=============================================================================
   
-  virtual function void process_request(ucie_sb_transaction trans);
+  // TX-initiated request processing (TX sends request)
+  virtual function void process_tx_request(ucie_sb_transaction trans);
     bit [4:0] tag = trans.tag;
     
-    `uvm_info("REG_CHECKER", $sformatf("Processing request: opcode=%s, tag=%0d, addr=0x%06h", 
+    `uvm_info("REG_CHECKER", $sformatf("Processing TX request: opcode=%s, tag=%0d, addr=0x%06h", 
                                        trans.opcode.name(), tag, trans.addr), UVM_HIGH)
     
-    // Check if tag is already in use
-    if (tag_in_use[tag]) begin
-      `uvm_error("REG_CHECKER", $sformatf("Tag %0d already in use! Previous request not completed", tag))
+    // Check if tag is already in use for TX-initiated requests
+    if (tx_tag_in_use[tag]) begin
+      `uvm_error("REG_CHECKER", $sformatf("TX tag %0d already in use! Previous request not completed", tag))
       protocol_errors++;
       return;
     end
     
-    // Store request information
-    outstanding_requests[tag].req_trans = trans;
-    outstanding_requests[tag].req_time = $realtime;
-    outstanding_requests[tag].srcid = trans.srcid;
-    outstanding_requests[tag].dstid = trans.dstid;
-    outstanding_requests[tag].addr = trans.addr;
-    outstanding_requests[tag].is_read = is_read_request(trans);
-    outstanding_requests[tag].is_64bit = trans.is_64bit;
-    tag_in_use[tag] = 1;
+    // Store TX-initiated request information
+    tx_outstanding_requests[tag].req_trans = trans;
+    tx_outstanding_requests[tag].req_time = $realtime;
+    tx_outstanding_requests[tag].srcid = trans.srcid;
+    tx_outstanding_requests[tag].dstid = trans.dstid;
+    tx_outstanding_requests[tag].addr = trans.addr;
+    tx_outstanding_requests[tag].is_read = is_read_request(trans);
+    tx_outstanding_requests[tag].is_64bit = trans.is_64bit;
+    tx_outstanding_requests[tag].is_tx_initiated = 1;
+    tx_tag_in_use[tag] = 1;
     
-    requests_sent++;
+    tx_requests_sent++;
     
-    `uvm_info("REG_CHECKER", $sformatf("Stored request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
-                                       tag, trans.srcid, trans.dstid, trans.addr, outstanding_requests[tag].is_read), UVM_MEDIUM)
+    `uvm_info("REG_CHECKER", $sformatf("Stored TX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
+                                       tag, trans.srcid, trans.dstid, trans.addr, tx_outstanding_requests[tag].is_read), UVM_MEDIUM)
   endfunction
   
-  virtual function void process_completion(ucie_sb_transaction trans);
+  // RX-initiated request processing (RX sends request)
+  virtual function void process_rx_request(ucie_sb_transaction trans);
+    bit [4:0] tag = trans.tag;
+    
+    `uvm_info("REG_CHECKER", $sformatf("Processing RX request: opcode=%s, tag=%0d, addr=0x%06h", 
+                                       trans.opcode.name(), tag, trans.addr), UVM_HIGH)
+    
+    // Check if tag is already in use for RX-initiated requests
+    if (rx_tag_in_use[tag]) begin
+      `uvm_error("REG_CHECKER", $sformatf("RX tag %0d already in use! Previous request not completed", tag))
+      protocol_errors++;
+      return;
+    end
+    
+    // Store RX-initiated request information
+    rx_outstanding_requests[tag].req_trans = trans;
+    rx_outstanding_requests[tag].req_time = $realtime;
+    rx_outstanding_requests[tag].srcid = trans.srcid;
+    rx_outstanding_requests[tag].dstid = trans.dstid;
+    rx_outstanding_requests[tag].addr = trans.addr;
+    rx_outstanding_requests[tag].is_read = is_read_request(trans);
+    rx_outstanding_requests[tag].is_64bit = trans.is_64bit;
+    rx_outstanding_requests[tag].is_tx_initiated = 0;
+    rx_tag_in_use[tag] = 1;
+    
+    rx_requests_sent++;
+    
+    `uvm_info("REG_CHECKER", $sformatf("Stored RX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
+                                       tag, trans.srcid, trans.dstid, trans.addr, rx_outstanding_requests[tag].is_read), UVM_MEDIUM)
+  endfunction
+  
+  // TX completion processing (response to RX-initiated request)
+  virtual function void process_rx_completion(ucie_sb_transaction trans);
     bit [4:0] tag = trans.tag;
     realtime response_time;
     
-    `uvm_info("REG_CHECKER", $sformatf("Processing completion: tag=%0d, srcid=%0d, dstid=%0d, status=0x%04h", 
+    `uvm_info("REG_CHECKER", $sformatf("Processing TX completion (RX→TX response): tag=%0d, srcid=%0d, dstid=%0d, status=0x%04h", 
                                        tag, trans.srcid, trans.dstid, trans.status), UVM_HIGH)
     
-    // Check if tag has corresponding request
-    if (!tag_in_use[tag]) begin
-      `uvm_error("REG_CHECKER", $sformatf("Completion tag %0d has no corresponding request!", tag))
+    // Check if tag has corresponding RX-initiated request
+    if (!rx_tag_in_use[tag]) begin
+      `uvm_error("REG_CHECKER", $sformatf("TX completion tag %0d has no corresponding RX request!", tag))
       protocol_errors++;
       return;
     end
     
     // Validate request-completion matching
-    if (!validate_completion(trans, outstanding_requests[tag])) begin
-      tag_mismatches++;
+    if (!validate_completion(trans, rx_outstanding_requests[tag])) begin
+      rx_tag_mismatches++;
       return;
     end
     
-    // Calculate response time
-    response_time = $realtime - outstanding_requests[tag].req_time;
-    update_timing_statistics(response_time);
+    // Calculate response time for RX-initiated request
+    response_time = $realtime - rx_outstanding_requests[tag].req_time;
+    update_rx_timing_statistics(response_time);
     
-    // Mark tag as free
-    tag_in_use[tag] = 0;
-    completions_received++;
-    matched_transactions++;
+    // Mark RX tag as free
+    rx_tag_in_use[tag] = 0;
+    rx_completions_received++;
+    rx_matched_transactions++;
     
-    `uvm_info("REG_CHECKER", $sformatf("Matched completion: tag=%0d, response_time=%.1fns", 
+    `uvm_info("REG_CHECKER", $sformatf("Matched RX→TX completion: tag=%0d, response_time=%.1fns", 
+                                       tag, response_time/1ns), UVM_MEDIUM)
+  endfunction
+  
+  // RX completion processing (response to TX-initiated request)
+  virtual function void process_tx_completion(ucie_sb_transaction trans);
+    bit [4:0] tag = trans.tag;
+    realtime response_time;
+    
+    `uvm_info("REG_CHECKER", $sformatf("Processing RX completion (TX→RX response): tag=%0d, srcid=%0d, dstid=%0d, status=0x%04h", 
+                                       tag, trans.srcid, trans.dstid, trans.status), UVM_HIGH)
+    
+    // Check if tag has corresponding TX-initiated request
+    if (!tx_tag_in_use[tag]) begin
+      `uvm_error("REG_CHECKER", $sformatf("RX completion tag %0d has no corresponding TX request!", tag))
+      protocol_errors++;
+      return;
+    end
+    
+    // Validate request-completion matching
+    if (!validate_completion(trans, tx_outstanding_requests[tag])) begin
+      tx_tag_mismatches++;
+      return;
+    end
+    
+    // Calculate response time for TX-initiated request
+    response_time = $realtime - tx_outstanding_requests[tag].req_time;
+    update_tx_timing_statistics(response_time);
+    
+    // Mark TX tag as free
+    tx_tag_in_use[tag] = 0;
+    tx_completions_received++;
+    tx_matched_transactions++;
+    
+    `uvm_info("REG_CHECKER", $sformatf("Matched TX→RX completion: tag=%0d, response_time=%.1fns", 
                                        tag, response_time/1ns), UVM_MEDIUM)
   endfunction
   
@@ -341,14 +442,28 @@ class ucie_sb_reg_access_checker extends uvm_component;
       
       current_time = $realtime;
       
+      // Check TX-initiated request timeouts
       for (int tag = 0; tag < 32; tag++) begin
-        if (tag_in_use[tag]) begin
-          if ((current_time - outstanding_requests[tag].req_time) > (timeout_ns * 1ns)) begin
-            `uvm_error("REG_CHECKER", $sformatf("Request timeout: tag=%0d, addr=0x%06h, elapsed=%.1fns", 
-                                                tag, outstanding_requests[tag].addr, 
-                                                (current_time - outstanding_requests[tag].req_time)/1ns))
-            timeout_errors++;
-            tag_in_use[tag] = 0; // Clear timed-out request
+        if (tx_tag_in_use[tag]) begin
+          if ((current_time - tx_outstanding_requests[tag].req_time) > (timeout_ns * 1ns)) begin
+            `uvm_error("REG_CHECKER", $sformatf("TX request timeout: tag=%0d, addr=0x%06h, elapsed=%.1fns", 
+                                                tag, tx_outstanding_requests[tag].addr, 
+                                                (current_time - tx_outstanding_requests[tag].req_time)/1ns))
+            tx_timeout_errors++;
+            tx_tag_in_use[tag] = 0; // Clear timed-out request
+          end
+        end
+      end
+      
+      // Check RX-initiated request timeouts
+      for (int tag = 0; tag < 32; tag++) begin
+        if (rx_tag_in_use[tag]) begin
+          if ((current_time - rx_outstanding_requests[tag].req_time) > (timeout_ns * 1ns)) begin
+            `uvm_error("REG_CHECKER", $sformatf("RX request timeout: tag=%0d, addr=0x%06h, elapsed=%.1fns", 
+                                                tag, rx_outstanding_requests[tag].addr, 
+                                                (current_time - rx_outstanding_requests[tag].req_time)/1ns))
+            rx_timeout_errors++;
+            rx_tag_in_use[tag] = 0; // Clear timed-out request
           end
         end
       end
@@ -359,60 +474,102 @@ class ucie_sb_reg_access_checker extends uvm_component;
   // STATISTICS AND REPORTING
   //=============================================================================
   
-  virtual function void update_timing_statistics(realtime response_time);
-    total_response_time += response_time;
+  virtual function void update_tx_timing_statistics(realtime response_time);
+    tx_total_response_time += response_time;
     
-    if (matched_transactions == 1) begin
-      min_response_time = response_time;
-      max_response_time = response_time;
+    if (tx_matched_transactions == 1) begin
+      tx_min_response_time = response_time;
+      tx_max_response_time = response_time;
     end else begin
-      if (response_time < min_response_time) min_response_time = response_time;
-      if (response_time > max_response_time) max_response_time = response_time;
+      if (response_time < tx_min_response_time) tx_min_response_time = response_time;
+      if (response_time > tx_max_response_time) tx_max_response_time = response_time;
+    end
+  endfunction
+  
+  virtual function void update_rx_timing_statistics(realtime response_time);
+    rx_total_response_time += response_time;
+    
+    if (rx_matched_transactions == 1) begin
+      rx_min_response_time = response_time;
+      rx_max_response_time = response_time;
+    end else begin
+      if (response_time < rx_min_response_time) rx_min_response_time = response_time;
+      if (response_time > rx_max_response_time) rx_max_response_time = response_time;
     end
   endfunction
   
   virtual function void print_statistics();
-    realtime avg_response_time;
+    realtime tx_avg_response_time, rx_avg_response_time;
     
     if (!enable_statistics) return;
     
-    `uvm_info("REG_CHECKER", "=== Register Access Checker Statistics ===", UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("TX transactions queued: %0d", tx_transactions_queued), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("RX transactions queued: %0d", rx_transactions_queued), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Max TX FIFO depth: %0d", max_tx_fifo_depth), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Max RX FIFO depth: %0d", max_rx_fifo_depth), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Current TX FIFO depth: %0d", tx_fifo.size()), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Current RX FIFO depth: %0d", rx_fifo.size()), UVM_LOW)
-    `uvm_info("REG_CHECKER", "---", UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Requests sent: %0d", requests_sent), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Completions received: %0d", completions_received), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Matched transactions: %0d", matched_transactions), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Tag mismatches: %0d", tag_mismatches), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Timeout errors: %0d", timeout_errors), UVM_LOW)
-    `uvm_info("REG_CHECKER", $sformatf("Protocol errors: %0d", protocol_errors), UVM_LOW)
+    `uvm_info("REG_CHECKER", "=== Bidirectional Register Access Checker Statistics ===", UVM_LOW)
+    `uvm_info("REG_CHECKER", "FIFO Statistics:", UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  TX transactions queued: %0d", tx_transactions_queued), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  RX transactions queued: %0d", rx_transactions_queued), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Max TX FIFO depth: %0d", max_tx_fifo_depth), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Max RX FIFO depth: %0d", max_rx_fifo_depth), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Current TX FIFO depth: %0d", tx_fifo.size()), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Current RX FIFO depth: %0d", rx_fifo.size()), UVM_LOW)
     
-    if (matched_transactions > 0) begin
-      avg_response_time = total_response_time / matched_transactions;
-      `uvm_info("REG_CHECKER", $sformatf("Response time - Min: %.1fns, Max: %.1fns, Avg: %.1fns", 
-                                         min_response_time/1ns, max_response_time/1ns, avg_response_time/1ns), UVM_LOW)
+    `uvm_info("REG_CHECKER", "TX→RX Flow Statistics:", UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  TX requests sent: %0d", tx_requests_sent), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  RX completions received: %0d", tx_completions_received), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Matched transactions: %0d", tx_matched_transactions), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Tag mismatches: %0d", tx_tag_mismatches), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Timeout errors: %0d", tx_timeout_errors), UVM_LOW)
+    
+    if (tx_matched_transactions > 0) begin
+      tx_avg_response_time = tx_total_response_time / tx_matched_transactions;
+      `uvm_info("REG_CHECKER", $sformatf("  Response time - Min: %.1fns, Max: %.1fns, Avg: %.1fns", 
+                                         tx_min_response_time/1ns, tx_max_response_time/1ns, tx_avg_response_time/1ns), UVM_LOW)
     end
     
-    `uvm_info("REG_CHECKER", "==========================================", UVM_LOW)
+    `uvm_info("REG_CHECKER", "RX→TX Flow Statistics:", UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  RX requests sent: %0d", rx_requests_sent), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  TX completions received: %0d", rx_completions_received), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Matched transactions: %0d", rx_matched_transactions), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Tag mismatches: %0d", rx_tag_mismatches), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Timeout errors: %0d", rx_timeout_errors), UVM_LOW)
+    
+    if (rx_matched_transactions > 0) begin
+      rx_avg_response_time = rx_total_response_time / rx_matched_transactions;
+      `uvm_info("REG_CHECKER", $sformatf("  Response time - Min: %.1fns, Max: %.1fns, Avg: %.1fns", 
+                                         rx_min_response_time/1ns, rx_max_response_time/1ns, rx_avg_response_time/1ns), UVM_LOW)
+    end
+    
+    `uvm_info("REG_CHECKER", $sformatf("Protocol errors: %0d", protocol_errors), UVM_LOW)
+    `uvm_info("REG_CHECKER", "========================================================", UVM_LOW)
   endfunction
   
   virtual function void check_outstanding_requests();
-    int outstanding_count = 0;
+    int tx_outstanding_count = 0;
+    int rx_outstanding_count = 0;
     
+    // Check TX-initiated outstanding requests
     for (int tag = 0; tag < 32; tag++) begin
-      if (tag_in_use[tag]) begin
-        outstanding_count++;
-        `uvm_warning("REG_CHECKER", $sformatf("Outstanding request at end of test: tag=%0d, addr=0x%06h", 
-                                              tag, outstanding_requests[tag].addr))
+      if (tx_tag_in_use[tag]) begin
+        tx_outstanding_count++;
+        `uvm_warning("REG_CHECKER", $sformatf("Outstanding TX request at end of test: tag=%0d, addr=0x%06h", 
+                                              tag, tx_outstanding_requests[tag].addr))
       end
     end
     
-    if (outstanding_count > 0) begin
-      `uvm_error("REG_CHECKER", $sformatf("%0d requests remain outstanding at end of test", outstanding_count))
+    // Check RX-initiated outstanding requests
+    for (int tag = 0; tag < 32; tag++) begin
+      if (rx_tag_in_use[tag]) begin
+        rx_outstanding_count++;
+        `uvm_warning("REG_CHECKER", $sformatf("Outstanding RX request at end of test: tag=%0d, addr=0x%06h", 
+                                              tag, rx_outstanding_requests[tag].addr))
+      end
+    end
+    
+    if (tx_outstanding_count > 0) begin
+      `uvm_error("REG_CHECKER", $sformatf("%0d TX requests remain outstanding at end of test", tx_outstanding_count))
+    end
+    
+    if (rx_outstanding_count > 0) begin
+      `uvm_error("REG_CHECKER", $sformatf("%0d RX requests remain outstanding at end of test", rx_outstanding_count))
     end
   endfunction
   
@@ -431,20 +588,34 @@ class ucie_sb_reg_access_checker extends uvm_component;
   endfunction
   
   virtual function void reset_statistics();
-    requests_sent = 0;
-    completions_received = 0;
-    matched_transactions = 0;
-    tag_mismatches = 0;
-    timeout_errors = 0;
+    // TX-initiated statistics
+    tx_requests_sent = 0;
+    tx_completions_received = 0;
+    tx_matched_transactions = 0;
+    tx_tag_mismatches = 0;
+    tx_timeout_errors = 0;
+    tx_total_response_time = 0;
+    tx_min_response_time = 0;
+    tx_max_response_time = 0;
+    
+    // RX-initiated statistics
+    rx_requests_sent = 0;
+    rx_completions_received = 0;
+    rx_matched_transactions = 0;
+    rx_tag_mismatches = 0;
+    rx_timeout_errors = 0;
+    rx_total_response_time = 0;
+    rx_min_response_time = 0;
+    rx_max_response_time = 0;
+    
+    // General statistics
     protocol_errors = 0;
     tx_transactions_queued = 0;
     rx_transactions_queued = 0;
     max_tx_fifo_depth = 0;
     max_rx_fifo_depth = 0;
-    total_response_time = 0;
-    min_response_time = 0;
-    max_response_time = 0;
-    `uvm_info("REG_CHECKER", "Statistics reset", UVM_LOW)
+    
+    `uvm_info("REG_CHECKER", "Bidirectional statistics reset", UVM_LOW)
   endfunction
   
   //=============================================================================
