@@ -38,9 +38,8 @@ class ucie_sb_model extends uvm_component;
   // Configuration
   ucie_sb_config cfg;
   
-  // TLM FIFOs for communication
+  // TLM FIFO for communication
   uvm_tlm_analysis_fifo #(ucie_sb_transaction) rx_fifo;
-  uvm_tlm_analysis_fifo #(ucie_sb_transaction) tx_fifo;
   
   // Control and status
   bit enable_initial_flow = 1;
@@ -49,10 +48,6 @@ class ucie_sb_model extends uvm_component;
   bit initial_flow_timeout = 0;
   bit initial_flow_error = 0;
   
-  // Timing parameters
-  real timeout_8ms = 8_000_000.0;  // 8ms in ns
-  real clock_pattern_period = 1250.0;  // 800MHz period in ns
-  
   //=============================================================================
   // SIDEBAND INITIAL FLOW STATES
   //=============================================================================
@@ -60,10 +55,8 @@ class ucie_sb_model extends uvm_component;
   typedef enum {
     IDLE,
     SEND_CLOCK_PATTERN,
-    DETECT_CLOCK_PATTERN,
     CLOCK_PATTERN_FOUND,
     SEND_SBINIT_OOR,
-    WAIT_SBINIT_OOR,
     SEND_SBINIT_DONE_REQ,
     WAIT_SBINIT_DONE_RSP,
     SEND_SBINIT_DONE_RSP,
@@ -77,7 +70,6 @@ class ucie_sb_model extends uvm_component;
   
   // Internal counters and flags
   int clock_pattern_count = 0;
-  int remaining_clock_patterns = 4;
   bit two_clock_patterns_detected = 0;
   bit sbinit_oor_received = 0;
   bit sbinit_done_req_received = 0;
@@ -90,7 +82,6 @@ class ucie_sb_model extends uvm_component;
   time current_time;
   
   // Events
-  event clock_pattern_detected_event;
   event sbinit_oor_received_event;
   event sbinit_done_req_received_event;
   event sbinit_done_rsp_received_event;
@@ -103,9 +94,8 @@ class ucie_sb_model extends uvm_component;
   function new(string name = "ucie_sb_model", uvm_component parent = null);
     super.new(name, parent);
     
-    // Create FIFOs
+    // Create FIFO
     rx_fifo = new("rx_fifo", this);
-    tx_fifo = new("tx_fifo", this);
   endfunction
   
   //=============================================================================
@@ -252,7 +242,7 @@ class ucie_sb_model extends uvm_component;
         while (current_state == SEND_CLOCK_PATTERN) begin
           clock_pattern_trans = create_clock_pattern_transaction();
           send_transaction(clock_pattern_trans);
-          #clock_pattern_period;
+          #(cfg.clock_pattern_period * 1ns);
         end
       end
       
@@ -277,12 +267,12 @@ class ucie_sb_model extends uvm_component;
   virtual task send_remaining_clock_patterns_task();
     ucie_sb_transaction clock_pattern_trans;
     
-    `uvm_info("SB_MODEL", $sformatf("Sending %0d remaining clock patterns", remaining_clock_patterns), UVM_MEDIUM)
+    `uvm_info("SB_MODEL", $sformatf("Sending %0d remaining clock patterns", cfg.remaining_clock_patterns), UVM_MEDIUM)
     
-    for (int i = 0; i < remaining_clock_patterns; i++) begin
+    for (int i = 0; i < cfg.remaining_clock_patterns; i++) begin
       clock_pattern_trans = create_clock_pattern_transaction();
       send_transaction(clock_pattern_trans);
-      #clock_pattern_period;
+      #(cfg.clock_pattern_period * 1ns);
     end
     
     current_state = SEND_SBINIT_OOR;
@@ -301,7 +291,7 @@ class ucie_sb_model extends uvm_component;
         while (current_state == SEND_SBINIT_OOR) begin
           sbinit_oor_trans = create_sbinit_oor_transaction();
           send_transaction(sbinit_oor_trans);
-          #1000ns; // Send every 1us
+          #(cfg.sbinit_message_period * 1ns);
         end
       end
       
@@ -404,9 +394,8 @@ class ucie_sb_model extends uvm_component;
             clock_pattern_count++;
             `uvm_info("SB_MODEL", $sformatf("Clock pattern detected (count=%0d)", clock_pattern_count), UVM_HIGH)
             
-            if (clock_pattern_count >= 2) begin
+            if (clock_pattern_count >= cfg.required_pattern_detections) begin
               two_clock_patterns_detected = 1;
-              ->clock_pattern_detected_event;
             end
           end
         end
@@ -439,9 +428,9 @@ class ucie_sb_model extends uvm_component;
   
   virtual task timeout_monitor();
     forever begin
-      #(timeout_8ms * 1ns);
+      #(cfg.timeout_8ms * 1ns);
       current_time = $time;
-      if ((current_time - start_time) >= (timeout_8ms * 1ns)) begin
+      if ((current_time - start_time) >= (cfg.timeout_8ms * 1ns)) begin
         if (current_state == SEND_CLOCK_PATTERN || current_state == SEND_SBINIT_OOR) begin
           `uvm_warning("SB_MODEL", $sformatf("Timeout in state %s", state_name))
           ->timeout_event;
@@ -569,7 +558,6 @@ class ucie_sb_model extends uvm_component;
     initial_flow_timeout = 0;
     initial_flow_error = 0;
     clock_pattern_count = 0;
-    remaining_clock_patterns = 4;
     two_clock_patterns_detected = 0;
     sbinit_oor_received = 0;
     sbinit_done_req_received = 0;
