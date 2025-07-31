@@ -1,10 +1,10 @@
-# Sideband UVM Agent Implementation
+# UCIe Sideband UVM Agent Implementation
 
-This repository contains a comprehensive UVM agent implementation for the UCIe (Universal Chiplet Interconnect Express) ucie_sb protocol using SystemVerilog and UVM 1.2 library.
+This repository contains a comprehensive UVM agent implementation for the UCIe (Universal Chiplet Interconnect Express) sideband protocol using SystemVerilog and UVM 1.2 library.
 
 ## Overview
 
-The ucie_sb agent implements the UCIe ucie_sb transmission protocol as specified in Section 4.1.5 and Chapter 7.0 of the UCIe specification. It supports serial data transmission with proper packet formatting, timing, and protocol compliance.
+The UCIe sideband agent implements the UCIe sideband transmission protocol as specified in Section 4.1.5 and Chapter 7.0 of the UCIe specification. It supports serial data transmission with proper packet formatting, timing, and protocol compliance.
 
 ### Key Protocol Features
 
@@ -17,43 +17,43 @@ The ucie_sb agent implements the UCIe ucie_sb transmission protocol as specified
 
 ## Key Features
 
-- **UCIe Compliant**: Implements UCIe 1.1 ucie_sb protocol specification
+- **UCIe Compliant**: Implements UCIe 1.1 sideband protocol specification
 - **Source-Synchronous**: Driver generates both clock and data per transaction (true UCIe behavior)
 - **Separate TX/RX Paths**: Full-duplex communication with independent clock domains
-- **19 Opcode Support**: All UCIe ucie_sb opcodes (Register Access, Messages, Management, Completions)
+- **19 Opcode Support**: All UCIe sideband opcodes (Register Access, Messages, Management, Completions)
 - **Comprehensive Validation**: Built-in protocol checking and error detection
 - **Modular Design**: Clean separation of transaction, sequences, driver, monitor, and agent
 - **Multi-Simulator Support**: Works with VCS, Questa, and Xcelium
-- **Configurable Timing**: Adjustable clock frequencies, duty cycles, setup/hold times, and gap cycles
+- **Configurable Timing**: Adjustable clock frequencies, duty cycles, and gap cycles
 
 ## Source-Synchronous Operation
 
-The UCIe ucie_sb protocol is **source-synchronous**, meaning the transmitter generates both the clock and data signals. This is different from system-synchronous protocols where a common clock is shared.
+The UCIe sideband protocol is **source-synchronous**, meaning the transmitter generates both the clock and data signals. This is different from system-synchronous protocols where a common clock is shared.
 
 ### How It Works
 
-1. **Idle State**: Both `sbtx_clk` and `sbtx_data` are low when no transmission is active
+1. **Idle State**: Both `SBTX_CLK` and `SBTX_DATA` are low when no transmission is active
 2. **Transaction Start**: Driver receives a UVM transaction from the sequencer
 3. **Clock Generation**: Driver generates the clock signal along with data for each bit
-4. **Data Transmission**: Each bit is transmitted with proper setup/hold timing relative to the clock
-5. **Gap Period**: After each packet, both clock and data return to low for minimum 32 clock cycles
+4. **Data Transmission**: Each bit is driven at the positive edge of the clock
+5. **Gap Period**: After each packet, both clock and data remain low for minimum 32 clock cycles
 
-### Timing Example (800MHz)
+### Timing Implementation (Updated)
 
 ```
 Clock:  ___/‾\__/‾\__/‾\__/‾\__________________________
 Data:   _____|B0|_|B1|_|B2|_|B3|________________________
-        <-setup->    <-hold->
         
-        |<-1.25ns->|<-1.25ns->|     |<-- 40ns Gap -->|
+        |<-low->|<-high->|     |<-- Gap Period -->|
 ```
 
-**Note**: At 800MHz, each bit period is 1.25ns with minimum 32-cycle gap (40ns)
+**Key Changes**: Data is now driven exactly at the positive edge of the clock without setup time, providing precise timing control.
 
 ### 800MHz Timing Considerations
 
 - **Bit Period**: 1.25ns (very fast - requires careful timing)
-- **Setup/Hold**: Typically 100-200ps (configurable)
+- **Clock Low Time**: 0.625ns (50% duty cycle)
+- **Clock High Time**: 0.625ns (50% duty cycle)
 - **Gap Duration**: 40ns minimum (32 × 1.25ns)
 - **64-bit Packet**: 80ns transmission time (64 × 1.25ns)
 - **Total Transaction**: ~120ns (packet + gap)
@@ -65,9 +65,9 @@ Data:   _____|B0|_|B1|_|B2|_|B3|________________________
 The agent follows standard UVM methodology and includes:
 
 - **`ucie_sb_transaction`**: Transaction item with all packet fields and constraints
-- **`ucie_sb_driver`**: Converts transactions to serial bit stream
+- **`ucie_sb_driver`**: Converts transactions to serial bit stream with precise timing
 - **`ucie_sb_monitor`**: Captures serial data and reconstructs transactions
-- **`ucie_sb_sequencer`**: Controls sequence execution
+- **`ucie_sb_sequencer`**: Controls sequence execution (extends uvm_sequencer)
 - **`ucie_sb_agent`**: Container that manages all components
 - **Sequences**: Pre-built sequences for different traffic patterns
 
@@ -96,15 +96,26 @@ Based on UCIe Table 7-1 opcode encodings:
 | 11000b | Management Port Message with Data | 64-bit Data |
 | 11001b | Completion with 64b Data | 64-bit Data |
 | 11011b | Message with 64b Data | 64-bit Data |
+| 11111b | Clock Pattern | Special Pattern |
 
 ## File Structure
 
 ```
-├── ucie_sb_pkg.sv           # Main UVM agent package
-├── ucie_sb_interface.sv     # SystemVerilog interface with protocol assertions
-├── ucie_sb_testbench.sv     # Complete testbench with multiple test scenarios
-├── ucie_sb_Makefile         # Build system with multi-simulator support
-└── ucie_sb_README.md        # This documentation
+├── ucie_sb_pkg.sv                           # Main UVM agent package
+├── ucie_sb_interface.sv                     # SystemVerilog interface with protocol signals
+├── ucie_sb_transaction.sv                   # Transaction class with packet fields
+├── ucie_sb_sequences.sv                     # Pre-built sequence library
+├── ucie_sb_driver.sv                        # Driver with source-synchronous timing
+├── ucie_sb_monitor.sv                       # Monitor for protocol checking
+├── ucie_sb_sequencer.sv                     # Sequencer component
+├── ucie_sb_agent.sv                         # Top-level agent container
+├── ucie_sb_testbench.sv                     # Complete testbench
+├── ucie_sb_clock_pattern_example.sv         # Clock pattern sequence example
+├── ucie_sb_source_sync_example.sv           # Source-synchronous timing example
+├── ucie_sb_transaction_extern_example.sv    # External method example
+├── ucie_sb_files.f                          # File list for compilation
+├── ucie_sb_Makefile                         # Build system with multi-simulator support
+└── ucie_sb_README.md                        # This documentation
 ```
 
 ## Transaction Fields
@@ -190,6 +201,14 @@ cfg_seq.randomize() with {
   num_writes == 3;
   use_64bit == 1'b0;
 };
+```
+
+### Clock Pattern Sequence
+
+```systemverilog
+// Clock pattern sequence for initialization
+ucie_sb_clock_pattern_seq clk_seq;
+clk_seq.start(agent.sequencer);
 ```
 
 ## Usage Examples
@@ -287,7 +306,8 @@ make coverage
 
 - **Serial Transmission**: Each packet transmitted as 64 consecutive bits
 - **Minimum Gap**: 32 clock cycles low between packets
-- **Clock Domain**: Separate ucie_sb clock (typically higher frequency)
+- **Clock Domain**: Separate sideband clock (typically higher frequency)
+- **Data Timing**: Data driven at positive edge of clock without setup time
 
 ### Error Checking
 
@@ -437,7 +457,16 @@ This implementation follows:
 - ✅ Proper address alignment constraints
 - ✅ Parity calculation and checking
 - ✅ Byte enable handling for 32-bit vs 64-bit operations
+- ✅ Source-synchronous clock generation
+- ✅ Data driven at positive edge without setup time
+
+## Recent Updates
+
+### Driver Timing Enhancement
+- Modified `drive_packet_with_clock` function to drive data at positive edge without setup time
+- Simplified timing logic for more predictable behavior
+- Maintained 800MHz operation with precise clock control
 
 ## License
 
-This code is provided as an educational example of UCIe ucie_sb protocol implementation using SystemVerilog and UVM 1.2 library.
+This code is provided as an educational example of UCIe sideband protocol implementation using SystemVerilog and UVM 1.2 library.
