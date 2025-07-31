@@ -381,7 +381,7 @@ function void ucie_sb_transaction::update_packet_info();
     
     // Clock Pattern Operation
     CLOCK_PATTERN: begin
-      pkt_type = MESSAGE;
+      pkt_type = PKT_CLOCK_PATTERN;
       has_data = 0;        // Clock pattern has NO data payload
       is_64bit = 0;        // Clock pattern header only
       is_clock_pattern = 1;
