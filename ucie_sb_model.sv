@@ -38,10 +38,6 @@ class ucie_sb_model extends uvm_component;
   // Configuration
   ucie_sb_config cfg;
   
-  // Analysis ports for monitoring
-  uvm_analysis_port #(ucie_sb_transaction) tx_analysis_port;
-  uvm_analysis_port #(ucie_sb_transaction) rx_analysis_port;
-  
   // TLM FIFOs for communication
   uvm_tlm_analysis_fifo #(ucie_sb_transaction) rx_fifo;
   uvm_tlm_analysis_fifo #(ucie_sb_transaction) tx_fifo;
@@ -107,10 +103,6 @@ class ucie_sb_model extends uvm_component;
   function new(string name = "ucie_sb_model", uvm_component parent = null);
     super.new(name, parent);
     
-    // Create analysis ports
-    tx_analysis_port = new("tx_analysis_port", this);
-    rx_analysis_port = new("rx_analysis_port", this);
-    
     // Create FIFOs
     rx_fifo = new("rx_fifo", this);
     tx_fifo = new("tx_fifo", this);
@@ -152,8 +144,7 @@ class ucie_sb_model extends uvm_component;
   virtual function void connect_phase(uvm_phase phase);
     super.connect_phase(phase);
     
-    // Connect agent monitor to analysis port and FIFO
-    sb_agent.ap.connect(rx_analysis_port);
+    // Connect agent monitor to FIFO
     sb_agent.ap.connect(rx_fifo.analysis_export);
     
     `uvm_info("SB_MODEL", "Sideband model connected", UVM_LOW)
