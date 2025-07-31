@@ -7,7 +7,7 @@
 // DESCRIPTION:
 //   UCIe sideband interface defining the source-synchronous serial communication
 //   signals for the UCIe sideband protocol. Supports separate TX and RX paths
-//   with proper modports for driver and monitor access.
+//   for driver and monitor access.
 //
 // SIGNALS:
 //   - SBTX_CLK/SBRX_CLK: Source-synchronous clocks (800MHz)
@@ -35,27 +35,7 @@ interface ucie_sb_interface(input logic clk, input logic reset);
   // Control signals
   logic sb_reset;   // Active-high reset
   
-  //=============================================================================
-  // MODPORTS
-  //=============================================================================
-  
-  // Driver modport - can drive TX signals, read RX signals
-  modport driver (
-    output SBTX_CLK,
-    output SBTX_DATA,
-    input  SBRX_CLK,
-    input  SBRX_DATA,
-    input  sb_reset
-  );
-  
-  // Monitor modport - can read all signals
-  modport monitor (
-    input SBTX_CLK,
-    input SBTX_DATA,
-    input SBRX_CLK,
-    input SBRX_DATA,
-    input sb_reset
-  );
+
   
   //=============================================================================
   // ASSERTIONS
