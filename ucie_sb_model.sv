@@ -465,8 +465,9 @@ class ucie_sb_model extends uvm_component;
     trans.srcid = cfg.srcid;
     trans.dstid = cfg.dstid;
     trans.tag = 5'h0;
-    trans.addr = 24'hAAAAAA; // Alternating pattern
-    trans.data = 32'h55555555; // Alternating pattern
+    trans.addr = cfg.clock_pattern_addr; // Use configured pattern address
+    trans.data = cfg.clock_pattern_data; // Use configured pattern data
+    trans.is_clock_pattern = 1; // Mark as clock pattern transaction
     
     return trans;
   endfunction
@@ -482,6 +483,7 @@ class ucie_sb_model extends uvm_component;
     trans.tag = 5'h10; // Special tag for SBINIT OOR
     trans.addr = 24'h000010; // SBINIT OOR message type
     trans.data = 32'h00000001; // Result = 4'h1
+    trans.is_clock_pattern = 0; // Not a clock pattern transaction
     
     return trans;
   endfunction
@@ -496,6 +498,7 @@ class ucie_sb_model extends uvm_component;
     trans.tag = 5'h11; // Special tag for SBINIT Done Req
     trans.addr = 24'h000011; // SBINIT Done Req message type
     trans.data = 32'h00000000; // No specific result for req
+    trans.is_clock_pattern = 0; // Not a clock pattern transaction
     
     return trans;
   endfunction
@@ -510,6 +513,7 @@ class ucie_sb_model extends uvm_component;
     trans.tag = 5'h12; // Special tag for SBINIT Done Rsp
     trans.addr = 24'h000012; // SBINIT Done Rsp message type
     trans.data = 32'h00000000; // No specific result for rsp
+    trans.is_clock_pattern = 0; // Not a clock pattern transaction
     
     return trans;
   endfunction
@@ -519,8 +523,8 @@ class ucie_sb_model extends uvm_component;
   //=============================================================================
   
   virtual function bit is_clock_pattern(ucie_sb_transaction trans);
-    // Simple clock pattern detection based on alternating data pattern
-    return (trans.addr == 24'hAAAAAA && trans.data == 32'h55555555);
+    // Check the is_clock_pattern field in the transaction
+    return trans.is_clock_pattern;
   endfunction
   
   virtual function bit is_sbinit_oor_message(ucie_sb_transaction trans);
