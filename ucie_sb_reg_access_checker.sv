@@ -32,6 +32,10 @@ class ucie_sb_reg_access_checker extends uvm_component;
   uvm_analysis_imp_tx #(ucie_sb_transaction, ucie_sb_reg_access_checker) tx_imp;
   uvm_analysis_imp_rx #(ucie_sb_transaction, ucie_sb_reg_access_checker) rx_imp;
   
+  // FIFOs for buffering transactions from TX and RX sides
+  uvm_tlm_analysis_fifo #(ucie_sb_transaction) tx_fifo;
+  uvm_tlm_analysis_fifo #(ucie_sb_transaction) rx_fifo;
+  
   // Configuration parameters
   bit enable_checking = 1;
   bit enable_timeout_check = 1;
@@ -60,6 +64,10 @@ class ucie_sb_reg_access_checker extends uvm_component;
   int tag_mismatches = 0;
   int timeout_errors = 0;
   int protocol_errors = 0;
+  int tx_transactions_queued = 0;
+  int rx_transactions_queued = 0;
+  int max_tx_fifo_depth = 0;
+  int max_rx_fifo_depth = 0;
   
   // Timing tracking
   realtime total_response_time = 0;
@@ -90,7 +98,11 @@ class ucie_sb_reg_access_checker extends uvm_component;
     tx_imp = new("tx_imp", this);
     rx_imp = new("rx_imp", this);
     
-    `uvm_info("REG_CHECKER", "Register access checker built", UVM_LOW)
+    // Create FIFOs for buffering transactions
+    tx_fifo = new("tx_fifo", this);
+    rx_fifo = new("rx_fifo", this);
+    
+    `uvm_info("REG_CHECKER", "Register access checker built with FIFOs", UVM_LOW)
   endfunction
   
   virtual function void end_of_elaboration_phase(uvm_phase phase);
@@ -101,11 +113,18 @@ class ucie_sb_reg_access_checker extends uvm_component;
   endfunction
   
   virtual task run_phase(uvm_phase phase);
-    if (enable_timeout_check) begin
-      fork
+    fork
+      // Process TX transactions from FIFO
+      tx_processor();
+      
+      // Process RX transactions from FIFO  
+      rx_processor();
+      
+      // Timeout monitoring
+      if (enable_timeout_check) begin
         timeout_monitor();
-      join_none
-    end
+      end
+    join_none
   endtask
   
   virtual function void report_phase(uvm_phase phase);
@@ -118,25 +137,73 @@ class ucie_sb_reg_access_checker extends uvm_component;
   // ANALYSIS IMPORT IMPLEMENTATIONS
   //=============================================================================
   
-  // TX side analysis - monitor register access requests
+  // TX side analysis - put transactions into FIFO for asynchronous processing
   virtual function void write_tx(ucie_sb_transaction trans);
     if (!enable_checking) return;
     
-    // Check if this is a register access request
-    if (is_register_access_request(trans)) begin
-      process_request(trans);
+    // Put all TX transactions into FIFO (filtering done in processor)
+    tx_fifo.analysis_export.write(trans);
+    tx_transactions_queued++;
+    
+    // Track maximum FIFO depth
+    if (tx_fifo.size() > max_tx_fifo_depth) begin
+      max_tx_fifo_depth = tx_fifo.size();
     end
+    
+    `uvm_info("REG_CHECKER", $sformatf("TX transaction queued: opcode=%s, tag=%0d, fifo_depth=%0d", 
+                                       trans.opcode.name(), trans.tag, tx_fifo.size()), UVM_DEBUG)
   endfunction
   
-  // RX side analysis - monitor completions
+  // RX side analysis - put transactions into FIFO for asynchronous processing
   virtual function void write_rx(ucie_sb_transaction trans);
     if (!enable_checking) return;
     
-    // Check if this is a completion
-    if (is_completion(trans)) begin
-      process_completion(trans);
+    // Put all RX transactions into FIFO (filtering done in processor)
+    rx_fifo.analysis_export.write(trans);
+    rx_transactions_queued++;
+    
+    // Track maximum FIFO depth
+    if (rx_fifo.size() > max_rx_fifo_depth) begin
+      max_rx_fifo_depth = rx_fifo.size();
     end
+    
+    `uvm_info("REG_CHECKER", $sformatf("RX transaction queued: opcode=%s, tag=%0d, fifo_depth=%0d", 
+                                       trans.opcode.name(), trans.tag, rx_fifo.size()), UVM_DEBUG)
   endfunction
+  
+  //=============================================================================
+  // FIFO PROCESSORS (ASYNCHRONOUS)
+  //=============================================================================
+  
+  // TX FIFO processor - handles register access requests
+  virtual task tx_processor();
+    ucie_sb_transaction trans;
+    
+    forever begin
+      // Get transaction from TX FIFO (blocking)
+      tx_fifo.get(trans);
+      
+      // Process only register access requests
+      if (is_register_access_request(trans)) begin
+        process_request(trans);
+      end
+    end
+  endtask
+  
+  // RX FIFO processor - handles completions
+  virtual task rx_processor();
+    ucie_sb_transaction trans;
+    
+    forever begin
+      // Get transaction from RX FIFO (blocking)
+      rx_fifo.get(trans);
+      
+      // Process only completions
+      if (is_completion(trans)) begin
+        process_completion(trans);
+      end
+    end
+  endtask
   
   //=============================================================================
   // REQUEST/COMPLETION PROCESSING
@@ -310,6 +377,13 @@ class ucie_sb_reg_access_checker extends uvm_component;
     if (!enable_statistics) return;
     
     `uvm_info("REG_CHECKER", "=== Register Access Checker Statistics ===", UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("TX transactions queued: %0d", tx_transactions_queued), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("RX transactions queued: %0d", rx_transactions_queued), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("Max TX FIFO depth: %0d", max_tx_fifo_depth), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("Max RX FIFO depth: %0d", max_rx_fifo_depth), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("Current TX FIFO depth: %0d", tx_fifo.size()), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("Current RX FIFO depth: %0d", rx_fifo.size()), UVM_LOW)
+    `uvm_info("REG_CHECKER", "---", UVM_LOW)
     `uvm_info("REG_CHECKER", $sformatf("Requests sent: %0d", requests_sent), UVM_LOW)
     `uvm_info("REG_CHECKER", $sformatf("Completions received: %0d", completions_received), UVM_LOW)
     `uvm_info("REG_CHECKER", $sformatf("Matched transactions: %0d", matched_transactions), UVM_LOW)
@@ -363,10 +437,32 @@ class ucie_sb_reg_access_checker extends uvm_component;
     tag_mismatches = 0;
     timeout_errors = 0;
     protocol_errors = 0;
+    tx_transactions_queued = 0;
+    rx_transactions_queued = 0;
+    max_tx_fifo_depth = 0;
+    max_rx_fifo_depth = 0;
     total_response_time = 0;
     min_response_time = 0;
     max_response_time = 0;
     `uvm_info("REG_CHECKER", "Statistics reset", UVM_LOW)
+  endfunction
+  
+  //=============================================================================
+  // FIFO MANAGEMENT FUNCTIONS
+  //=============================================================================
+  
+  virtual function int get_tx_fifo_depth();
+    return tx_fifo.size();
+  endfunction
+  
+  virtual function int get_rx_fifo_depth();
+    return rx_fifo.size();
+  endfunction
+  
+  virtual function void flush_fifos();
+    tx_fifo.flush();
+    rx_fifo.flush();
+    `uvm_info("REG_CHECKER", "FIFOs flushed", UVM_LOW)
   endfunction
 
 endclass : ucie_sb_reg_access_checker

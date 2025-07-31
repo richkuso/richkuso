@@ -98,7 +98,11 @@ module ucie_sb_reg_checker_example;
       
       `uvm_info("REG_TEST_SEQ", $sformatf("Starting %0d register access transactions", num_transactions), UVM_LOW)
       
-      for (int i = 0; i < num_transactions; i++) begin
+      // Send multiple requests in parallel to test FIFO buffering
+      fork
+        // Send TX requests
+        begin
+          for (int i = 0; i < num_transactions; i++) begin
         // Create register read request
         req_trans = ucie_sb_transaction::type_id::create($sformatf("req_%0d", i));
         start_item(req_trans);
@@ -111,20 +115,24 @@ module ucie_sb_reg_checker_example;
         });
         finish_item(req_trans);
         
-        `uvm_info("REG_TEST_SEQ", $sformatf("Sent request %0d: tag=%0d, addr=0x%06h", 
-                                            i, req_trans.tag, req_trans.addr), UVM_MEDIUM)
-        
-        // Add some delay between requests
-        #(($urandom_range(1, 5)) * 10ns);
-        
-        // Simulate completion (in real test, this would come from DUT)
-        fork
-          begin
-            // Random delay for completion
-            #(($urandom_range(50, 200)) * 1ns);
+            `uvm_info("REG_TEST_SEQ", $sformatf("Sent request %0d: tag=%0d, addr=0x%06h", 
+                                                i, req_trans.tag, req_trans.addr), UVM_MEDIUM)
             
-            // Create matching completion
-            comp_trans = create_completion(req_trans);
+            // Add some delay between requests
+            #(($urandom_range(1, 5)) * 10ns);
+          end
+        end
+        
+        // Send RX completions in parallel (simulating simultaneous TX/RX activity)
+        begin
+          #50ns; // Start completions after some requests are sent
+          
+          for (int i = 0; i < num_transactions; i++) begin
+            // Random delay for completion
+            #(($urandom_range(20, 100)) * 1ns);
+            
+            // Create completion for request with tag i
+            comp_trans = create_completion_by_tag(i % 32);
             
             // Send completion on RX side (simulate DUT response)
             send_completion_on_rx(comp_trans);
@@ -132,11 +140,11 @@ module ucie_sb_reg_checker_example;
             `uvm_info("REG_TEST_SEQ", $sformatf("Sent completion %0d: tag=%0d", 
                                                 i, comp_trans.tag), UVM_MEDIUM)
           end
-        join_none
-      end
+        end
+      join
       
-      // Wait for all completions
-      #1000ns;
+      // Wait for FIFO processing to complete
+      #500ns;
       
       `uvm_info("REG_TEST_SEQ", "Register access test sequence completed", UVM_LOW)
     endtask
@@ -153,6 +161,23 @@ module ucie_sb_reg_checker_example;
       comp.status = 16'h0000; // Success
       comp.has_data = 1; // Read completion has data
       comp.is_64bit = req.is_64bit;
+      comp.data = $urandom_range(0, 64'hFFFFFFFFFFFFFFFF); // Random data
+      
+      return comp;
+    endfunction
+    
+    virtual function ucie_sb_transaction create_completion_by_tag(bit [4:0] tag);
+      ucie_sb_transaction comp = ucie_sb_transaction::type_id::create("completion");
+      
+      // Create completion with specific tag
+      comp.opcode = ($urandom_range(0, 1)) ? COMPLETION_64B : COMPLETION_32B;
+      comp.pkt_type = PKT_COMPLETION;
+      comp.tag = tag;
+      comp.srcid = 3'b000; // Local die (responder)
+      comp.dstid = 3'b001; // D2D Adapter (requester)
+      comp.status = 16'h0000; // Success
+      comp.has_data = 1; // Read completion has data
+      comp.is_64bit = (comp.opcode == COMPLETION_64B);
       comp.data = $urandom_range(0, 64'hFFFFFFFFFFFFFFFF); // Random data
       
       return comp;
