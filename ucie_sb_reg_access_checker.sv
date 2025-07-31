@@ -13,14 +13,15 @@
 // FEATURES:
 //   - Bidirectional request-completion tracking (TX↔RX)
 //   - Separate tracking for TX-initiated and RX-initiated transactions
-//   - Tag-based matching with direction awareness
+//   - Tag-based matching with direction awareness (when TAG support enabled)
+//   - Non-TAG mode with blocking behavior (when TAG support disabled)
 //   - Validates proper source/destination swapping for both directions
 //   - Timeout detection for missing completions
 //   - Comprehensive statistics for both directions
 //   - FIFO buffering for concurrent transaction handling
 //
 // AUTHOR: UCIe Sideband UVM Agent
-// VERSION: 2.0 - Bidirectional Support
+// VERSION: 3.0 - TAG/Non-TAG Mode Support
 //=============================================================================
 
 class ucie_sb_reg_access_checker extends uvm_component;
@@ -43,6 +44,7 @@ class ucie_sb_reg_access_checker extends uvm_component;
   bit enable_timeout_check = 1;
   real timeout_ns = 1000.0;  // 1us timeout for completions
   bit enable_statistics = 1;
+  bit enable_tag_support = 1;  // NEW: Enable/disable TAG functionality
   
   // Outstanding request tracking with direction awareness
   typedef struct {
@@ -65,6 +67,12 @@ class ucie_sb_reg_access_checker extends uvm_component;
   outstanding_req_t rx_outstanding_requests[32];
   bit rx_tag_in_use[32];
   
+  // Non-TAG mode tracking - only one outstanding request per direction
+  bit tx_has_outstanding_request = 0;  // NEW: For non-TAG mode blocking
+  bit rx_has_outstanding_request = 0;  // NEW: For non-TAG mode blocking
+  outstanding_req_t tx_single_outstanding_request;  // NEW: Single request tracking
+  outstanding_req_t rx_single_outstanding_request;  // NEW: Single request tracking
+  
   // Statistics - Bidirectional
   // TX-initiated flows (TX request → RX completion)
   int tx_requests_sent = 0;
@@ -72,6 +80,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
   int tx_matched_transactions = 0;
   int tx_tag_mismatches = 0;
   int tx_timeout_errors = 0;
+  int tx_tag_violations = 0;  // NEW: TAG field violations in non-TAG mode
+  int tx_blocking_violations = 0;  // NEW: Blocking violations in non-TAG mode
   
   // RX-initiated flows (RX request → TX completion)
   int rx_requests_sent = 0;
@@ -79,6 +89,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
   int rx_matched_transactions = 0;
   int rx_tag_mismatches = 0;
   int rx_timeout_errors = 0;
+  int rx_tag_violations = 0;  // NEW: TAG field violations in non-TAG mode
+  int rx_blocking_violations = 0;  // NEW: Blocking violations in non-TAG mode
   
   // General statistics
   int protocol_errors = 0;
@@ -110,6 +122,10 @@ class ucie_sb_reg_access_checker extends uvm_component;
       tx_tag_in_use[i] = 0;
       rx_tag_in_use[i] = 0;
     end
+    
+    // Initialize non-TAG mode tracking
+    tx_has_outstanding_request = 0;
+    rx_has_outstanding_request = 0;
   endfunction
   
   //=============================================================================
@@ -133,8 +149,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
   virtual function void end_of_elaboration_phase(uvm_phase phase);
     super.end_of_elaboration_phase(phase);
     
-    `uvm_info("REG_CHECKER", $sformatf("Configuration: enable_checking=%0b, timeout=%.1fns", 
-                                       enable_checking, timeout_ns), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("Configuration: enable_checking=%0b, timeout=%.1fns, tag_support=%0b", 
+                                       enable_checking, timeout_ns, enable_tag_support), UVM_LOW)
   endfunction
   
   virtual task run_phase(uvm_phase phase);
@@ -249,28 +265,62 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("Processing TX request: opcode=%s, tag=%0d, addr=0x%06h", 
                                        trans.opcode.name(), tag, trans.addr), UVM_HIGH)
     
-    // Check if tag is already in use for TX-initiated requests
-    if (tx_tag_in_use[tag]) begin
-      `uvm_error("REG_CHECKER", $sformatf("TX tag %0d already in use! Previous request not completed", tag))
+    // Validate TAG field for non-TAG mode
+    if (!enable_tag_support && tag != 4'h0) begin
+      `uvm_error("REG_CHECKER", $sformatf("TX request TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
+      tx_tag_violations++;
       protocol_errors++;
       return;
     end
     
-    // Store TX-initiated request information
-    tx_outstanding_requests[tag].req_trans = trans;
-    tx_outstanding_requests[tag].req_time = $realtime;
-    tx_outstanding_requests[tag].srcid = trans.srcid;
-    tx_outstanding_requests[tag].dstid = trans.dstid;
-    tx_outstanding_requests[tag].addr = trans.addr;
-    tx_outstanding_requests[tag].is_read = is_read_request(trans);
-    tx_outstanding_requests[tag].is_64bit = trans.is_64bit;
-    tx_outstanding_requests[tag].is_tx_initiated = 1;
-    tx_tag_in_use[tag] = 1;
-    
-    tx_requests_sent++;
-    
-    `uvm_info("REG_CHECKER", $sformatf("Stored TX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
-                                       tag, trans.srcid, trans.dstid, trans.addr, tx_outstanding_requests[tag].is_read), UVM_MEDIUM)
+    // Check if TAG support is enabled
+    if (enable_tag_support) begin
+      // Check if tag is already in use for TX-initiated requests
+      if (tx_tag_in_use[tag]) begin
+        `uvm_error("REG_CHECKER", $sformatf("TX tag %0d already in use! Previous request not completed", tag))
+        protocol_errors++;
+        return;
+      end
+      
+      // Store TX-initiated request information
+      tx_outstanding_requests[tag].req_trans = trans;
+      tx_outstanding_requests[tag].req_time = $realtime;
+      tx_outstanding_requests[tag].srcid = trans.srcid;
+      tx_outstanding_requests[tag].dstid = trans.dstid;
+      tx_outstanding_requests[tag].addr = trans.addr;
+      tx_outstanding_requests[tag].is_read = is_read_request(trans);
+      tx_outstanding_requests[tag].is_64bit = trans.is_64bit;
+      tx_outstanding_requests[tag].is_tx_initiated = 1;
+      tx_tag_in_use[tag] = 1;
+      
+      tx_requests_sent++;
+      
+      `uvm_info("REG_CHECKER", $sformatf("Stored TX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
+                                         tag, trans.srcid, trans.dstid, trans.addr, tx_outstanding_requests[tag].is_read), UVM_MEDIUM)
+    end else begin
+      // Non-TAG mode: Block if a request is already outstanding
+      if (tx_has_outstanding_request) begin
+        `uvm_error("REG_CHECKER", $sformatf("TX blocking violation: New TX request while outstanding request exists"))
+        tx_blocking_violations++;
+        return;
+      end
+      
+      // Store single outstanding request
+      tx_single_outstanding_request.req_trans = trans;
+      tx_single_outstanding_request.req_time = $realtime;
+      tx_single_outstanding_request.srcid = trans.srcid;
+      tx_single_outstanding_request.dstid = trans.dstid;
+      tx_single_outstanding_request.addr = trans.addr;
+      tx_single_outstanding_request.is_read = is_read_request(trans);
+      tx_single_outstanding_request.is_64bit = trans.is_64bit;
+      tx_single_outstanding_request.is_tx_initiated = 1;
+      tx_has_outstanding_request = 1;
+      
+      tx_requests_sent++;
+      
+      `uvm_info("REG_CHECKER", $sformatf("Stored single TX request: srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
+                                          trans.srcid, trans.dstid, trans.addr, tx_single_outstanding_request.is_read), UVM_MEDIUM)
+    end
   endfunction
   
   // RX-initiated request processing (RX sends request)
@@ -280,28 +330,62 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("Processing RX request: opcode=%s, tag=%0d, addr=0x%06h", 
                                        trans.opcode.name(), tag, trans.addr), UVM_HIGH)
     
-    // Check if tag is already in use for RX-initiated requests
-    if (rx_tag_in_use[tag]) begin
-      `uvm_error("REG_CHECKER", $sformatf("RX tag %0d already in use! Previous request not completed", tag))
+    // Validate TAG field for non-TAG mode
+    if (!enable_tag_support && tag != 4'h0) begin
+      `uvm_error("REG_CHECKER", $sformatf("RX request TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
+      rx_tag_violations++;
       protocol_errors++;
       return;
     end
     
-    // Store RX-initiated request information
-    rx_outstanding_requests[tag].req_trans = trans;
-    rx_outstanding_requests[tag].req_time = $realtime;
-    rx_outstanding_requests[tag].srcid = trans.srcid;
-    rx_outstanding_requests[tag].dstid = trans.dstid;
-    rx_outstanding_requests[tag].addr = trans.addr;
-    rx_outstanding_requests[tag].is_read = is_read_request(trans);
-    rx_outstanding_requests[tag].is_64bit = trans.is_64bit;
-    rx_outstanding_requests[tag].is_tx_initiated = 0;
-    rx_tag_in_use[tag] = 1;
-    
-    rx_requests_sent++;
-    
-    `uvm_info("REG_CHECKER", $sformatf("Stored RX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
-                                       tag, trans.srcid, trans.dstid, trans.addr, rx_outstanding_requests[tag].is_read), UVM_MEDIUM)
+    // Check if TAG support is enabled
+    if (enable_tag_support) begin
+      // Check if tag is already in use for RX-initiated requests
+      if (rx_tag_in_use[tag]) begin
+        `uvm_error("REG_CHECKER", $sformatf("RX tag %0d already in use! Previous request not completed", tag))
+        protocol_errors++;
+        return;
+      end
+      
+      // Store RX-initiated request information
+      rx_outstanding_requests[tag].req_trans = trans;
+      rx_outstanding_requests[tag].req_time = $realtime;
+      rx_outstanding_requests[tag].srcid = trans.srcid;
+      rx_outstanding_requests[tag].dstid = trans.dstid;
+      rx_outstanding_requests[tag].addr = trans.addr;
+      rx_outstanding_requests[tag].is_read = is_read_request(trans);
+      rx_outstanding_requests[tag].is_64bit = trans.is_64bit;
+      rx_outstanding_requests[tag].is_tx_initiated = 0;
+      rx_tag_in_use[tag] = 1;
+      
+      rx_requests_sent++;
+      
+      `uvm_info("REG_CHECKER", $sformatf("Stored RX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
+                                         tag, trans.srcid, trans.dstid, trans.addr, rx_outstanding_requests[tag].is_read), UVM_MEDIUM)
+    end else begin
+      // Non-TAG mode: Block if a request is already outstanding
+      if (rx_has_outstanding_request) begin
+        `uvm_error("REG_CHECKER", $sformatf("RX blocking violation: New RX request while outstanding request exists"))
+        rx_blocking_violations++;
+        return;
+      end
+      
+      // Store single outstanding request
+      rx_single_outstanding_request.req_trans = trans;
+      rx_single_outstanding_request.req_time = $realtime;
+      rx_single_outstanding_request.srcid = trans.srcid;
+      rx_single_outstanding_request.dstid = trans.dstid;
+      rx_single_outstanding_request.addr = trans.addr;
+      rx_single_outstanding_request.is_read = is_read_request(trans);
+      rx_single_outstanding_request.is_64bit = trans.is_64bit;
+      rx_single_outstanding_request.is_tx_initiated = 0;
+      rx_has_outstanding_request = 1;
+      
+      rx_requests_sent++;
+      
+      `uvm_info("REG_CHECKER", $sformatf("Stored single RX request: srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
+                                          trans.srcid, trans.dstid, trans.addr, rx_single_outstanding_request.is_read), UVM_MEDIUM)
+    end
   endfunction
   
   // TX completion processing (response to RX-initiated request)
@@ -312,30 +396,66 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("Processing TX completion (RX→TX response): tag=%0d, srcid=%0d, dstid=%0d, status=0x%04h", 
                                        tag, trans.srcid, trans.dstid, trans.status), UVM_HIGH)
     
-    // Check if tag has corresponding RX-initiated request
-    if (!rx_tag_in_use[tag]) begin
-      `uvm_error("REG_CHECKER", $sformatf("TX completion tag %0d has no corresponding RX request!", tag))
+    // Validate TAG field for non-TAG mode
+    if (!enable_tag_support && tag != 4'h0) begin
+      `uvm_error("REG_CHECKER", $sformatf("TX completion TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
+      tx_tag_violations++;
       protocol_errors++;
       return;
     end
     
-    // Validate request-completion matching
-    if (!validate_completion(trans, rx_outstanding_requests[tag])) begin
-      rx_tag_mismatches++;
-      return;
-    end
-    
-    // Calculate response time for RX-initiated request
-    response_time = $realtime - rx_outstanding_requests[tag].req_time;
-    update_rx_timing_statistics(response_time);
-    
-    // Mark RX tag as free
-    rx_tag_in_use[tag] = 0;
-    rx_completions_received++;
-    rx_matched_transactions++;
-    
-    `uvm_info("REG_CHECKER", $sformatf("Matched RX→TX completion: tag=%0d, response_time=%.1fns", 
-                                       tag, response_time/1ns), UVM_MEDIUM)
+    // Check if TAG support is enabled
+    if (enable_tag_support) begin
+      // Check if tag has corresponding RX-initiated request
+      if (!rx_tag_in_use[tag]) begin
+        `uvm_error("REG_CHECKER", $sformatf("TX completion tag %0d has no corresponding RX request!", tag))
+        protocol_errors++;
+        return;
+      end
+      
+      // Validate request-completion matching
+      if (!validate_completion(trans, rx_outstanding_requests[tag])) begin
+        rx_tag_mismatches++;
+        return;
+      end
+      
+      // Calculate response time for RX-initiated request
+      response_time = $realtime - rx_outstanding_requests[tag].req_time;
+      update_rx_timing_statistics(response_time);
+      
+      // Mark RX tag as free
+      rx_tag_in_use[tag] = 0;
+      rx_completions_received++;
+      rx_matched_transactions++;
+      
+              `uvm_info("REG_CHECKER", $sformatf("Matched RX→TX completion: tag=%0d, response_time=%.1fns", 
+                                           tag, response_time/1ns), UVM_MEDIUM)
+      end else begin
+       // Non-TAG mode: Check if there's an outstanding RX request
+       if (!rx_has_outstanding_request) begin
+         `uvm_error("REG_CHECKER", $sformatf("TX completion with no outstanding RX request in non-TAG mode!"))
+         protocol_errors++;
+         return;
+       end
+       
+       // Validate request-completion matching
+       if (!validate_completion(trans, rx_single_outstanding_request)) begin
+         rx_tag_mismatches++;
+         return;
+       end
+       
+       // Calculate response time for RX-initiated request
+       response_time = $realtime - rx_single_outstanding_request.req_time;
+       update_rx_timing_statistics(response_time);
+       
+       // Clear the single outstanding RX request
+       rx_has_outstanding_request = 0;
+       rx_completions_received++;
+       rx_matched_transactions++;
+       
+       `uvm_info("REG_CHECKER", $sformatf("Matched single RX→TX completion: response_time=%.1fns", 
+                                          response_time/1ns), UVM_MEDIUM)
+     end
   endfunction
   
   // RX completion processing (response to TX-initiated request)
@@ -346,30 +466,66 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("Processing RX completion (TX→RX response): tag=%0d, srcid=%0d, dstid=%0d, status=0x%04h", 
                                        tag, trans.srcid, trans.dstid, trans.status), UVM_HIGH)
     
-    // Check if tag has corresponding TX-initiated request
-    if (!tx_tag_in_use[tag]) begin
-      `uvm_error("REG_CHECKER", $sformatf("RX completion tag %0d has no corresponding TX request!", tag))
+    // Validate TAG field for non-TAG mode
+    if (!enable_tag_support && tag != 4'h0) begin
+      `uvm_error("REG_CHECKER", $sformatf("RX completion TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
+      rx_tag_violations++;
       protocol_errors++;
       return;
     end
     
-    // Validate request-completion matching
-    if (!validate_completion(trans, tx_outstanding_requests[tag])) begin
-      tx_tag_mismatches++;
-      return;
-    end
-    
-    // Calculate response time for TX-initiated request
-    response_time = $realtime - tx_outstanding_requests[tag].req_time;
-    update_tx_timing_statistics(response_time);
-    
-    // Mark TX tag as free
-    tx_tag_in_use[tag] = 0;
-    tx_completions_received++;
-    tx_matched_transactions++;
-    
-    `uvm_info("REG_CHECKER", $sformatf("Matched TX→RX completion: tag=%0d, response_time=%.1fns", 
-                                       tag, response_time/1ns), UVM_MEDIUM)
+    // Check if TAG support is enabled
+    if (enable_tag_support) begin
+      // Check if tag has corresponding TX-initiated request
+      if (!tx_tag_in_use[tag]) begin
+        `uvm_error("REG_CHECKER", $sformatf("RX completion tag %0d has no corresponding TX request!", tag))
+        protocol_errors++;
+        return;
+      end
+      
+      // Validate request-completion matching
+      if (!validate_completion(trans, tx_outstanding_requests[tag])) begin
+        tx_tag_mismatches++;
+        return;
+      end
+      
+      // Calculate response time for TX-initiated request
+      response_time = $realtime - tx_outstanding_requests[tag].req_time;
+      update_tx_timing_statistics(response_time);
+      
+      // Mark TX tag as free
+      tx_tag_in_use[tag] = 0;
+      tx_completions_received++;
+      tx_matched_transactions++;
+      
+              `uvm_info("REG_CHECKER", $sformatf("Matched TX→RX completion: tag=%0d, response_time=%.1fns", 
+                                           tag, response_time/1ns), UVM_MEDIUM)
+      end else begin
+       // Non-TAG mode: Check if there's an outstanding TX request
+       if (!tx_has_outstanding_request) begin
+         `uvm_error("REG_CHECKER", $sformatf("RX completion with no outstanding TX request in non-TAG mode!"))
+         protocol_errors++;
+         return;
+       end
+       
+       // Validate request-completion matching
+       if (!validate_completion(trans, tx_single_outstanding_request)) begin
+         tx_tag_mismatches++;
+         return;
+       end
+       
+       // Calculate response time for TX-initiated request
+       response_time = $realtime - tx_single_outstanding_request.req_time;
+       update_tx_timing_statistics(response_time);
+       
+       // Clear the single outstanding TX request
+       tx_has_outstanding_request = 0;
+       tx_completions_received++;
+       tx_matched_transactions++;
+       
+       `uvm_info("REG_CHECKER", $sformatf("Matched single TX→RX completion: response_time=%.1fns", 
+                                          response_time/1ns), UVM_MEDIUM)
+     end
   endfunction
   
   //=============================================================================
@@ -443,27 +599,49 @@ class ucie_sb_reg_access_checker extends uvm_component;
       current_time = $realtime;
       
       // Check TX-initiated request timeouts
-      for (int tag = 0; tag < 32; tag++) begin
-        if (tx_tag_in_use[tag]) begin
-          if ((current_time - tx_outstanding_requests[tag].req_time) > (timeout_ns * 1ns)) begin
-            `uvm_error("REG_CHECKER", $sformatf("TX request timeout: tag=%0d, addr=0x%06h, elapsed=%.1fns", 
-                                                tag, tx_outstanding_requests[tag].addr, 
-                                                (current_time - tx_outstanding_requests[tag].req_time)/1ns))
+      if (enable_tag_support) begin
+        for (int tag = 0; tag < 32; tag++) begin
+          if (tx_tag_in_use[tag]) begin
+            if ((current_time - tx_outstanding_requests[tag].req_time) > (timeout_ns * 1ns)) begin
+              `uvm_error("REG_CHECKER", $sformatf("TX request timeout: tag=%0d, addr=0x%06h, elapsed=%.1fns", 
+                                                  tag, tx_outstanding_requests[tag].addr, 
+                                                  (current_time - tx_outstanding_requests[tag].req_time)/1ns))
+              tx_timeout_errors++;
+              tx_tag_in_use[tag] = 0; // Clear timed-out request
+            end
+          end
+        end
+      end else begin
+        if (tx_has_outstanding_request) begin
+          if ((current_time - tx_single_outstanding_request.req_time) > (timeout_ns * 1ns)) begin
+            `uvm_error("REG_CHECKER", $sformatf("Single TX request timeout: elapsed=%.1fns", 
+                                                (current_time - tx_single_outstanding_request.req_time)/1ns))
             tx_timeout_errors++;
-            tx_tag_in_use[tag] = 0; // Clear timed-out request
+            tx_has_outstanding_request = 0; // Clear timed-out request
           end
         end
       end
       
       // Check RX-initiated request timeouts
-      for (int tag = 0; tag < 32; tag++) begin
-        if (rx_tag_in_use[tag]) begin
-          if ((current_time - rx_outstanding_requests[tag].req_time) > (timeout_ns * 1ns)) begin
-            `uvm_error("REG_CHECKER", $sformatf("RX request timeout: tag=%0d, addr=0x%06h, elapsed=%.1fns", 
-                                                tag, rx_outstanding_requests[tag].addr, 
-                                                (current_time - rx_outstanding_requests[tag].req_time)/1ns))
+      if (enable_tag_support) begin
+        for (int tag = 0; tag < 32; tag++) begin
+          if (rx_tag_in_use[tag]) begin
+            if ((current_time - rx_outstanding_requests[tag].req_time) > (timeout_ns * 1ns)) begin
+              `uvm_error("REG_CHECKER", $sformatf("RX request timeout: tag=%0d, addr=0x%06h, elapsed=%.1fns", 
+                                                  tag, rx_outstanding_requests[tag].addr, 
+                                                  (current_time - rx_outstanding_requests[tag].req_time)/1ns))
+              rx_timeout_errors++;
+              rx_tag_in_use[tag] = 0; // Clear timed-out request
+            end
+          end
+        end
+      end else begin
+        if (rx_has_outstanding_request) begin
+          if ((current_time - rx_single_outstanding_request.req_time) > (timeout_ns * 1ns)) begin
+            `uvm_error("REG_CHECKER", $sformatf("Single RX request timeout: elapsed=%.1fns", 
+                                                (current_time - rx_single_outstanding_request.req_time)/1ns))
             rx_timeout_errors++;
-            rx_tag_in_use[tag] = 0; // Clear timed-out request
+            rx_has_outstanding_request = 0; // Clear timed-out request
           end
         end
       end
@@ -504,6 +682,7 @@ class ucie_sb_reg_access_checker extends uvm_component;
     if (!enable_statistics) return;
     
     `uvm_info("REG_CHECKER", "=== Bidirectional Register Access Checker Statistics ===", UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("Configuration: TAG support %s", enable_tag_support ? "enabled" : "disabled"), UVM_LOW)
     `uvm_info("REG_CHECKER", "FIFO Statistics:", UVM_LOW)
     `uvm_info("REG_CHECKER", $sformatf("  TX transactions queued: %0d", tx_transactions_queued), UVM_LOW)
     `uvm_info("REG_CHECKER", $sformatf("  RX transactions queued: %0d", rx_transactions_queued), UVM_LOW)
@@ -518,6 +697,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("  Matched transactions: %0d", tx_matched_transactions), UVM_LOW)
     `uvm_info("REG_CHECKER", $sformatf("  Tag mismatches: %0d", tx_tag_mismatches), UVM_LOW)
     `uvm_info("REG_CHECKER", $sformatf("  Timeout errors: %0d", tx_timeout_errors), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Tag violations: %0d", tx_tag_violations), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Blocking violations: %0d", tx_blocking_violations), UVM_LOW)
     
     if (tx_matched_transactions > 0) begin
       tx_avg_response_time = tx_total_response_time / tx_matched_transactions;
@@ -531,6 +712,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("  Matched transactions: %0d", rx_matched_transactions), UVM_LOW)
     `uvm_info("REG_CHECKER", $sformatf("  Tag mismatches: %0d", rx_tag_mismatches), UVM_LOW)
     `uvm_info("REG_CHECKER", $sformatf("  Timeout errors: %0d", rx_timeout_errors), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Tag violations: %0d", rx_tag_violations), UVM_LOW)
+    `uvm_info("REG_CHECKER", $sformatf("  Blocking violations: %0d", rx_blocking_violations), UVM_LOW)
     
     if (rx_matched_transactions > 0) begin
       rx_avg_response_time = rx_total_response_time / rx_matched_transactions;
@@ -547,29 +730,55 @@ class ucie_sb_reg_access_checker extends uvm_component;
     int rx_outstanding_count = 0;
     
     // Check TX-initiated outstanding requests
-    for (int tag = 0; tag < 32; tag++) begin
-      if (tx_tag_in_use[tag]) begin
+    if (enable_tag_support) begin
+      for (int tag = 0; tag < 32; tag++) begin
+        if (tx_tag_in_use[tag]) begin
+          tx_outstanding_count++;
+          `uvm_warning("REG_CHECKER", $sformatf("Outstanding TX request at end of test: tag=%0d, addr=0x%06h", 
+                                                tag, tx_outstanding_requests[tag].addr))
+        end
+      end
+    end else begin
+      if (tx_has_outstanding_request) begin
         tx_outstanding_count++;
-        `uvm_warning("REG_CHECKER", $sformatf("Outstanding TX request at end of test: tag=%0d, addr=0x%06h", 
-                                              tag, tx_outstanding_requests[tag].addr))
+        `uvm_warning("REG_CHECKER", $sformatf("Outstanding single TX request at end of test: addr=0x%06h", 
+                                              tx_single_outstanding_request.addr))
       end
     end
     
     // Check RX-initiated outstanding requests
-    for (int tag = 0; tag < 32; tag++) begin
-      if (rx_tag_in_use[tag]) begin
+    if (enable_tag_support) begin
+      for (int tag = 0; tag < 32; tag++) begin
+        if (rx_tag_in_use[tag]) begin
+          rx_outstanding_count++;
+          `uvm_warning("REG_CHECKER", $sformatf("Outstanding RX request at end of test: tag=%0d, addr=0x%06h", 
+                                                tag, rx_outstanding_requests[tag].addr))
+        end
+      end
+    end else begin
+      if (rx_has_outstanding_request) begin
         rx_outstanding_count++;
-        `uvm_warning("REG_CHECKER", $sformatf("Outstanding RX request at end of test: tag=%0d, addr=0x%06h", 
-                                              tag, rx_outstanding_requests[tag].addr))
+        `uvm_warning("REG_CHECKER", $sformatf("Outstanding single RX request at end of test: addr=0x%06h", 
+                                              rx_single_outstanding_request.addr))
       end
     end
     
-    if (tx_outstanding_count > 0) begin
-      `uvm_error("REG_CHECKER", $sformatf("%0d TX requests remain outstanding at end of test", tx_outstanding_count))
-    end
-    
-    if (rx_outstanding_count > 0) begin
-      `uvm_error("REG_CHECKER", $sformatf("%0d RX requests remain outstanding at end of test", rx_outstanding_count))
+    if (enable_tag_support) begin
+      if (tx_outstanding_count > 0) begin
+        `uvm_error("REG_CHECKER", $sformatf("%0d TX requests remain outstanding at end of test", tx_outstanding_count))
+      end
+      
+      if (rx_outstanding_count > 0) begin
+        `uvm_error("REG_CHECKER", $sformatf("%0d RX requests remain outstanding at end of test", rx_outstanding_count))
+      end
+    end else begin
+      if (tx_outstanding_count > 0) begin
+        `uvm_error("REG_CHECKER", $sformatf("%0d TX requests remain outstanding at end of test", tx_outstanding_count))
+      end
+      
+      if (rx_outstanding_count > 0) begin
+        `uvm_error("REG_CHECKER", $sformatf("%0d RX requests remain outstanding at end of test", rx_outstanding_count))
+      end
     end
   endfunction
   
@@ -587,6 +796,11 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("Timeout checking %s", enable ? "enabled" : "disabled"), UVM_LOW)
   endfunction
   
+  virtual function void set_tag_support(bit enable);
+    enable_tag_support = enable;
+    `uvm_info("REG_CHECKER", $sformatf("TAG support %s", enable ? "enabled" : "disabled"), UVM_LOW)
+  endfunction
+  
   virtual function void reset_statistics();
     // TX-initiated statistics
     tx_requests_sent = 0;
@@ -594,6 +808,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
     tx_matched_transactions = 0;
     tx_tag_mismatches = 0;
     tx_timeout_errors = 0;
+    tx_tag_violations = 0;
+    tx_blocking_violations = 0;
     tx_total_response_time = 0;
     tx_min_response_time = 0;
     tx_max_response_time = 0;
@@ -604,6 +820,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
     rx_matched_transactions = 0;
     rx_tag_mismatches = 0;
     rx_timeout_errors = 0;
+    rx_tag_violations = 0;
+    rx_blocking_violations = 0;
     rx_total_response_time = 0;
     rx_min_response_time = 0;
     rx_max_response_time = 0;
@@ -614,6 +832,10 @@ class ucie_sb_reg_access_checker extends uvm_component;
     rx_transactions_queued = 0;
     max_tx_fifo_depth = 0;
     max_rx_fifo_depth = 0;
+    
+    // Reset non-TAG mode tracking
+    tx_has_outstanding_request = 0;
+    rx_has_outstanding_request = 0;
     
     `uvm_info("REG_CHECKER", "Bidirectional statistics reset", UVM_LOW)
   endfunction
