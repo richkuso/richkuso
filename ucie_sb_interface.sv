@@ -72,23 +72,27 @@ interface ucie_sb_interface(input logic clk, input logic reset);
   endproperty
   
   // UCIe minimum gap requirement: 32 UI between packets
-  // Detect end of packet (transition from data to idle)
+  // Check time between posedges: ignore <1.5 cycles, others must be ≥32 UI
   property min_gap_32ui_tx;
-    realtime gap_start_time;
-    @(negedge SBTX_CLK) 
-      ($fell(SBTX_DATA), gap_start_time = $realtime) |-> 
+    realtime prev_edge, curr_edge, time_diff;
+    @(posedge SBTX_CLK) 
+      (prev_edge = $realtime, 1'b1) |-> 
       @(posedge SBTX_CLK) 
-      (SBTX_DATA == 1'b1) |-> 
-      (($realtime - gap_start_time) >= 40.0ns); // 32 UI * 1.25ns = 40ns
+      (curr_edge = $realtime, time_diff = curr_edge - prev_edge,
+       // If time_diff < 1.875ns (1.5 cycles), ignore (normal clock)
+       // If time_diff >= 1.875ns, must be ≥ 40ns (32 UI gap)
+       (time_diff < 1.875ns) || (time_diff >= 40.0ns));
   endproperty
   
   property min_gap_32ui_rx;
-    realtime gap_start_time;
-    @(negedge SBRX_CLK) 
-      ($fell(SBRX_DATA), gap_start_time = $realtime) |-> 
+    realtime prev_edge, curr_edge, time_diff;
+    @(posedge SBRX_CLK) 
+      (prev_edge = $realtime, 1'b1) |-> 
       @(posedge SBRX_CLK) 
-      (SBRX_DATA == 1'b1) |-> 
-      (($realtime - gap_start_time) >= 40.0ns); // 32 UI * 1.25ns = 40ns
+      (curr_edge = $realtime, time_diff = curr_edge - prev_edge,
+       // If time_diff < 1.875ns (1.5 cycles), ignore (normal clock)
+       // If time_diff >= 1.875ns, must be ≥ 40ns (32 UI gap)
+       (time_diff < 1.875ns) || (time_diff >= 40.0ns));
   endproperty
   
   // Enable assertions
@@ -106,9 +110,9 @@ interface ucie_sb_interface(input logic clk, input logic reset);
     $error("SBRX_CLK frequency out of UCIe spec: must be 800MHz ±5% (1.1875ns-1.3125ns period)");
     
   assert property (min_gap_32ui_tx) else 
-    $error("SBTX gap violation: minimum 32 UI (40ns) required between packets");
+    $error("SBTX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
     
   assert property (min_gap_32ui_rx) else 
-    $error("SBRX gap violation: minimum 32 UI (40ns) required between packets");
+    $error("SBRX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
 
 endinterface : ucie_sb_interface
