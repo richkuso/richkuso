@@ -23,6 +23,10 @@ ucie_sb_clock_pattern_example.sv
 ucie_sb_source_sync_example.sv
 ucie_sb_transaction_extern_example.sv
 
+# Checker components
+ucie_sb_reg_access_checker.sv
+ucie_sb_reg_checker_example.sv
+
 # Compilation example for VCS:
 # vcs -f ucie_sb_files.f +incdir+$UVM_HOME/src $UVM_HOME/src/uvm_pkg.sv -ntb_opts uvm-1.2
 
