@@ -100,24 +100,39 @@ interface ucie_sb_interface(input logic clk, input logic reset);
        (time_diff < 1.875ns) || (time_diff >= 40.0ns));
   endproperty
   
-  // Enable assertions
-  assert property (reset_clears_tx_clk) else 
-    $error("TX clock not cleared during reset");
+  //=============================================================================
+  // ASSERTION INSTANTIATION WITH TAGS
+  //=============================================================================
+  //
+  // Assertion tags allow selective control via simulator commands:
+  //   - VCS: $assertoff(0, "ASSERT_SBTX_800MHZ_FREQ") 
+  //   - Questa: disable assertion */ASSERT_SBTX_800MHZ_FREQ
+  //   - Xcelium: assertion -disable ASSERT_SBTX_800MHZ_FREQ
+  //
+  // Tag categories:
+  //   - RESET_CHECK: Reset behavior validation
+  //   - FREQ_CHECK: 800MHz ±5% frequency validation  
+  //   - GAP_CHECK: 32 UI minimum gap validation
+  //=============================================================================
+  
+  // Reset behavior assertions
+  ASSERT_RESET_TX_CLK: assert property (reset_clears_tx_clk) else 
+    $error("[RESET_CHECK] TX clock not cleared during reset");
     
-  assert property (reset_clears_tx_data) else 
-    $error("TX data not cleared during reset");
+  ASSERT_RESET_TX_DATA: assert property (reset_clears_tx_data) else 
+    $error("[RESET_CHECK] TX data not cleared during reset");
     
   // UCIe protocol assertions (can be disabled for performance)
-  assert property (sbtx_clk_800mhz_frequency) else 
-    $error("SBTX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1.1875ns-1.3125ns)");
+  ASSERT_SBTX_800MHZ_FREQ: assert property (sbtx_clk_800mhz_frequency) else 
+    $error("[FREQ_CHECK] SBTX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1.1875ns-1.3125ns)");
     
-  assert property (sbrx_clk_800mhz_frequency) else 
-    $error("SBRX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1.1875ns-1.3125ns)");
+  ASSERT_SBRX_800MHZ_FREQ: assert property (sbrx_clk_800mhz_frequency) else 
+    $error("[FREQ_CHECK] SBRX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1.1875ns-1.3125ns)");
     
-  assert property (min_gap_32ui_tx) else 
-    $error("SBTX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
+  ASSERT_SBTX_32UI_GAP: assert property (min_gap_32ui_tx) else 
+    $error("[GAP_CHECK] SBTX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
     
-  assert property (min_gap_32ui_rx) else 
-    $error("SBRX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
+  ASSERT_SBRX_32UI_GAP: assert property (min_gap_32ui_rx) else 
+    $error("[GAP_CHECK] SBRX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
 
 endinterface : ucie_sb_interface
