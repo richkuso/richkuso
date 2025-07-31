@@ -53,22 +53,27 @@ interface ucie_sb_interface(input logic clk, input logic reset);
   // UCIe sideband protocol assertions
   
   // UCIe 800MHz ±5% frequency check (1.25ns ±0.0625ns period)
+  // Only check frequency during active transmission, ignore gaps
   property sbtx_clk_800mhz_frequency;
-    realtime current_time, prev_time;
+    realtime current_time, prev_time, time_diff;
     @(posedge SBTX_CLK) 
       (prev_time = $realtime, 1'b1) |-> 
       @(posedge SBTX_CLK) 
-      (current_time = $realtime, 
-       (current_time - prev_time) >= 1.1875ns && (current_time - prev_time) <= 1.3125ns);
+      (current_time = $realtime, time_diff = current_time - prev_time,
+       // Only check frequency for consecutive clocks (< 1.875ns), ignore gaps
+       (time_diff >= 1.875ns) || 
+       (time_diff >= 1.1875ns && time_diff <= 1.3125ns));
   endproperty
   
   property sbrx_clk_800mhz_frequency;
-    realtime current_time, prev_time;
+    realtime current_time, prev_time, time_diff;
     @(posedge SBRX_CLK) 
       (prev_time = $realtime, 1'b1) |-> 
       @(posedge SBRX_CLK) 
-      (current_time = $realtime, 
-       (current_time - prev_time) >= 1.1875ns && (current_time - prev_time) <= 1.3125ns);
+      (current_time = $realtime, time_diff = current_time - prev_time,
+       // Only check frequency for consecutive clocks (< 1.875ns), ignore gaps
+       (time_diff >= 1.875ns) || 
+       (time_diff >= 1.1875ns && time_diff <= 1.3125ns));
   endproperty
   
   // UCIe minimum gap requirement: 32 UI between packets
@@ -104,10 +109,10 @@ interface ucie_sb_interface(input logic clk, input logic reset);
     
   // UCIe protocol assertions (can be disabled for performance)
   assert property (sbtx_clk_800mhz_frequency) else 
-    $error("SBTX_CLK frequency out of UCIe spec: must be 800MHz ±5% (1.1875ns-1.3125ns period)");
+    $error("SBTX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1.1875ns-1.3125ns)");
     
   assert property (sbrx_clk_800mhz_frequency) else 
-    $error("SBRX_CLK frequency out of UCIe spec: must be 800MHz ±5% (1.1875ns-1.3125ns period)");
+    $error("SBRX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1.1875ns-1.3125ns)");
     
   assert property (min_gap_32ui_tx) else 
     $error("SBTX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
