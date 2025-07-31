@@ -442,13 +442,12 @@ virtual function bit ucie_sb_driver::drive_packet_with_clock(bit [63:0] packet);
   
   // Drive each bit with source-synchronous clock
   for (int i = 0; i < PACKET_SIZE_BITS; i++) begin
-    // Clock low phase - setup data
+    // Clock low phase
     vif.SBTX_CLK = 1'b0;
-    #(cfg.setup_time * 1ns);
-    vif.SBTX_DATA = packet[i];
-    #(cfg.clock_low_time * 1ns - cfg.setup_time * 1ns);
+    #(cfg.clock_low_time * 1ns);
     
-    // Clock high phase - data is valid
+    // Drive data at positive edge of clock
+    vif.SBTX_DATA = packet[i];
     vif.SBTX_CLK = 1'b1;
     #(cfg.clock_high_time * 1ns);
   end
