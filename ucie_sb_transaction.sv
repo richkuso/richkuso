@@ -232,7 +232,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
         dstid == 3'b000;
       }
     }
-    if (pkt_type == COMPLETION) {
+    if (pkt_type == PKT_COMPLETION) {
       dstid == srcid;  // Completions return to requester
     }
   }
@@ -255,7 +255,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
   
   // Message constraints for messages without data
   constraint message_c {
-    if (pkt_type == MESSAGE && !has_data && !is_clock_pattern) {
+    if (pkt_type == PKT_MESSAGE && !has_data && !is_clock_pattern) {
       msgcode inside {MSG_SBINIT_OUT_OF_RESET, MSG_SBINIT_DONE_REQ, MSG_SBINIT_DONE_RESP};
       
       // Constrain msgsubcode based on msgcode
@@ -344,21 +344,21 @@ function void ucie_sb_transaction::update_packet_info();
     
     // Completion Operations
     COMPLETION_NO_DATA: begin
-      pkt_type = COMPLETION;
+      pkt_type = PKT_COMPLETION;
       has_data = 0;
       is_64bit = 0;
       is_clock_pattern = 0;
     end
     
     COMPLETION_32B: begin
-      pkt_type = COMPLETION;
+      pkt_type = PKT_COMPLETION;
       has_data = 1;
       is_64bit = 0;
       is_clock_pattern = 0;
     end
     
     COMPLETION_64B: begin
-      pkt_type = COMPLETION;
+      pkt_type = PKT_COMPLETION;
       has_data = 1;
       is_64bit = 1;
       is_clock_pattern = 0;
@@ -366,14 +366,14 @@ function void ucie_sb_transaction::update_packet_info();
     
     // Message Operations
     MESSAGE_NO_DATA, MGMT_MSG_NO_DATA: begin
-      pkt_type = MESSAGE;
+      pkt_type = PKT_MESSAGE;
       has_data = 0;
       is_64bit = 0;
       is_clock_pattern = 0;
     end
     
     MESSAGE_64B, MGMT_MSG_DATA: begin
-      pkt_type = MESSAGE;
+      pkt_type = PKT_MESSAGE;
       has_data = 1;
       is_64bit = 1;
       is_clock_pattern = 0;
@@ -412,10 +412,10 @@ function void ucie_sb_transaction::calculate_parity();
     // Clock pattern has fixed parity
     cp = 1'b0;
     dp = 1'b0;
-  end else if (pkt_type == MESSAGE && !has_data) begin
+  end else if (pkt_type == PKT_MESSAGE && !has_data) begin
     // Message without data parity calculation
     cp = ^{opcode, srcid, dstid, msgcode, msginfo, msgsubcode};
-  end else if (pkt_type == COMPLETION) begin
+  end else if (pkt_type == PKT_COMPLETION) begin
     // Completion parity calculation (Figure 7-2)
     cp = ^{opcode, srcid, dstid, tag, be, ep, cr, status[2:0]};
   end else begin
@@ -441,7 +441,7 @@ function bit [63:0] ucie_sb_transaction::get_header();
   // Route to appropriate header generation based on packet type
   if (is_clock_pattern) begin
     return get_clock_pattern_header();
-  end else if (pkt_type == MESSAGE && !has_data) begin
+  end else if (pkt_type == PKT_MESSAGE && !has_data) begin
     return get_message_header();
   end else begin
     // Standard register access and completion header format
@@ -526,7 +526,7 @@ function string ucie_sb_transaction::convert2string();
   s = {s, $sformatf("\n  Has Data  : %0b", has_data)};
   s = {s, $sformatf("\n  Is 64-bit : %0b", is_64bit)};
   s = {s, $sformatf("\n  Clock Pattern: %0b", is_clock_pattern)};
-  if (pkt_type == MESSAGE && !has_data) begin
+  if (pkt_type == PKT_MESSAGE && !has_data) begin
     s = {s, $sformatf("\n  MsgCode   : 0x%02h", msgcode)};
     s = {s, $sformatf("\n  MsgInfo   : 0x%04h", msginfo)};
     s = {s, $sformatf("\n  MsgSubcode: 0x%02h", msgsubcode)};
@@ -617,7 +617,7 @@ endfunction
 function bit [63:0] ucie_sb_transaction::get_register_access_header();
   bit [31:0] phase0, phase1;
   
-  if (pkt_type == COMPLETION) begin
+  if (pkt_type == PKT_COMPLETION) begin
     // Figure 7-2: Format for Register Access Completions
     // Phase 0: phase0[31:29] srcid + phase0[28:27] rsvd + phase0[26:22] tag[4:0] +
     // phase0[21:14] be[7:0] + phase0[13:6] rsvd + phase0[5] ep + phase0[4:0] opcode[4:0]

@@ -163,32 +163,32 @@ function void ucie_sb_transaction::update_packet_info();
     
     // Completion Operations
     COMPLETION_NO_DATA: begin
-      pkt_type = COMPLETION;
+      pkt_type = PKT_COMPLETION;
       has_data = 0;
       is_64bit = 0;
     end
     
     COMPLETION_32B: begin
-      pkt_type = COMPLETION;
+      pkt_type = PKT_COMPLETION;
       has_data = 1;
       is_64bit = 0;
     end
     
     COMPLETION_64B: begin
-      pkt_type = COMPLETION;
+      pkt_type = PKT_COMPLETION;
       has_data = 1;
       is_64bit = 1;
     end
     
     // Message Operations
     MESSAGE_NO_DATA, MGMT_MSG_NO_DATA: begin
-      pkt_type = MESSAGE;
+      pkt_type = PKT_MESSAGE;
       has_data = 0;
       is_64bit = 0;
     end
     
     MESSAGE_64B, MGMT_MSG_DATA: begin
-      pkt_type = MESSAGE;
+      pkt_type = PKT_MESSAGE;
       has_data = 1;
       is_64bit = 1;
     end
