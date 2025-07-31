@@ -32,9 +32,8 @@ class ucie_sb_model extends uvm_component;
   // Virtual interface
   virtual ucie_sb_interface vif;
   
-  // Driver and monitor handles
-  ucie_sb_driver sb_driver;
-  ucie_sb_monitor sb_monitor;
+  // Sideband agent
+  ucie_sb_agent sb_agent;
   
   // Configuration
   ucie_sb_config cfg;
@@ -134,15 +133,18 @@ class ucie_sb_model extends uvm_component;
       `uvm_fatal("NOVIF", "Virtual interface not found")
     end
     
-    // Create driver and monitor
-    sb_driver = ucie_sb_driver::type_id::create("sb_driver", this);
-    sb_monitor = ucie_sb_monitor::type_id::create("sb_monitor", this);
+    // Create sideband agent
+    sb_agent = ucie_sb_agent::type_id::create("sb_agent", this);
     
-    // Configure driver and monitor
-    uvm_config_db#(virtual ucie_sb_interface)::set(this, "sb_driver", "vif", vif);
-    uvm_config_db#(virtual ucie_sb_interface)::set(this, "sb_monitor", "vif", vif);
-    uvm_config_db#(ucie_sb_config)::set(this, "sb_driver", "cfg", cfg);
-    uvm_config_db#(ucie_sb_config)::set(this, "sb_monitor", "cfg", cfg);
+    // Configure agent - create agent config from model config
+    ucie_sb_agent_config agent_cfg = ucie_sb_agent_config::type_id::create("agent_cfg");
+    agent_cfg.is_active = UVM_ACTIVE;
+    agent_cfg.vif = vif;
+    agent_cfg.driver_cfg = ucie_sb_driver_config::type_id::create("driver_cfg");
+    agent_cfg.driver_cfg.set_frequency(800e6); // 800MHz default
+    
+    // Set agent configuration
+    uvm_config_db#(ucie_sb_agent_config)::set(this, "sb_agent", "cfg", agent_cfg);
     
     `uvm_info("SB_MODEL", "Sideband model built", UVM_LOW)
   endfunction
@@ -150,9 +152,9 @@ class ucie_sb_model extends uvm_component;
   virtual function void connect_phase(uvm_phase phase);
     super.connect_phase(phase);
     
-    // Connect monitor to analysis port and FIFO
-    sb_monitor.analysis_port.connect(rx_analysis_port);
-    sb_monitor.analysis_port.connect(rx_fifo.analysis_export);
+    // Connect agent monitor to analysis port and FIFO
+    sb_agent.ap.connect(rx_analysis_port);
+    sb_agent.ap.connect(rx_fifo.analysis_export);
     
     `uvm_info("SB_MODEL", "Sideband model connected", UVM_LOW)
   endfunction
@@ -258,7 +260,7 @@ class ucie_sb_model extends uvm_component;
         // Send clock patterns continuously
         while (current_state == SEND_CLOCK_PATTERN) begin
           clock_pattern_trans = create_clock_pattern_transaction();
-          sb_driver.seq_item_port.put(clock_pattern_trans);
+          send_transaction(clock_pattern_trans);
           #clock_pattern_period;
         end
       end
@@ -288,7 +290,7 @@ class ucie_sb_model extends uvm_component;
     
     for (int i = 0; i < remaining_clock_patterns; i++) begin
       clock_pattern_trans = create_clock_pattern_transaction();
-      sb_driver.seq_item_port.put(clock_pattern_trans);
+      send_transaction(clock_pattern_trans);
       #clock_pattern_period;
     end
     
@@ -307,7 +309,7 @@ class ucie_sb_model extends uvm_component;
         // Send SBINIT Out of Reset continuously
         while (current_state == SEND_SBINIT_OOR) begin
           sbinit_oor_trans = create_sbinit_oor_transaction();
-          sb_driver.seq_item_port.put(sbinit_oor_trans);
+          send_transaction(sbinit_oor_trans);
           #1000ns; // Send every 1us
         end
       end
@@ -336,7 +338,7 @@ class ucie_sb_model extends uvm_component;
     `uvm_info("SB_MODEL", "Sending SBINIT Done Request", UVM_MEDIUM)
     
     sbinit_done_req_trans = create_sbinit_done_req_transaction();
-    sb_driver.seq_item_port.put(sbinit_done_req_trans);
+    send_transaction(sbinit_done_req_trans);
     sbinit_done_req_sent = 1;
     
     current_state = WAIT_SBINIT_DONE_RSP;
@@ -382,7 +384,7 @@ class ucie_sb_model extends uvm_component;
     `uvm_info("SB_MODEL", "Sending SBINIT Done Response", UVM_MEDIUM)
     
     sbinit_done_rsp_trans = create_sbinit_done_rsp_transaction();
-    sb_driver.seq_item_port.put(sbinit_done_rsp_trans);
+    send_transaction(sbinit_done_rsp_trans);
     sbinit_done_rsp_sent = 1;
     
     // Check if we've completed the handshake
@@ -454,6 +456,19 @@ class ucie_sb_model extends uvm_component;
           ->timeout_event;
         end
       end
+    end
+  endtask
+  
+  //=============================================================================
+  // TRANSACTION SENDING
+  //=============================================================================
+  
+  virtual task send_transaction(ucie_sb_transaction trans);
+    // Send transaction through the agent's sequencer
+    if (sb_agent != null && sb_agent.sequencer != null) begin
+      sb_agent.sequencer.execute_item(trans);
+    end else begin
+      `uvm_error("SB_MODEL", "Agent or sequencer not available for transaction sending")
     end
   endtask
   
