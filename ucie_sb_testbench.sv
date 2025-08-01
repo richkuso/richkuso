@@ -46,9 +46,9 @@ module ucie_sb_testbench;
     `uvm_info("TB", "=== Configuring UVM Interfaces ===", UVM_LOW)
     
     // Set interface for environment and all its children with single wildcard
-    // This covers: sb_env, tx_agent, rx_agent, driver, monitor, reg_checker
+    // This covers: sb_env, agent_0 through agent_15, monitors, reg_checker
     uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.sb_env*", "vif", sb_intf);
-    `uvm_info("TB", "✅ Environment and children interfaces configured", UVM_LOW)
+    `uvm_info("TB", "✅ Environment and 16 inactive agents interfaces configured", UVM_LOW)
     
     // Verify interface connectivity to DUT
     `uvm_info("TB", $sformatf("Interface DUT connections verified: SBTX→DUT.sbtx, SBRX←DUT.sbrx"), UVM_LOW)
@@ -74,7 +74,7 @@ module ucie_sb_testbench;
     // Display testbench information
     `uvm_info("TB", "=== UCIe Sideband UVM Testbench ===", UVM_LOW)
     `uvm_info("TB", "Features: Register Access Checker, Clock Patterns, SBINIT Messages", UVM_LOW)
-    `uvm_info("TB", "Architecture: FIFO-Only Checker, TAG/Non-TAG Support", UVM_LOW)
+    `uvm_info("TB", "Architecture: 16 Inactive Agents, FIFO-Only Checker, TAG/Non-TAG Support", UVM_LOW)
     `uvm_info("TB", "Available Tests:", UVM_LOW)
     `uvm_info("TB", "  - ucie_sb_clock_pattern_test", UVM_LOW)
     `uvm_info("TB", "  - ucie_sb_memory_test", UVM_LOW)
