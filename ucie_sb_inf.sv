@@ -34,6 +34,19 @@ interface ucie_sb_inf(input logic clk, input logic reset);
   
   // Control signals
   logic sb_reset;   // Active-high reset
+
+  // Time tracking variables for assertions
+  realtime sbtx_prev_time = 0;
+  realtime sbrx_prev_time = 0;
+
+  // Time tracking logic
+  always @(posedge SBTX_CLK) begin
+    sbtx_prev_time <= $realtime;
+  end
+
+  always @(posedge SBRX_CLK) begin
+    sbrx_prev_time <= $realtime;
+  end
   
 
   
@@ -55,49 +68,45 @@ interface ucie_sb_inf(input logic clk, input logic reset);
   // UCIe 800MHz ±5% frequency check (1.25ns ±0.0625ns period)
   // Only check frequency during active transmission, ignore gaps
   property sbtx_clk_800mhz_frequency;
-    realtime current_time, prev_time, time_diff;
+    realtime current_time, time_diff;
     @(posedge SBTX_CLK) 
-      (prev_time = $realtime, 1'b1) |-> 
-      @(posedge SBTX_CLK) 
-      (current_time = $realtime, time_diff = current_time - prev_time,
-       // Only check frequency for consecutive clocks (< 1.875ns), ignore gaps
-       (time_diff >= 1.875ns) || 
-       (time_diff >= 1.1875ns && time_diff <= 1.3125ns));
+      (current_time = $realtime, 
+       time_diff = current_time - sbtx_prev_time,
+       // Only check frequency for consecutive clocks (< 1875ps), ignore gaps
+       (time_diff >= 1875) || 
+       (time_diff >= 1187 && time_diff <= 1312)); // in picoseconds
   endproperty
   
   property sbrx_clk_800mhz_frequency;
-    realtime current_time, prev_time, time_diff;
+    realtime current_time, time_diff;
     @(posedge SBRX_CLK) 
-      (prev_time = $realtime, 1'b1) |-> 
-      @(posedge SBRX_CLK) 
-      (current_time = $realtime, time_diff = current_time - prev_time,
-       // Only check frequency for consecutive clocks (< 1.875ns), ignore gaps
-       (time_diff >= 1.875ns) || 
-       (time_diff >= 1.1875ns && time_diff <= 1.3125ns));
+      (current_time = $realtime, 
+       time_diff = current_time - sbrx_prev_time,
+       // Only check frequency for consecutive clocks (< 1875ps), ignore gaps
+       (time_diff >= 1875) || 
+       (time_diff >= 1187 && time_diff <= 1312)); // in picoseconds
   endproperty
   
   // UCIe minimum gap requirement: 32 UI between packets
   // Check time between posedges: ignore <1.5 cycles, others must be ≥32 UI
   property min_gap_32ui_tx;
-    realtime prev_edge, curr_edge, time_diff;
+    realtime curr_edge, time_diff;
     @(posedge SBTX_CLK) 
-      (prev_edge = $realtime, 1'b1) |-> 
-      @(posedge SBTX_CLK) 
-      (curr_edge = $realtime, time_diff = curr_edge - prev_edge,
-       // If time_diff < 1.875ns (1.5 cycles), ignore (normal clock)
-       // If time_diff >= 1.875ns, must be ≥ 40ns (32 UI gap)
-       (time_diff < 1.875ns) || (time_diff >= 40.0ns));
+      (curr_edge = $realtime, 
+       time_diff = curr_edge - sbtx_prev_time,
+       // If time_diff < 1875ps (1.5 cycles), ignore (normal clock)
+       // If time_diff >= 1875ps, must be ≥ 40000ps (32 UI gap)
+       (time_diff < 1875) || (time_diff >= 40000));
   endproperty
   
   property min_gap_32ui_rx;
-    realtime prev_edge, curr_edge, time_diff;
+    realtime curr_edge, time_diff;
     @(posedge SBRX_CLK) 
-      (prev_edge = $realtime, 1'b1) |-> 
-      @(posedge SBRX_CLK) 
-      (curr_edge = $realtime, time_diff = curr_edge - prev_edge,
-       // If time_diff < 1.875ns (1.5 cycles), ignore (normal clock)
-       // If time_diff >= 1.875ns, must be ≥ 40ns (32 UI gap)
-       (time_diff < 1.875ns) || (time_diff >= 40.0ns));
+      (curr_edge = $realtime, 
+       time_diff = curr_edge - sbrx_prev_time,
+       // If time_diff < 1875ps (1.5 cycles), ignore (normal clock)
+       // If time_diff >= 1875ps, must be ≥ 40000ps (32 UI gap)
+       (time_diff < 1875) || (time_diff >= 40000));
   endproperty
   
   //=============================================================================
@@ -124,15 +133,15 @@ interface ucie_sb_inf(input logic clk, input logic reset);
     
   // UCIe protocol assertions (can be disabled for performance)
   ASSERT_SBTX_800MHZ_FREQ: assert property (sbtx_clk_800mhz_frequency) else 
-    $error("[FREQ_CHECK] SBTX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1.1875ns-1.3125ns)");
+    $error("[FREQ_CHECK] SBTX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1187ps-1312ps)");
     
   ASSERT_SBRX_800MHZ_FREQ: assert property (sbrx_clk_800mhz_frequency) else 
-    $error("[FREQ_CHECK] SBRX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1.1875ns-1.3125ns)");
+    $error("[FREQ_CHECK] SBRX_CLK frequency out of UCIe spec: consecutive clocks must be 800MHz ±5% (1187ps-1312ps)");
     
   ASSERT_SBTX_32UI_GAP: assert property (min_gap_32ui_tx) else 
-    $error("[GAP_CHECK] SBTX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
+    $error("[GAP_CHECK] SBTX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40000ps)");
     
   ASSERT_SBRX_32UI_GAP: assert property (min_gap_32ui_rx) else 
-    $error("[GAP_CHECK] SBRX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
+    $error("[GAP_CHECK] SBRX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40000ps)");
 
 endinterface : ucie_sb_inf
