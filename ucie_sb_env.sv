@@ -6,7 +6,9 @@ class ucie_sb_env extends uvm_env;
   
   // 16 inactive agents for monitoring
   ucie_sb_agent agents[16];
-  ucie_sb_reg_access_checker reg_checker;
+  
+  // 8 register checkers (each handles 2 agents)
+  ucie_sb_reg_access_checker reg_checkers[8];
   
   // Agent configurations
   ucie_sb_agent_config agent_cfgs[16];
@@ -44,24 +46,37 @@ class ucie_sb_env extends uvm_env;
       `uvm_info("ENV", $sformatf("Created inactive agent[%0d]: %s", i, agent_name), UVM_MEDIUM)
     end
     
-    // Create register access checker
-    reg_checker = ucie_sb_reg_access_checker::type_id::create("reg_checker", this);
+    // Create 8 register access checkers
+    for (int j = 0; j < 8; j++) begin
+      string checker_name = $sformatf("reg_checker_%0d", j);
+      reg_checkers[j] = ucie_sb_reg_access_checker::type_id::create(checker_name, this);
+      `uvm_info("ENV", $sformatf("Created register checker[%0d]: %s", j, checker_name), UVM_MEDIUM)
+    end
     
     `uvm_info("ENV", "Environment build phase completed", UVM_LOW)
-    `uvm_info("ENV", $sformatf("Created %0d inactive agents, each with dedicated interface", 16), UVM_LOW)
+    `uvm_info("ENV", $sformatf("Created %0d inactive agents with dedicated interfaces", 16), UVM_LOW)
+    `uvm_info("ENV", $sformatf("Created %0d register checkers (2 agents per checker)", 8), UVM_LOW)
   endfunction
   
   virtual function void connect_phase(uvm_phase phase);
     super.connect_phase(phase);
     
-    // Connect all agent monitors to checker using FIFO-only architecture
-    // Since all agents are passive (monitor-only), connect them to TX FIFO for monitoring
-    for (int i = 0; i < 16; i++) begin
-      agents[i].monitor.ap.connect(reg_checker.tx_fifo.analysis_export);
-      `uvm_info("ENV", $sformatf("Agent[%0d] Monitor → reg_checker.tx_fifo", i), UVM_MEDIUM)
+    // Connect 16 agents to 8 register checkers in pairs
+    // Pattern: agent(2*i) → checker[i].tx_fifo, agent(2*i+1) → checker[i].rx_fifo
+    for (int i = 0; i < 8; i++) begin
+      int agent_tx_idx = 2 * i;      // Even agents (0,2,4,6,8,10,12,14)
+      int agent_rx_idx = 2 * i + 1;  // Odd agents (1,3,5,7,9,11,13,15)
+      
+      // Connect even agent to TX FIFO
+      agents[agent_tx_idx].monitor.ap.connect(reg_checkers[i].tx_fifo.analysis_export);
+      `uvm_info("ENV", $sformatf("Agent[%0d] Monitor → reg_checker_%0d.tx_fifo", agent_tx_idx, i), UVM_MEDIUM)
+      
+      // Connect odd agent to RX FIFO
+      agents[agent_rx_idx].monitor.ap.connect(reg_checkers[i].rx_fifo.analysis_export);
+      `uvm_info("ENV", $sformatf("Agent[%0d] Monitor → reg_checker_%0d.rx_fifo", agent_rx_idx, i), UVM_MEDIUM)
     end
     
     `uvm_info("ENV", "=== Checker Connections Established ===", UVM_LOW)
-    `uvm_info("ENV", $sformatf("Connected %0d inactive agent monitors to checker", 16), UVM_LOW)
+    `uvm_info("ENV", $sformatf("Connected %0d agents to %0d checkers (2 agents per checker)", 16, 8), UVM_LOW)
   endfunction
 endclass

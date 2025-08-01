@@ -74,16 +74,19 @@ module ucie_sb_testbench;
       `uvm_info("TB", $sformatf("✅ Agent_%0d interface configured with sb_intf[%0d]", k, k), UVM_MEDIUM)
     end
     
-    // Set interface for register checker (using interface 0 as reference)
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.sb_env.reg_checker", "vif", sb_intf[0]);
-    `uvm_info("TB", "✅ Register checker interface configured", UVM_LOW)
+    // Set interfaces for 8 register checkers (each gets interface from first agent in pair)
+    for (int m = 0; m < 8; m++) begin
+      string checker_path = $sformatf("uvm_test_top.sb_env.reg_checker_%0d", m);
+      uvm_config_db#(virtual ucie_sb_interface)::set(null, checker_path, "vif", sb_intf[2*m]); // Use even agent's interface
+      `uvm_info("TB", $sformatf("✅ Register checker_%0d interface configured with sb_intf[%0d]", m, 2*m), UVM_MEDIUM)
+    end
     
     // Verify interface connectivity to DUT (interface 0 example)
     `uvm_info("TB", $sformatf("Interface[0] DUT connections verified: SBTX→DUT.sbtx, SBRX←DUT.sbrx"), UVM_LOW)
     `uvm_info("TB", $sformatf("Interface[0] signal states: TX_CLK=%0b, TX_DATA=%0b, RX_CLK=%0b, RX_DATA=%0b", 
               sb_intf[0].SBTX_CLK, sb_intf[0].SBTX_DATA, sb_intf[0].SBRX_CLK, sb_intf[0].SBRX_DATA), UVM_DEBUG)
     
-    `uvm_info("TB", "=== 16 Interface Configuration Complete ===", UVM_LOW)
+    `uvm_info("TB", "=== 16 Interfaces + 8 Checkers Configuration Complete ===", UVM_LOW)
   endfunction
   
   // Initial block to start UVM
