@@ -13,56 +13,76 @@ module ucie_sb_testbench;
     sb_reset = 0;
   end
   
-  // Interface instantiation
-  ucie_sb_interface sb_intf(.clk(1'b0), .reset(sb_reset));
+  // Interface instantiation - 16 separate sideband interfaces for 16 agents
+  ucie_sb_inf sb_intf[16];
   
-  // Clock generation for sideband TX and RX - higher frequency for serial transmission
-  always #2.5 sb_intf.SBTX_CLK = ~sb_intf.SBTX_CLK; // 200MHz TX sideband clock
-  always #2.5 sb_intf.SBRX_CLK = ~sb_intf.SBRX_CLK; // 200MHz RX sideband clock
+  // Generate 16 interfaces
+  genvar i;
+  generate
+    for (i = 0; i < 16; i++) begin : gen_interfaces
+      ucie_sb_inf sb_intf_inst(.clk(1'b0), .reset(sb_reset));
+      assign sb_intf[i] = sb_intf_inst;
+    end
+  endgenerate
   
+  // Clock generation for all 16 sideband interfaces - higher frequency for serial transmission
+  generate
+    for (i = 0; i < 16; i++) begin : gen_clocks
+      always #2.5 sb_intf[i].SBTX_CLK = ~sb_intf[i].SBTX_CLK; // 200MHz TX sideband clock
+      always #2.5 sb_intf[i].SBRX_CLK = ~sb_intf[i].SBRX_CLK; // 200MHz RX sideband clock
+    end
+  endgenerate
+  
+  // Initialize all interfaces
   initial begin
-    sb_intf.SBTX_CLK = 0;
-    sb_intf.SBRX_CLK = 0;
-    sb_intf.SBTX_DATA = 0;
-    sb_intf.SBRX_DATA = 0;
+    for (int j = 0; j < 16; j++) begin
+      sb_intf[j].SBTX_CLK = 0;
+      sb_intf[j].SBRX_CLK = 0;
+      sb_intf[j].SBTX_DATA = 0;
+      sb_intf[j].SBRX_DATA = 0;
+    end
   end
   
-  // Loopback connection for demonstration (TX to RX)
-  always_comb begin
-    sb_intf.SBRX_DATA = sb_intf.SBTX_DATA;
-  end
+  // Loopback connections for demonstration (TX to RX for each interface)
+  generate
+    for (i = 0; i < 16; i++) begin : gen_loopbacks
+      always_comb begin
+        sb_intf[i].SBRX_DATA = sb_intf[i].SBTX_DATA;
+      end
+    end
+  endgenerate
   
-  // Simple sideband receiver DUT for demonstration
+  // Simple sideband receiver DUT for demonstration (connected to interface 0)
   ucie_sb_receiver_dut dut (
-    .sbtx_clk(sb_intf.SBTX_CLK),
-    .sbtx_data(sb_intf.SBTX_DATA),
-    .sbrx_clk(sb_intf.SBRX_CLK),
-    .sbrx_data(sb_intf.SBRX_DATA),
+    .sbtx_clk(sb_intf[0].SBTX_CLK),
+    .sbtx_data(sb_intf[0].SBTX_DATA),
+    .sbrx_clk(sb_intf[0].SBRX_CLK),
+    .sbrx_data(sb_intf[0].SBRX_DATA),
     .sb_reset(sb_reset)
   );
   
-  // Dedicated function for UVM interface configuration (more readable than wildcards)
+  // Function to configure 16 separate UVM interfaces for 16 agents
   function void configure_uvm_interfaces();
-    `uvm_info("TB", "=== Configuring UVM Interfaces ===", UVM_LOW)
+    string agent_path;
     
-    // Set interface for test level (top-level access)
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top", "vif", sb_intf);
-    `uvm_info("TB", "✅ Test level interface configured", UVM_LOW)
+    `uvm_info("TB", "=== Configuring 16 Separate UVM Interfaces ===", UVM_LOW)
     
-    // Set interface for environment level (env can access for agent configuration)
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.env", "vif", sb_intf);
-    `uvm_info("TB", "✅ Environment level interface configured", UVM_LOW)
+    // Set dedicated interface for each of the 16 agents
+    for (int k = 0; k < 16; k++) begin
+      agent_path = $sformatf("uvm_test_top.sb_env.agent_%0d*", k);
+      uvm_config_db#(virtual ucie_sb_inf)::set(null, agent_path, "vif", sb_intf[k]);
+      `uvm_info("TB", $sformatf("✅ Agent_%0d interface configured with sb_intf[%0d]", k, k), UVM_MEDIUM)
+    end
     
-    // Set interface for all environment children (agents, checker, etc.)
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.env.*", "vif", sb_intf);
-    `uvm_info("TB", "✅ Environment children interfaces configured", UVM_LOW)
+    // Register checkers don't need virtual interfaces - they use FIFO-only architecture
+    // They receive transactions through analysis FIFOs from agent monitors
     
-    // Verify interface connectivity to DUT
-    `uvm_info("TB", $sformatf("Interface DUT connections verified: SBTX→DUT.sbtx, SBRX←DUT.sbrx"), UVM_LOW)
-    `uvm_info("TB", $sformatf("Current signal states: TX_CLK=%0b, TX_DATA=%0b, RX_CLK=%0b, RX_DATA=%0b", 
-              sb_intf.SBTX_CLK, sb_intf.SBTX_DATA, sb_intf.SBRX_CLK, sb_intf.SBRX_DATA), UVM_DEBUG)
+    // Verify interface connectivity to DUT (interface 0 example)
+    `uvm_info("TB", $sformatf("Interface[0] DUT connections verified: SBTX→DUT.sbtx, SBRX←DUT.sbrx"), UVM_LOW)
+    `uvm_info("TB", $sformatf("Interface[0] signal states: TX_CLK=%0b, TX_DATA=%0b, RX_CLK=%0b, RX_DATA=%0b", 
+              sb_intf[0].SBTX_CLK, sb_intf[0].SBTX_DATA, sb_intf[0].SBRX_CLK, sb_intf[0].SBRX_DATA), UVM_DEBUG)
     
-    `uvm_info("TB", "=== Interface Configuration Complete ===", UVM_LOW)
+    `uvm_info("TB", "=== 16 Agent Interfaces Configuration Complete ===", UVM_LOW)
   endfunction
   
   // Initial block to start UVM
@@ -81,7 +101,7 @@ module ucie_sb_testbench;
     // Display testbench information
     `uvm_info("TB", "=== UCIe Sideband UVM Testbench ===", UVM_LOW)
     `uvm_info("TB", "Features: Register Access Checker, Clock Patterns, SBINIT Messages", UVM_LOW)
-    `uvm_info("TB", "Architecture: FIFO-Only Checker, TAG/Non-TAG Support", UVM_LOW)
+    `uvm_info("TB", "Architecture: 16 Inactive Agents, FIFO-Only Checker, TAG/Non-TAG Support", UVM_LOW)
     `uvm_info("TB", "Available Tests:", UVM_LOW)
     `uvm_info("TB", "  - ucie_sb_clock_pattern_test", UVM_LOW)
     `uvm_info("TB", "  - ucie_sb_memory_test", UVM_LOW)

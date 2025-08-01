@@ -149,7 +149,7 @@ class ucie_sb_agent_config extends uvm_object;
   uvm_active_passive_enum is_active = UVM_ACTIVE;
   
   // Interface handle
-  virtual ucie_sb_interface vif;
+  virtual ucie_sb_inf vif;
   
   // Driver configuration
   ucie_sb_driver_config driver_cfg;
@@ -293,19 +293,15 @@ endfunction
 // Distributes configuration to all sub-components
 //-----------------------------------------------------------------------------
 virtual function void ucie_sb_agent::configure_components();
-  // Set virtual interface for all components
-  if (cfg.vif != null) begin
-    uvm_config_db#(virtual ucie_sb_interface)::set(this, "*", "vif", cfg.vif);
-  end else begin
-    `uvm_fatal("AGENT", "Virtual interface not provided in agent configuration")
-  end
+  // Virtual interface is set directly by testbench to all components via wildcard
+  // No interface handling needed at agent level
   
   // Configure driver if in active mode
   if (cfg.is_active == UVM_ACTIVE && driver != null) begin
     uvm_config_db#(ucie_sb_driver_config)::set(this, "driver", "cfg", cfg.driver_cfg);
   end
   
-  // Set feature enables
+  // Set feature enables for sub-components
   uvm_config_db#(bit)::set(this, "*", "enable_protocol_checking", cfg.enable_protocol_checking);
   uvm_config_db#(bit)::set(this, "*", "enable_statistics", cfg.enable_statistics);
   uvm_config_db#(bit)::set(this, "*", "enable_coverage", cfg.enable_coverage);

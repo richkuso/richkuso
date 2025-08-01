@@ -6,7 +6,7 @@ SIM ?= vcs
 TEST ?= ucie_sb_memory_test
 
 # Source files
-SOURCES = ucie_sb_interface.sv ucie_sb_pkg.sv ucie_sb_testbench.sv
+SOURCES = ucie_sb_inf.sv ucie_sb_pkg.sv ucie_sb_testbench.sv
 
 # Common UVM arguments
 UVM_HOME ?= $(VCS_HOME)/etc/uvm-1.2

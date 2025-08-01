@@ -31,7 +31,7 @@ class ucie_sb_monitor extends uvm_monitor;
   //=============================================================================
   
   // Interface and ports
-  virtual ucie_sb_interface vif;
+  virtual ucie_sb_inf vif;
   uvm_analysis_port #(ucie_sb_transaction) ap;
   
   // Configuration parameters
@@ -172,7 +172,7 @@ virtual function void ucie_sb_monitor::build_phase(uvm_phase phase);
   super.build_phase(phase);
   
   // Get virtual interface
-  if (!uvm_config_db#(virtual ucie_sb_interface)::get(this, "", "vif", vif))
+  if (!uvm_config_db#(virtual ucie_sb_inf)::get(this, "", "vif", vif))
     `uvm_fatal("MONITOR", "Virtual interface not found")
   
   // Create analysis port
