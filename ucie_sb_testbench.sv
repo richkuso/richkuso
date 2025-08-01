@@ -41,6 +41,30 @@ module ucie_sb_testbench;
     .sb_reset(sb_reset)
   );
   
+  // Dedicated function for UVM interface configuration (more readable than wildcards)
+  function void configure_uvm_interfaces();
+    `uvm_info("TB", "=== Configuring UVM Interfaces ===", UVM_LOW)
+    
+    // Set interface for test level (top-level access)
+    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top", "vif", sb_intf);
+    `uvm_info("TB", "✅ Test level interface configured", UVM_LOW)
+    
+    // Set interface for environment level (env can access for agent configuration)
+    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.env", "vif", sb_intf);
+    `uvm_info("TB", "✅ Environment level interface configured", UVM_LOW)
+    
+    // Set interface for all environment children (agents, checker, etc.)
+    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.env.*", "vif", sb_intf);
+    `uvm_info("TB", "✅ Environment children interfaces configured", UVM_LOW)
+    
+    // Verify interface connectivity to DUT
+    `uvm_info("TB", $sformatf("Interface DUT connections verified: SBTX→DUT.sbtx, SBRX←DUT.sbrx"), UVM_LOW)
+    `uvm_info("TB", $sformatf("Current signal states: TX_CLK=%0b, TX_DATA=%0b, RX_CLK=%0b, RX_DATA=%0b", 
+              sb_intf.SBTX_CLK, sb_intf.SBTX_DATA, sb_intf.SBRX_CLK, sb_intf.SBRX_DATA), UVM_DEBUG)
+    
+    `uvm_info("TB", "=== Interface Configuration Complete ===", UVM_LOW)
+  endfunction
+  
   // Initial block to start UVM
   initial begin
     // Enable assertions
@@ -48,8 +72,8 @@ module ucie_sb_testbench;
       `uvm_info("TB", "Sideband assertions enabled", UVM_LOW)
     `endif
     
-    // Set up UVM configuration
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, "*", "vif", sb_intf);
+    // Configure UVM interfaces (replaces wildcard approach)
+    configure_uvm_interfaces();
     
     // Set verbosity
     uvm_top.set_report_verbosity_level_hier(UVM_MEDIUM);
