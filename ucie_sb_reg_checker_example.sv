@@ -5,7 +5,6 @@ module ucie_sb_reg_checker_example;
   import uvm_pkg::*;
   import ucie_sb_pkg::*;
   `include "uvm_macros.svh"
-  `include "ucie_sb_reg_access_checker.sv"
   
   // Clock and reset
   logic clk = 0;

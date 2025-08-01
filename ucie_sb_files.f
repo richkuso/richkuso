@@ -5,6 +5,7 @@
 ucie_sb_interface.sv
 
 # Individual class files (in dependency order)
+ucie_sb_config.sv
 ucie_sb_transaction.sv
 ucie_sb_sequences.sv
 ucie_sb_driver.sv

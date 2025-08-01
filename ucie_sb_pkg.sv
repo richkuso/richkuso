@@ -54,10 +54,12 @@ package ucie_sb_pkg;
   parameter bit [31:0] CLOCK_PATTERN_PHASE1 = 32'h5555_5555;
 
   // Include all class files
+  `include "ucie_sb_config.sv"
   `include "ucie_sb_transaction.sv"
   `include "ucie_sb_sequences.sv"
   `include "ucie_sb_driver.sv"
   `include "ucie_sb_monitor.sv"
+  `include "ucie_sb_reg_access_checker.sv"
   
   // Sequencer typedef
   typedef uvm_sequencer #(ucie_sb_transaction) ucie_sb_sequencer;
