@@ -20,8 +20,8 @@ class ucie_sb_env extends uvm_env;
     
     super.build_phase(phase);
     
-    // Virtual interface is set directly by testbench to all components
-    // No need to retrieve it at environment level
+    // Each agent gets its own dedicated virtual interface set directly by testbench
+    // No need to retrieve interfaces at environment level
     
     // Create and configure 16 inactive agents
     for (int i = 0; i < 16; i++) begin
@@ -30,7 +30,7 @@ class ucie_sb_env extends uvm_env;
       // Create agent configuration
       agent_cfgs[i] = ucie_sb_agent_config::type_id::create($sformatf("agent_cfg_%0d", i));
       agent_cfgs[i].is_active = UVM_PASSIVE;  // All agents are inactive (passive)
-      // Note: vif is set directly by testbench to all components, no need to set here
+      // Note: Each agent gets its own dedicated vif from testbench (sb_intf[i]), no need to set here
       agent_cfgs[i].enable_coverage = 1;
       agent_cfgs[i].enable_protocol_checking = 1;
       agent_cfgs[i].enable_statistics = 1;
@@ -48,7 +48,7 @@ class ucie_sb_env extends uvm_env;
     reg_checker = ucie_sb_reg_access_checker::type_id::create("reg_checker", this);
     
     `uvm_info("ENV", "Environment build phase completed", UVM_LOW)
-    `uvm_info("ENV", $sformatf("Created %0d inactive agents for monitoring", 16), UVM_LOW)
+    `uvm_info("ENV", $sformatf("Created %0d inactive agents, each with dedicated interface", 16), UVM_LOW)
   endfunction
   
   virtual function void connect_phase(uvm_phase phase);
