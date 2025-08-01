@@ -291,3 +291,80 @@ function string ucie_sb_transaction::convert2string();
   s = {s, $sformatf("\n================================")};
   return s;
 endfunction
+
+//=============================================================================
+// ENHANCED convert2string EXAMPLE
+//=============================================================================
+
+// Example showing the enhanced convert2string function with message code names
+task demonstrate_enhanced_convert2string();
+  ucie_sb_transaction trans;
+  
+  `uvm_info("EXAMPLE", "=== Enhanced convert2string Examples ===", UVM_LOW)
+  
+  // Example 1: SBINIT Out of Reset Message
+  trans = ucie_sb_transaction::type_id::create("sbinit_oor_msg");
+  assert(trans.randomize() with {
+    opcode == MESSAGE_NO_DATA;
+    msgcode == MSG_SBINIT_OUT_OF_RESET;
+    msgsubcode == SUBCODE_SBINIT_OUT_OF_RESET;
+    msginfo == 16'h0001;  // Result = Success
+    srcid == 3'b001;      // D2D Adapter
+    dstid == 3'b000;      // Local die
+  });
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+  // Example 2: Memory Read 64-bit Request
+  trans = ucie_sb_transaction::type_id::create("mem_read_64");
+  assert(trans.randomize() with {
+    opcode == MEM_READ_64B;
+    srcid == 3'b010;      // Host/CXL
+    dstid == 3'b001;      // D2D Adapter
+    tag == 5'h0A;
+    addr == 24'h123000;   // 64-bit aligned
+    be == 8'b11111111;    // All bytes
+  });
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+  // Example 3: Completion with Data
+  trans = ucie_sb_transaction::type_id::create("completion_data");
+  assert(trans.randomize() with {
+    opcode == COMPLETION_64B;
+    srcid == 3'b001;      // D2D Adapter (responder)
+    dstid == 3'b010;      // Host/CXL (requester)
+    tag == 5'h0A;         // Matching tag
+    status == 16'h0000;   // Successful completion
+    data == 64'hDEADBEEFCAFEBABE;
+  });
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+  // Example 4: UCIe Standard Clock Pattern
+  trans = ucie_sb_transaction::type_id::create("clock_pattern");
+  assert(trans.randomize() with {
+    opcode == CLOCK_PATTERN;
+    srcid == 3'b001;      // D2D Adapter
+    dstid == 3'b000;      // Local die
+    tag == 5'h00;
+  });
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+  // Example 5: Configuration Write with Error
+  trans = ucie_sb_transaction::type_id::create("cfg_write_error");
+  assert(trans.randomize() with {
+    opcode == CFG_WRITE_32B;
+    srcid == 3'b010;      // Host/CXL
+    dstid == 3'b001;      // D2D Adapter
+    tag == 5'h15;
+    addr == 24'h000100;   // Config space
+    be == 8'b00001111;    // Lower 4 bytes
+    data == 32'h12345678;
+    ep == 1'b1;           // Error poison set
+  });
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+endtask
