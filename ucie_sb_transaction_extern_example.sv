@@ -369,3 +369,80 @@ task demonstrate_enhanced_convert2string();
   `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
   
 endtask
+
+//=============================================================================
+// CLOCK PATTERN OUTPUT FORMAT EXAMPLES
+//=============================================================================
+
+// Dedicated examples showing clock pattern transaction formatting
+task demonstrate_clock_pattern_formats();
+  ucie_sb_transaction trans;
+  
+  `uvm_info("EXAMPLE", "=== Clock Pattern Output Format Examples ===", UVM_LOW)
+  
+  // Example 1: UCIe Standard Clock Pattern (Most Common)
+  `uvm_info("EXAMPLE", "--- UCIe Standard Clock Pattern ---", UVM_LOW)
+  trans = ucie_sb_transaction::type_id::create("std_clock_pattern");
+  assert(trans.randomize() with {
+    opcode == CLOCK_PATTERN;      // 5'b11111
+    srcid == 3'b001;              // D2D Adapter
+    dstid == 3'b000;              // Local die
+    tag == 5'h00;                 // Must be 0 for clock patterns
+    ep == 1'b0;                   // No error poison
+    cr == 1'b0;                   // No credit return
+  });
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+  // Example 2: Clock Pattern from Host to D2D
+  `uvm_info("EXAMPLE", "--- Host to D2D Clock Pattern ---", UVM_LOW)
+  trans = ucie_sb_transaction::type_id::create("host_clock_pattern");
+  assert(trans.randomize() with {
+    opcode == CLOCK_PATTERN;
+    srcid == 3'b010;              // Host/CXL
+    dstid == 3'b001;              // D2D Adapter
+    tag == 5'h00;
+  });
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+  // Example 3: Custom Clock Pattern (Non-standard)
+  `uvm_info("EXAMPLE", "--- Custom Clock Pattern ---", UVM_LOW)
+  trans = ucie_sb_transaction::type_id::create("custom_clock_pattern");
+  assert(trans.randomize() with {
+    opcode == MEM_READ_32B;       // Using register access as carrier
+    srcid == 3'b001;
+    dstid == 3'b000;
+    addr == 24'hAAAAAA;           // Custom pattern address
+    data == 32'h55555555;         // Custom pattern data
+    tag == 5'h00;
+  });
+  trans.is_clock_pattern = 1;     // Manually set clock pattern flag
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+  // Example 4: Clock Pattern with Different Source IDs
+  `uvm_info("EXAMPLE", "--- Clock Pattern from CXL Device ---", UVM_LOW)
+  trans = ucie_sb_transaction::type_id::create("cxl_clock_pattern");
+  assert(trans.randomize() with {
+    opcode == CLOCK_PATTERN;
+    srcid == 3'b011;              // CXL Device
+    dstid == 3'b000;              // Local die
+    tag == 5'h00;
+  });
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+  // Example 5: Clock Pattern in Link Training Sequence
+  `uvm_info("EXAMPLE", "--- Link Training Clock Pattern ---", UVM_LOW)
+  trans = ucie_sb_transaction::type_id::create("training_clock_pattern");
+  assert(trans.randomize() with {
+    opcode == CLOCK_PATTERN;
+    srcid == 3'b001;              // D2D Adapter
+    dstid == 3'b010;              // Host/CXL (bidirectional training)
+    tag == 5'h00;
+  });
+  
+  `uvm_info("EXAMPLE", trans.convert2string(), UVM_LOW)
+  
+endtask
