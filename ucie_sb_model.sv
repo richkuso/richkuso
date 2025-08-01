@@ -459,15 +459,21 @@ class ucie_sb_model extends uvm_component;
   virtual function ucie_sb_transaction create_clock_pattern_transaction();
     ucie_sb_transaction trans = ucie_sb_transaction::type_id::create("clock_pattern_trans");
     
-    // Create alternating pattern for clock pattern
-    trans.pkt_type = PKT_REG_ACCESS;
-    trans.opcode = MEM_READ_32B;
-    trans.srcid = cfg.srcid;
-    trans.dstid = cfg.dstid;
-    trans.tag = 5'h0;
-    trans.addr = cfg.clock_pattern_addr; // Use configured pattern address
-    trans.data = cfg.clock_pattern_data; // Use configured pattern data
-    trans.is_clock_pattern = 1; // Mark as clock pattern transaction
+    // Use UCIe standard clock pattern (Method 1)
+    trans.opcode = CLOCK_PATTERN;        // UCIe standard clock pattern opcode
+    trans.srcid = cfg.srcid;             // Source ID from configuration
+    trans.dstid = cfg.dstid;             // Destination ID from configuration
+    trans.tag = 5'h0;                    // Tag (not meaningful for clock patterns)
+    trans.ep = 1'b0;                     // No error poison
+    trans.cr = 1'b0;                     // No credit return
+    trans.addr = 24'h000000;             // Address not used for clock patterns
+    trans.data = 64'h0;                  // Data not used for clock patterns
+    
+    // Update packet information - this will set is_clock_pattern = 1 automatically
+    trans.update_packet_info();
+    
+    `uvm_info("SB_MODEL", $sformatf("Created UCIe standard clock pattern: src=%0d, dst=%0d", 
+              trans.srcid, trans.dstid), UVM_HIGH)
     
     return trans;
   endfunction
@@ -523,8 +529,19 @@ class ucie_sb_model extends uvm_component;
   //=============================================================================
   
   virtual function bit is_clock_pattern(ucie_sb_transaction trans);
-    // Check the is_clock_pattern field in the transaction
-    return trans.is_clock_pattern;
+    // Check for UCIe standard clock pattern using opcode (Method 1)
+    if (trans.opcode == CLOCK_PATTERN) begin
+      `uvm_info("SB_MODEL", "Detected UCIe standard clock pattern by opcode", UVM_HIGH)
+      return 1;
+    end
+    
+    // Fallback: check the is_clock_pattern field for custom patterns
+    if (trans.is_clock_pattern) begin
+      `uvm_info("SB_MODEL", "Detected custom clock pattern by flag", UVM_HIGH)
+      return 1;
+    end
+    
+    return 0;
   endfunction
   
   virtual function bit is_sbinit_oor_message(ucie_sb_transaction trans);

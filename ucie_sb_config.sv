@@ -37,8 +37,9 @@ class ucie_sb_config extends uvm_object;
   // Clock pattern configuration
   int remaining_clock_patterns = 4;       // Patterns to send after detection
   int required_pattern_detections = 2;    // Back-to-back patterns required
-  bit [31:0] clock_pattern_data = 32'h55555555; // Alternating pattern
-  bit [23:0] clock_pattern_addr = 24'hAAAAAA;   // Alternating address
+  // DEPRECATED: Custom pattern fields (now using UCIe standard CLOCK_PATTERN opcode)
+  bit [31:0] clock_pattern_data = 32'h55555555; // DEPRECATED: Use CLOCK_PATTERN opcode instead
+  bit [23:0] clock_pattern_addr = 24'hAAAAAA;   // DEPRECATED: Use CLOCK_PATTERN opcode instead
   
   // SBINIT message configuration
   bit [4:0] sbinit_oor_tag = 5'h10;      // SBINIT Out of Reset tag

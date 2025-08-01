@@ -401,11 +401,16 @@ virtual function ucie_sb_transaction ucie_sb_monitor::decode_header(bit [63:0] h
   ucie_sb_opcode_e detected_opcode = ucie_sb_opcode_e'(phase0[4:0]);
   trans.opcode = detected_opcode;
   
-  // Check if this is a clock pattern by matching the fixed pattern
+  // Check if this is a UCIe standard clock pattern by matching the fixed pattern
   if (header == {CLOCK_PATTERN_PHASE1, CLOCK_PATTERN_PHASE0}) begin
     trans.opcode = CLOCK_PATTERN;
     trans.is_clock_pattern = 1;
-    `uvm_info("MONITOR", "Detected clock pattern transaction", UVM_MEDIUM)
+    `uvm_info("MONITOR", "Detected UCIe standard clock pattern (0x5555555555555555)", UVM_MEDIUM)
+  end
+  // Check if opcode indicates clock pattern but pattern doesn't match (error condition)
+  else if (detected_opcode == CLOCK_PATTERN) begin
+    trans.is_clock_pattern = 1;
+    `uvm_warning("MONITOR", $sformatf("CLOCK_PATTERN opcode detected but header pattern mismatch: 0x%016h (expected 0x5555555555555555)", header))
   end
   // Check if this is a message without data format
   else if (detected_opcode == MESSAGE_NO_DATA || detected_opcode == MGMT_MSG_NO_DATA) begin
