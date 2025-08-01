@@ -40,7 +40,7 @@ class ucie_sb_driver_config extends uvm_object;
   bit enable_protocol_checking = 1;
   bit enable_statistics = 1;
   
-  // Timing parameters
+  // Timing parameters (used in examples, reserved for future timing validation)
   real setup_time = 0.1;          // ns - data setup time before clock edge
   real hold_time = 0.1;           // ns - data hold time after clock edge
   real gap_time = 0.0;            // ns - additional time during gaps
@@ -251,30 +251,7 @@ class ucie_sb_driver extends uvm_driver #(ucie_sb_transaction);
   //-----------------------------------------------------------------------------
   extern virtual function bit validate_transaction(ucie_sb_transaction trans);
   
-  //-----------------------------------------------------------------------------
-  // FUNCTION: get_tx_clk_state
-  // Returns current state of TX clock signal
-  //
-  // RETURNS: Current SBTX_CLK value
-  //-----------------------------------------------------------------------------
-  extern virtual function bit get_tx_clk_state();
-  
-  //-----------------------------------------------------------------------------
-  // FUNCTION: get_tx_data_state
-  // Returns current state of TX data signal
-  //
-  // RETURNS: Current SBTX_DATA value
-  //-----------------------------------------------------------------------------
-  extern virtual function bit get_tx_data_state();
-  
-  //-----------------------------------------------------------------------------
-  // TASK: drive_debug_pattern
-  // Drives a debug pattern for testing purposes
-  //
-  // PARAMETERS:
-  //   pattern - 64-bit debug pattern to drive
-  //-----------------------------------------------------------------------------
-  extern virtual task drive_debug_pattern(bit [63:0] pattern);
+
   
   //-----------------------------------------------------------------------------
   // FUNCTION: update_statistics
@@ -688,31 +665,7 @@ virtual function bit ucie_sb_driver::validate_transaction(ucie_sb_transaction tr
   return 1;
 endfunction
 
-//-----------------------------------------------------------------------------
-// FUNCTION: get_tx_clk_state
-// Returns current state of TX clock signal
-//-----------------------------------------------------------------------------
-virtual function bit ucie_sb_driver::get_tx_clk_state();
-  return vif.SBTX_CLK;
-endfunction
 
-//-----------------------------------------------------------------------------
-// FUNCTION: get_tx_data_state
-// Returns current state of TX data signal
-//-----------------------------------------------------------------------------
-virtual function bit ucie_sb_driver::get_tx_data_state();
-  return vif.SBTX_DATA;
-endfunction
-
-//-----------------------------------------------------------------------------
-// TASK: drive_debug_pattern
-// Drives a debug pattern for testing purposes
-//-----------------------------------------------------------------------------
-virtual task ucie_sb_driver::drive_debug_pattern(bit [63:0] pattern);
-  `uvm_info("DRIVER", $sformatf("Driving debug pattern: 0x%016h", pattern), UVM_LOW)
-  drive_packet_with_clock(pattern);
-  drive_gap();
-endtask
 
 //-----------------------------------------------------------------------------
 // FUNCTION: update_statistics

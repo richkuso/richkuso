@@ -132,44 +132,7 @@ class ucie_sb_monitor extends uvm_monitor;
   //-----------------------------------------------------------------------------
   extern virtual function void check_transaction_validity(ucie_sb_transaction trans);
   
-  //-----------------------------------------------------------------------------
-  // FUNCTION: get_rx_clk_state
-  // Returns current state of RX clock signal
-  //
-  // RETURNS: Current SBRX_CLK value
-  //-----------------------------------------------------------------------------
-  extern virtual function bit get_rx_clk_state();
-  
-  //-----------------------------------------------------------------------------
-  // FUNCTION: get_rx_data_state
-  // Returns current state of RX data signal
-  //
-  // RETURNS: Current SBRX_DATA value
-  //-----------------------------------------------------------------------------
-  extern virtual function bit get_rx_data_state();
-  
-  //-----------------------------------------------------------------------------
-  // TASK: wait_rx_cycles
-  // Waits for specified number of RX clock cycles
-  //
-  // PARAMETERS:
-  //   num_cycles - Number of cycles to wait
-  //-----------------------------------------------------------------------------
-  extern virtual task wait_rx_cycles(int num_cycles);
-  
-  //-----------------------------------------------------------------------------
-  // FUNCTION: is_rx_idle
-  // Checks if RX interface is in idle state
-  //
-  // RETURNS: 1 if idle (data low), 0 if active
-  //-----------------------------------------------------------------------------
-  extern virtual function bit is_rx_idle();
-  
-  //-----------------------------------------------------------------------------
-  // TASK: wait_for_rx_idle
-  // Waits for RX interface to become idle
-  //-----------------------------------------------------------------------------
-  extern virtual task wait_for_rx_idle();
+
   
   //-----------------------------------------------------------------------------
   // FUNCTION: update_statistics
@@ -528,53 +491,7 @@ virtual function void ucie_sb_monitor::check_transaction_validity(ucie_sb_transa
   end
 endfunction
 
-//-----------------------------------------------------------------------------
-// FUNCTION: get_rx_clk_state
-// Returns current state of RX clock signal
-//-----------------------------------------------------------------------------
-virtual function bit ucie_sb_monitor::get_rx_clk_state();
-  return vif.SBRX_CLK;
-endfunction
 
-//-----------------------------------------------------------------------------
-// FUNCTION: get_rx_data_state
-// Returns current state of RX data signal
-//-----------------------------------------------------------------------------
-virtual function bit ucie_sb_monitor::get_rx_data_state();
-  return vif.SBRX_DATA;
-endfunction
-
-//-----------------------------------------------------------------------------
-// TASK: wait_rx_cycles
-// Waits for specified number of RX clock cycles (posedge)
-//-----------------------------------------------------------------------------
-virtual task ucie_sb_monitor::wait_rx_cycles(int num_cycles);
-  `uvm_info("MONITOR", $sformatf("Waiting for %0d RX clock cycles", num_cycles), UVM_DEBUG)
-  repeat(num_cycles) @(posedge vif.SBRX_CLK);
-  `uvm_info("MONITOR", $sformatf("Completed %0d RX clock cycles", num_cycles), UVM_DEBUG)
-endtask
-
-//-----------------------------------------------------------------------------
-// FUNCTION: is_rx_idle
-// Checks if RX interface is in idle state
-//-----------------------------------------------------------------------------
-virtual function bit ucie_sb_monitor::is_rx_idle();
-  return (vif.SBRX_DATA == 1'b0);
-endfunction
-
-//-----------------------------------------------------------------------------
-// TASK: wait_for_rx_idle
-// Waits for RX interface to become idle (data low on posedge clock)
-//-----------------------------------------------------------------------------
-virtual task ucie_sb_monitor::wait_for_rx_idle();
-  `uvm_info("MONITOR", "Waiting for RX interface to become idle", UVM_DEBUG)
-  
-  while (vif.SBRX_DATA !== 1'b0) begin
-    @(posedge vif.SBRX_CLK);
-  end
-  
-  `uvm_info("MONITOR", "RX interface is now idle", UVM_DEBUG)
-endtask
 
 //-----------------------------------------------------------------------------
 // FUNCTION: update_statistics
