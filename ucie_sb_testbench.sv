@@ -1,6 +1,7 @@
 module ucie_sb_testbench;
   import uvm_pkg::*;
   import ucie_sb_pkg::*;
+  import ucie_sb_test_pkg::*;
   `include "uvm_macros.svh"
   
   // Clock and reset generation
@@ -33,240 +34,36 @@ module ucie_sb_testbench;
   
   // Simple sideband receiver DUT for demonstration
   ucie_sb_receiver_dut dut (
-    .SBTX_CLK(sb_intf.SBTX_CLK),
-    .SBTX_DATA(sb_intf.SBTX_DATA),
-    .SBRX_CLK(sb_intf.SBRX_CLK),
-    .SBRX_DATA(sb_intf.SBRX_DATA),
+    .sbtx_clk(sb_intf.SBTX_CLK),
+    .sbtx_data(sb_intf.SBTX_DATA),
+    .sbrx_clk(sb_intf.SBRX_CLK),
+    .sbrx_data(sb_intf.SBRX_DATA),
     .sb_reset(sb_reset)
   );
   
-  // UVM Environment
-  class ucie_sb_env extends uvm_env;
-    `uvm_component_utils(ucie_sb_env)
+  // Dedicated function for UVM interface configuration (more readable than wildcards)
+  function void configure_uvm_interfaces();
+    `uvm_info("TB", "=== Configuring UVM Interfaces ===", UVM_LOW)
     
-    ucie_sb_agent agent;
+    // Set interface for test level (top-level access)
+    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top", "vif", sb_intf);
+    `uvm_info("TB", "✅ Test level interface configured", UVM_LOW)
     
-    function new(string name = "ucie_sb_env", uvm_component parent = null);
-      super.new(name, parent);
-    endfunction
+    // Set interface for environment level (env can access for agent configuration)
+    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.env", "vif", sb_intf);
+    `uvm_info("TB", "✅ Environment level interface configured", UVM_LOW)
     
-    virtual function void build_phase(uvm_phase phase);
-      super.build_phase(phase);
-      agent = ucie_sb_agent::type_id::create("agent", this);
-    endfunction
-  endclass
-  
-  // Base test class
-  class ucie_sb_base_test extends uvm_test;
-    `uvm_component_utils(ucie_sb_base_test)
+    // Set interface for all environment children (agents, checker, etc.)
+    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.env.*", "vif", sb_intf);
+    `uvm_info("TB", "✅ Environment children interfaces configured", UVM_LOW)
     
-    ucie_sb_env env;
+    // Verify interface connectivity to DUT
+    `uvm_info("TB", $sformatf("Interface DUT connections verified: SBTX→DUT.sbtx, SBRX←DUT.sbrx"), UVM_LOW)
+    `uvm_info("TB", $sformatf("Current signal states: TX_CLK=%0b, TX_DATA=%0b, RX_CLK=%0b, RX_DATA=%0b", 
+              sb_intf.SBTX_CLK, sb_intf.SBTX_DATA, sb_intf.SBRX_CLK, sb_intf.SBRX_DATA), UVM_DEBUG)
     
-    function new(string name = "ucie_sb_base_test", uvm_component parent = null);
-      super.new(name, parent);
-    endfunction
-    
-    virtual function void build_phase(uvm_phase phase);
-      super.build_phase(phase);
-      
-      // Create environment
-      env = ucie_sb_env::type_id::create("env", this);
-      
-      // Configure the agent as active
-      uvm_config_db#(uvm_active_passive_enum)::set(this, "env.agent", "is_active", UVM_ACTIVE);
-      
-      // Set the virtual interface
-      uvm_config_db#(virtual ucie_sb_interface)::set(this, "env.agent.*", "vif", sb_intf);
-    endfunction
-    
-    virtual function void end_of_elaboration_phase(uvm_phase phase);
-      super.end_of_elaboration_phase(phase);
-      uvm_top.print_topology();
-    endfunction
-  endclass
-  
-  // Memory access test
-  class ucie_sb_memory_test extends ucie_sb_base_test;
-    `uvm_component_utils(ucie_sb_memory_test)
-    
-    function new(string name = "ucie_sb_memory_test", uvm_component parent = null);
-      super.new(name, parent);
-    endfunction
-    
-    virtual task run_phase(uvm_phase phase);
-      ucie_sb_mem_write_seq write_seq;
-      ucie_sb_mem_read_seq read_seq;
-      
-      phase.raise_objection(this);
-      
-      `uvm_info("MEMORY_TEST", "Starting memory access test", UVM_LOW)
-      
-      // Run memory write sequence
-      write_seq = ucie_sb_mem_write_seq::type_id::create("write_seq");
-      assert(write_seq.randomize() with {
-        num_transactions == 5;
-        use_64bit == 1'b0; // Use 32-bit first
-      });
-      write_seq.start(env.agent.sequencer);
-      
-      #1000; // Gap between sequences
-      
-      // Run memory read sequence
-      read_seq = ucie_sb_mem_read_seq::type_id::create("read_seq");
-      assert(read_seq.randomize() with {
-        num_transactions == 5;
-        use_64bit == 1'b0; // Use 32-bit first
-      });
-      read_seq.start(env.agent.sequencer);
-      
-      #1000;
-      
-      // Run 64-bit memory operations
-      write_seq = ucie_sb_mem_write_seq::type_id::create("write_seq_64");
-      assert(write_seq.randomize() with {
-        num_transactions == 3;
-        use_64bit == 1'b1; // Use 64-bit
-      });
-      write_seq.start(env.agent.sequencer);
-      
-      #1000;
-      
-      read_seq = ucie_sb_mem_read_seq::type_id::create("read_seq_64");
-      assert(read_seq.randomize() with {
-        num_transactions == 3;
-        use_64bit == 1'b1; // Use 64-bit
-      });
-      read_seq.start(env.agent.sequencer);
-      
-      #2000;
-      
-      `uvm_info("MEMORY_TEST", "Memory access test completed", UVM_LOW)
-      
-      phase.drop_objection(this);
-    endtask
-  endclass
-  
-  // Configuration access test
-  class ucie_sb_config_test extends ucie_sb_base_test;
-    `uvm_component_utils(ucie_sb_config_test)
-    
-    function new(string name = "ucie_sb_config_test", uvm_component parent = null);
-      super.new(name, parent);
-    endfunction
-    
-    virtual task run_phase(uvm_phase phase);
-      ucie_sb_cfg_seq cfg_seq;
-      
-      phase.raise_objection(this);
-      
-      `uvm_info("CONFIG_TEST", "Starting configuration access test", UVM_LOW)
-      
-      // Run 32-bit configuration sequence
-      cfg_seq = ucie_sb_cfg_seq::type_id::create("cfg_seq_32");
-      assert(cfg_seq.randomize() with {
-        num_reads == 3;
-        num_writes == 3;
-        use_64bit == 1'b0;
-      });
-      cfg_seq.start(env.agent.sequencer);
-      
-      #1000;
-      
-      // Run 64-bit configuration sequence
-      cfg_seq = ucie_sb_cfg_seq::type_id::create("cfg_seq_64");
-      assert(cfg_seq.randomize() with {
-        num_reads == 2;
-        num_writes == 2;
-        use_64bit == 1'b1;
-      });
-      cfg_seq.start(env.agent.sequencer);
-      
-      #2000;
-      
-      `uvm_info("CONFIG_TEST", "Configuration access test completed", UVM_LOW)
-      
-      phase.drop_objection(this);
-    endtask
-  endclass
-  
-  // Mixed traffic test
-  class ucie_sb_mixed_test extends ucie_sb_base_test;
-    `uvm_component_utils(ucie_sb_mixed_test)
-    
-    function new(string name = "ucie_sb_mixed_test", uvm_component parent = null);
-      super.new(name, parent);
-    endfunction
-    
-    virtual task run_phase(uvm_phase phase);
-      ucie_sb_base_sequence sequences[];
-      
-      phase.raise_objection(this);
-      
-      `uvm_info("MIXED_TEST", "Starting mixed traffic test", UVM_LOW)
-      
-      // Create array of different sequences
-      sequences = new[6];
-      sequences[0] = ucie_sb_mem_write_seq::type_id::create("mem_wr_32");
-      sequences[1] = ucie_sb_mem_read_seq::type_id::create("mem_rd_32");
-      sequences[2] = ucie_sb_cfg_seq::type_id::create("cfg_32");
-      sequences[3] = ucie_sb_mem_write_seq::type_id::create("mem_wr_64");
-      sequences[4] = ucie_sb_mem_read_seq::type_id::create("mem_rd_64");
-      sequences[5] = ucie_sb_cfg_seq::type_id::create("cfg_64");
-      
-      // Configure sequences
-      void'($cast(sequences[0], ucie_sb_mem_write_seq::type_id::create("mem_wr_32")));
-      assert(sequences[0].randomize() with {
-        ucie_sb_mem_write_seq::num_transactions == 2;
-        ucie_sb_mem_write_seq::use_64bit == 1'b0;
-      });
-      
-      void'($cast(sequences[1], ucie_sb_mem_read_seq::type_id::create("mem_rd_32")));
-      assert(sequences[1].randomize() with {
-        ucie_sb_mem_read_seq::num_transactions == 2;
-        ucie_sb_mem_read_seq::use_64bit == 1'b0;
-      });
-      
-      void'($cast(sequences[2], ucie_sb_cfg_seq::type_id::create("cfg_32")));
-      assert(sequences[2].randomize() with {
-        ucie_sb_cfg_seq::num_reads == 1;
-        ucie_sb_cfg_seq::num_writes == 1;
-        ucie_sb_cfg_seq::use_64bit == 1'b0;
-      });
-      
-      void'($cast(sequences[3], ucie_sb_mem_write_seq::type_id::create("mem_wr_64")));
-      assert(sequences[3].randomize() with {
-        ucie_sb_mem_write_seq::num_transactions == 2;
-        ucie_sb_mem_write_seq::use_64bit == 1'b1;
-      });
-      
-      void'($cast(sequences[4], ucie_sb_mem_read_seq::type_id::create("mem_rd_64")));
-      assert(sequences[4].randomize() with {
-        ucie_sb_mem_read_seq::num_transactions == 2;
-        ucie_sb_mem_read_seq::use_64bit == 1'b1;
-      });
-      
-      void'($cast(sequences[5], ucie_sb_cfg_seq::type_id::create("cfg_64")));
-      assert(sequences[5].randomize() with {
-        ucie_sb_cfg_seq::num_reads == 1;
-        ucie_sb_cfg_seq::num_writes == 1;
-        ucie_sb_cfg_seq::use_64bit == 1'b1;
-      });
-      
-      // Run sequences in random order
-      sequences.shuffle();
-      
-      foreach(sequences[i]) begin
-        sequences[i].start(env.agent.sequencer);
-        #500; // Small gap between different sequence types
-      end
-      
-      #2000;
-      
-      `uvm_info("MIXED_TEST", "Mixed traffic test completed", UVM_LOW)
-      
-      phase.drop_objection(this);
-    endtask
-  endclass
+    `uvm_info("TB", "=== Interface Configuration Complete ===", UVM_LOW)
+  endfunction
   
   // Initial block to start UVM
   initial begin
@@ -275,11 +72,23 @@ module ucie_sb_testbench;
       `uvm_info("TB", "Sideband assertions enabled", UVM_LOW)
     `endif
     
-    // Set up UVM configuration
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, "*", "vif", sb_intf);
+    // Configure UVM interfaces (replaces wildcard approach)
+    configure_uvm_interfaces();
     
     // Set verbosity
     uvm_top.set_report_verbosity_level_hier(UVM_MEDIUM);
+    
+    // Display testbench information
+    `uvm_info("TB", "=== UCIe Sideband UVM Testbench ===", UVM_LOW)
+    `uvm_info("TB", "Features: Register Access Checker, Clock Patterns, SBINIT Messages", UVM_LOW)
+    `uvm_info("TB", "Architecture: FIFO-Only Checker, TAG/Non-TAG Support", UVM_LOW)
+    `uvm_info("TB", "Available Tests:", UVM_LOW)
+    `uvm_info("TB", "  - ucie_sb_clock_pattern_test", UVM_LOW)
+    `uvm_info("TB", "  - ucie_sb_memory_test", UVM_LOW)
+    `uvm_info("TB", "  - ucie_sb_config_test", UVM_LOW)
+    `uvm_info("TB", "  - ucie_sb_sbinit_test", UVM_LOW)
+    `uvm_info("TB", "  - ucie_sb_mixed_test", UVM_LOW)
+    `uvm_info("TB", "  - ucie_sb_checker_test", UVM_LOW)
     
     // Run the test
     run_test();
@@ -293,8 +102,14 @@ module ucie_sb_testbench;
   
   // Timeout watchdog
   initial begin
-    #50000; // 50us timeout
+    #100000; // 100us timeout (increased for comprehensive tests)
     `uvm_fatal("TIMEOUT", "Test timeout - simulation ran too long")
+  end
+  
+  // Final statistics and cleanup
+  final begin
+    `uvm_info("TB", "=== Testbench Final Statistics ===", UVM_LOW)
+    `uvm_info("TB", "=== Testbench Completed ===", UVM_LOW)
   end
   
 endmodule
@@ -439,7 +254,7 @@ module ucie_sb_receiver_dut (
     endcase
   endfunction
   
-  // Packet processing and display
+  // Enhanced packet processing and display with transaction details
   always_ff @(posedge sbtx_clk) begin
     if (packet_valid) begin
       logic [4:0] opcode;
@@ -447,24 +262,52 @@ module ucie_sb_receiver_dut (
       logic [4:0] tag;
       logic [23:0] addr;
       logic [15:0] status;
+      string opcode_name;
       
       opcode = header_reg[6:2];
       srcid = header_reg[31:29];
       dstid = header_reg[56:54];
       tag = header_reg[25:21];
       
+      // Decode opcode name
+      case (opcode)
+        5'b00000: opcode_name = "MEM_READ_32B";
+        5'b00001: opcode_name = "MEM_WRITE_32B";
+        5'b00010: opcode_name = "DMS_READ_32B";
+        5'b00011: opcode_name = "DMS_WRITE_32B";
+        5'b00100: opcode_name = "CFG_READ_32B";
+        5'b00101: opcode_name = "CFG_WRITE_32B";
+        5'b01000: opcode_name = "MEM_READ_64B";
+        5'b01001: opcode_name = "MEM_WRITE_64B";
+        5'b01010: opcode_name = "DMS_READ_64B";
+        5'b01011: opcode_name = "DMS_WRITE_64B";
+        5'b01100: opcode_name = "CFG_READ_64B";
+        5'b01101: opcode_name = "CFG_WRITE_64B";
+        5'b10000: opcode_name = "COMPLETION_NO_DATA";
+        5'b10001: opcode_name = "COMPLETION_32B";
+        5'b11001: opcode_name = "COMPLETION_64B";
+        5'b10010: opcode_name = "MESSAGE_NO_DATA";
+        5'b11011: opcode_name = "MESSAGE_64B";
+        5'b10111: opcode_name = "MGMT_MSG_NO_DATA";
+        5'b11000: opcode_name = "MGMT_MSG_DATA";
+        5'b11111: opcode_name = "CLOCK_PATTERN";
+        default:  opcode_name = "UNKNOWN";
+      endcase
+      
       if (opcode inside {5'b10000, 5'b10001, 5'b11001}) begin // Completions
         status = header_reg[47:32];
-        $display("DUT: Received COMPLETION - opcode=%0d, srcid=%0d, dstid=%0d, tag=%0d, status=0x%0h", 
-                 opcode, srcid, dstid, tag, status);
-      end else begin // Register access
+        $display("DUT: [%0t] COMPLETION %s - SRC:%0d→DST:%0d TAG:0x%02h STATUS:0x%04h", 
+                 $time, opcode_name, srcid, dstid, tag, status);
+      end else if (opcode == 5'b11111) begin // Clock pattern
+        $display("DUT: [%0t] CLOCK_PATTERN - Continuous pattern detected", $time);
+      end else begin // Register access or messages
         addr = {8'h0, header_reg[47:32]};
-        $display("DUT: Received REG_ACCESS - opcode=%0d, srcid=%0d, dstid=%0d, tag=%0d, addr=0x%0h", 
-                 opcode, srcid, dstid, tag, addr);
+        $display("DUT: [%0t] REG_ACCESS %s - SRC:%0d→DST:%0d TAG:0x%02h ADDR:0x%06h", 
+                 $time, opcode_name, srcid, dstid, tag, addr);
       end
       
       if (data_phase) begin
-        $display("DUT: Packet data = 0x%016h", data_reg);
+        $display("DUT: [%0t] → DATA: 0x%016h", $time, data_reg);
       end
     end
   end

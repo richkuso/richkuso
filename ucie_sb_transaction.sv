@@ -206,10 +206,33 @@ class ucie_sb_transaction extends uvm_sequence_item;
   //-----------------------------------------------------------------------------
   // FUNCTION: convert2string
   // Converts transaction to formatted string for debugging/logging
-  //
-  // RETURNS: Multi-line formatted string with all transaction details
+  // Enhanced with message code names and improved formatting
   //-----------------------------------------------------------------------------
   extern function string convert2string();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_msgcode_name
+  // Returns human-readable name for message code
+  //-----------------------------------------------------------------------------
+  extern function string get_msgcode_name(bit [7:0] code);
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_msgsubcode_name
+  // Returns human-readable name for message subcode
+  //-----------------------------------------------------------------------------
+  extern function string get_msgsubcode_name(bit [7:0] subcode);
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_completion_status_name
+  // Returns human-readable name for completion status
+  //-----------------------------------------------------------------------------
+  extern function string get_completion_status_name(bit [15:0] status);
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: get_be_description
+  // Returns human-readable description of byte enables
+  //-----------------------------------------------------------------------------
+  extern function string get_be_description();
 
   //=============================================================================
   // CONSTRAINTS (Keep inline for readability)
@@ -503,36 +526,153 @@ endfunction
 //-----------------------------------------------------------------------------
 // FUNCTION: convert2string
 // Converts transaction to formatted string for debugging/logging
+// Enhanced with message code names and improved formatting
 //-----------------------------------------------------------------------------
 function string ucie_sb_transaction::convert2string();
   string s;
-  s = $sformatf("\n=== UCIe Sideband Transaction ===");
-  s = {s, $sformatf("\n  Opcode    : %s (0x%02h)", opcode.name(), opcode)};
-  s = {s, $sformatf("\n  Type      : %s", pkt_type.name())};
-  s = {s, $sformatf("\n  Source    : %s (0x%01h)", get_srcid_name(), srcid)};
-  s = {s, $sformatf("\n  Dest      : %s (0x%01h)", get_dstid_name(), dstid)};
-  s = {s, $sformatf("\n  Tag       : 0x%02h", tag)};
-  s = {s, $sformatf("\n  Address   : 0x%06h", addr)};
-  s = {s, $sformatf("\n  BE        : 0x%02h", be)};
-  s = {s, $sformatf("\n  EP        : %0b", ep)};
-  s = {s, $sformatf("\n  CR        : %0b", cr)};
-  s = {s, $sformatf("\n  CP        : %0b", cp)};
-  s = {s, $sformatf("\n  DP        : %0b", dp)};
+  string msg_name, submsg_name, status_name, be_desc;
+  
+  s = $sformatf("\n+--- UCIe Sideband Transaction ---+");
+  
+  // Basic transaction information (2 lines)
+  s = {s, $sformatf("\n| Opcode: %-18s Type: %-15s Tag: 0x%02h |", opcode.name(), pkt_type.name(), tag)};
+  s = {s, $sformatf("\n| Src: %-12s(0x%01h)  Dst: %-12s(0x%01h) |", get_srcid_name(), srcid, get_dstid_name(), dstid)};
+  
+  // Address and control (1 line)
+  be_desc = get_be_description();
+  s = {s, $sformatf("\n| Addr: 0x%06h  BE: 0x%02h(%-8s)  EP:%0b CR:%0b |", addr, be, be_desc, ep, cr)};
+  
+  // Data information (1 line)
   if (has_data) begin
-    s = {s, $sformatf("\n  Data      : 0x%016h (%s)", data, is_64bit ? "64-bit" : "32-bit")};
+    s = {s, $sformatf("\n| Data: 0x%016h (%s)  CP:%0b DP:%0b |", data, is_64bit ? "64-bit" : "32-bit", cp, dp)};
   end else begin
-    s = {s, $sformatf("\n  Data      : No data")};
+    s = {s, $sformatf("\n| Data: No payload                    CP:%0b DP:%0b |", cp, dp)};
   end
-  s = {s, $sformatf("\n  Has Data  : %0b", has_data)};
-  s = {s, $sformatf("\n  Is 64-bit : %0b", is_64bit)};
-  s = {s, $sformatf("\n  Clock Pattern: %0b", is_clock_pattern)};
-  if (pkt_type == PKT_MESSAGE && !has_data) begin
-    s = {s, $sformatf("\n  MsgCode   : 0x%02h", msgcode)};
-    s = {s, $sformatf("\n  MsgInfo   : 0x%04h", msginfo)};
-    s = {s, $sformatf("\n  MsgSubcode: 0x%02h", msgsubcode)};
+  
+  // Message-specific information (1-2 lines)
+  if (pkt_type == PKT_MESSAGE) begin
+    msg_name = get_msgcode_name(msgcode);
+    submsg_name = get_msgsubcode_name(msgsubcode);
+    s = {s, $sformatf("\n| MsgCode: %-18s(0x%02h)  Info: 0x%04h |", msg_name, msgcode, msginfo)};
+    s = {s, $sformatf("\n| SubCode: %-18s(0x%02h)              |", submsg_name, msgsubcode)};
+    
+    // Add message interpretation
+    if (msgcode == MSG_SBINIT_OUT_OF_RESET) begin
+      s = {s, $sformatf("\n| Meaning: SBINIT Out of Reset - Result: 0x%01h (%s) |", 
+                        msginfo[3:0], (msginfo[3:0] == 4'h1) ? "Success" : "Unknown")};
+    end else if (msgcode == MSG_SBINIT_DONE_REQ) begin
+      s = {s, $sformatf("\n| Meaning: SBINIT Done Request                    |")};
+    end else if (msgcode == MSG_SBINIT_DONE_RESP) begin
+      s = {s, $sformatf("\n| Meaning: SBINIT Done Response                   |")};
+    end
   end
-  s = {s, $sformatf("\n================================")};
+  
+  // Completion-specific information (1-2 lines)
+  if (pkt_type == PKT_COMPLETION) begin
+    status_name = get_completion_status_name(status);
+    s = {s, $sformatf("\n| Status: 0x%04h (%-25s) |", status, status_name)};
+    if (has_data) begin
+      s = {s, $sformatf("\n| Return: 0x%016h (%s)              |", data, is_64bit ? "64-bit" : "32-bit")};
+    end
+  end
+  
+  // Clock pattern information (1 line)
+  if (is_clock_pattern || opcode == CLOCK_PATTERN) begin
+    if (opcode == CLOCK_PATTERN) begin
+      s = {s, $sformatf("\n| Clock Pattern: UCIe Standard (0x5555555555555555) |")};
+    end else begin
+      s = {s, $sformatf("\n| Clock Pattern: Custom - Addr:0x%06h Data:0x%016h |", addr, data)};
+    end
+  end
+  
+  // Transaction characteristics (1 line)
+  s = {s, $sformatf("\n| Flags: HasData:%0b Is64bit:%0b ClkPat:%0b Valid:%0b    |", 
+                    has_data, is_64bit, is_clock_pattern, is_valid())};
+  
+  // Header information (1 line)
+  if (is_clock_pattern && opcode == CLOCK_PATTERN) begin
+    bit [63:0] header = get_clock_pattern_header();
+    s = {s, $sformatf("\n| Header: 0x%016h (Clock Pattern)        |", header)};
+  end else if (pkt_type == PKT_MESSAGE && !has_data) begin
+    bit [63:0] header = get_message_header();
+    s = {s, $sformatf("\n| Header: 0x%016h (Message)              |", header)};
+  end else begin
+    bit [63:0] header = get_header();
+    s = {s, $sformatf("\n| Header: 0x%016h (Standard)             |", header)};
+  end
+  
+  s = {s, $sformatf("\n+------------------------------------+")};
   return s;
+endfunction
+
+//-----------------------------------------------------------------------------
+// FUNCTION: get_msgcode_name
+// Returns human-readable name for message code
+//-----------------------------------------------------------------------------
+function string get_msgcode_name(bit [7:0] code);
+  case (code)
+    MSG_SBINIT_OUT_OF_RESET: return "SBINIT_OUT_OF_RESET";
+    MSG_SBINIT_DONE_REQ:     return "SBINIT_DONE_REQ";
+    MSG_SBINIT_DONE_RESP:    return "SBINIT_DONE_RESP";
+    default:                 return $sformatf("UNKNOWN_0x%02h", code);
+  endcase
+endfunction
+
+//-----------------------------------------------------------------------------
+// FUNCTION: get_msgsubcode_name
+// Returns human-readable name for message subcode
+//-----------------------------------------------------------------------------
+function string get_msgsubcode_name(bit [7:0] subcode);
+  case (subcode)
+    SUBCODE_SBINIT_OUT_OF_RESET: return "SBINIT_OUT_OF_RESET";
+    SUBCODE_SBINIT_DONE_REQ:     return "SBINIT_DONE_REQ";
+    SUBCODE_SBINIT_DONE_RESP:    return "SBINIT_DONE_RESP";
+    default:                     return $sformatf("UNKNOWN_0x%02h", subcode);
+  endcase
+endfunction
+
+//-----------------------------------------------------------------------------
+// FUNCTION: get_completion_status_name
+// Returns human-readable name for completion status
+//-----------------------------------------------------------------------------
+function string get_completion_status_name(bit [15:0] status);
+  bit [2:0] completion_status = status[2:0];
+  case (completion_status)
+    3'b000: return "Successful Completion";
+    3'b001: return "Unsupported Request";
+    3'b010: return "Config Retry Status";
+    3'b011: return "Reserved";
+    3'b100: return "Completer Abort";
+    3'b101: return "Reserved";
+    3'b110: return "Reserved";
+    3'b111: return "Reserved";
+    default: return $sformatf("Unknown_0x%03b", completion_status);
+  endcase
+endfunction
+
+//-----------------------------------------------------------------------------
+// FUNCTION: get_be_description
+// Returns human-readable description of byte enables
+//-----------------------------------------------------------------------------
+function string get_be_description();
+  case (be)
+    8'b11111111: return "All";
+    8'b00001111: return "Low4B";
+    8'b11110000: return "Hi4B";
+    8'b00000011: return "B0-1";
+    8'b00001100: return "B2-3";
+    8'b00110000: return "B4-5";
+    8'b11000000: return "B6-7";
+    8'b00000001: return "B0";
+    8'b00000010: return "B1";
+    8'b00000100: return "B2";
+    8'b00001000: return "B3";
+    8'b00010000: return "B4";
+    8'b00100000: return "B5";
+    8'b01000000: return "B6";
+    8'b10000000: return "B7";
+    default:     return "Custom";
+  endcase
 endfunction
 
 //-----------------------------------------------------------------------------

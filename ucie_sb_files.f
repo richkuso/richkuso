@@ -5,6 +5,7 @@
 ucie_sb_interface.sv
 
 # Individual class files (in dependency order)
+ucie_sb_config.sv
 ucie_sb_transaction.sv
 ucie_sb_sequences.sv
 ucie_sb_driver.sv
@@ -14,6 +15,19 @@ ucie_sb_agent.sv
 
 # Main package file that includes all classes
 ucie_sb_pkg.sv
+
+# Test environment and classes
+ucie_sb_env.sv
+ucie_sb_base_test.sv
+ucie_sb_clock_pattern_test.sv
+ucie_sb_memory_test.sv
+ucie_sb_config_test.sv
+ucie_sb_sbinit_test.sv
+ucie_sb_mixed_test.sv
+ucie_sb_checker_test.sv
+
+# Test package
+ucie_sb_test_pkg.sv
 
 # Testbench files
 ucie_sb_testbench.sv
