@@ -69,11 +69,11 @@ class ucie_sb_env extends uvm_env;
       
       // Connect even agent's analysis port to TX FIFO
       agents[agent_tx_idx].ap.connect(reg_checkers[i].tx_fifo.analysis_export);
-      `uvm_info("ENV", $sformatf("Agent[%0d].ap → reg_checker_%0d.tx_fifo", agent_tx_idx, i), UVM_MEDIUM)
+      `uvm_info("ENV", $sformatf("Agent[%0d].ap -> reg_checker_%0d.tx_fifo", agent_tx_idx, i), UVM_MEDIUM)
       
       // Connect odd agent's analysis port to RX FIFO
       agents[agent_rx_idx].ap.connect(reg_checkers[i].rx_fifo.analysis_export);
-      `uvm_info("ENV", $sformatf("Agent[%0d].ap → reg_checker_%0d.rx_fifo", agent_rx_idx, i), UVM_MEDIUM)
+      `uvm_info("ENV", $sformatf("Agent[%0d].ap -> reg_checker_%0d.rx_fifo", agent_rx_idx, i), UVM_MEDIUM)
     end
     
     `uvm_info("ENV", "=== Checker Connections Established ===", UVM_LOW)
