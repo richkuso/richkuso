@@ -188,6 +188,33 @@ class ucie_sb_driver extends uvm_driver #(ucie_sb_transaction);
   extern virtual task drive_transaction(ucie_sb_transaction trans);
   
   //-----------------------------------------------------------------------------
+  // TASK: drive_clock_pattern_transaction
+  // Drives clock pattern transactions with optimized timing (no automatic gaps)
+  //
+  // PARAMETERS:
+  //   trans - Clock pattern transaction to drive
+  //-----------------------------------------------------------------------------
+  extern virtual task drive_clock_pattern_transaction(ucie_sb_transaction trans);
+  
+  //-----------------------------------------------------------------------------
+  // TASK: drive_message_transaction
+  // Drives message transactions (SBINIT messages, etc.)
+  //
+  // PARAMETERS:
+  //   trans - Message transaction to drive
+  //-----------------------------------------------------------------------------
+  extern virtual task drive_message_transaction(ucie_sb_transaction trans);
+  
+  //-----------------------------------------------------------------------------
+  // TASK: drive_standard_transaction
+  // Drives standard register access and completion transactions
+  //
+  // PARAMETERS:
+  //   trans - Register access or completion transaction to drive
+  //-----------------------------------------------------------------------------
+  extern virtual task drive_standard_transaction(ucie_sb_transaction trans);
+  
+  //-----------------------------------------------------------------------------
   // FUNCTION: drive_packet_with_clock
   // Drives a 64-bit packet with source-synchronous clock generation
   //
@@ -386,6 +413,102 @@ virtual task ucie_sb_driver::drive_transaction(ucie_sb_transaction trans);
   // Calculate and set parity bits
   trans.calculate_parity();
   
+  // Handle different transaction types with optimized flows
+  case (trans.pkt_type)
+    PKT_CLOCK_PATTERN: begin
+      drive_clock_pattern_transaction(trans);
+    end
+    PKT_MESSAGE: begin
+      drive_message_transaction(trans);
+    end
+    default: begin // PKT_REG_ACCESS, PKT_COMPLETION
+      drive_standard_transaction(trans);
+    end
+  endcase
+endtask
+
+//-----------------------------------------------------------------------------
+// TASK: drive_clock_pattern_transaction
+// Drives clock pattern transactions with optimized timing
+//-----------------------------------------------------------------------------
+virtual task drive_clock_pattern_transaction(ucie_sb_transaction trans);
+  bit [63:0] header_packet;
+  
+  `uvm_info("DRIVER", "Driving clock pattern transaction", UVM_MEDIUM)
+  
+  // Get appropriate header based on clock pattern type
+  if (trans.opcode == CLOCK_PATTERN) begin
+    // UCIe standard clock pattern (0x5555555555555555)
+    header_packet = trans.get_clock_pattern_header();
+    `uvm_info("DRIVER", "Using UCIe standard clock pattern", UVM_HIGH)
+  end else begin
+    // Custom clock pattern using register access format
+    header_packet = trans.get_header();
+    `uvm_info("DRIVER", "Using custom clock pattern in register access format", UVM_HIGH)
+  end
+  
+  // Drive clock pattern - no gap for continuous patterns during initial flow
+  if (drive_packet_with_clock(header_packet)) begin
+    last_packet_time = $time;
+    `uvm_info("DRIVER", $sformatf("Successfully drove clock pattern: 0x%016h", header_packet), UVM_HIGH)
+  end else begin
+    `uvm_error("DRIVER", "Failed to drive clock pattern")
+    errors_detected++;
+    return;
+  end
+  
+  // Clock patterns typically don't have data payload
+  if (trans.has_data) begin
+    `uvm_warning("DRIVER", "Clock pattern transaction has data payload - this is unusual")
+    // Drive data if present, but no gap
+    bit [63:0] data_packet = trans.is_64bit ? trans.data : {32'h0, trans.data[31:0]};
+    drive_packet_with_clock(data_packet);
+  end
+  
+  // Note: No automatic gap after clock pattern - let sequence control timing
+endtask
+
+//-----------------------------------------------------------------------------
+// TASK: drive_message_transaction  
+// Drives message transactions (SBINIT, etc.)
+//-----------------------------------------------------------------------------
+virtual task drive_message_transaction(ucie_sb_transaction trans);
+  bit [63:0] header_packet;
+  
+  `uvm_info("DRIVER", "Driving message transaction", UVM_MEDIUM)
+  
+  // Pack message header
+  header_packet = trans.get_header();
+  
+  // Drive the message header
+  if (drive_packet_with_clock(header_packet)) begin
+    last_packet_time = $time;
+    `uvm_info("DRIVER", $sformatf("Successfully drove message header: 0x%016h", header_packet), UVM_HIGH)
+  end else begin
+    `uvm_error("DRIVER", "Failed to drive message header")
+    errors_detected++;
+    return;
+  end
+  
+  // Standard gap after message
+  drive_gap();
+  
+  // Messages without data should not have data payload
+  if (trans.has_data) begin
+    `uvm_warning("DRIVER", "Message transaction has data payload - this may be incorrect")
+  end
+endtask
+
+//-----------------------------------------------------------------------------
+// TASK: drive_standard_transaction
+// Drives standard register access and completion transactions
+//-----------------------------------------------------------------------------
+virtual task drive_standard_transaction(ucie_sb_transaction trans);
+  bit [63:0] header_packet;
+  bit [63:0] data_packet;
+  
+  `uvm_info("DRIVER", "Driving standard register access/completion transaction", UVM_MEDIUM)
+  
   // Pack transaction header into 64-bit packet
   header_packet = trans.get_header();
   
@@ -507,21 +630,59 @@ virtual function bit ucie_sb_driver::validate_transaction(ucie_sb_transaction tr
     return 0;
   end
   
-  // Address alignment check
-  if (trans.is_64bit && (trans.addr[2:0] != 3'b000)) begin
-    `uvm_error("DRIVER", $sformatf("64-bit transaction address 0x%06h not 64-bit aligned", trans.addr))
-    return 0;
+  // Clock pattern specific validation
+  if (trans.is_clock_pattern) begin
+    if (trans.opcode == CLOCK_PATTERN) begin
+      // Standard UCIe clock pattern
+      if (trans.has_data) begin
+        `uvm_error("DRIVER", "UCIe CLOCK_PATTERN opcode should not have data payload")
+        return 0;
+      end
+      `uvm_info("DRIVER", "Validated UCIe standard clock pattern", UVM_HIGH)
+    end else if (trans.opcode == MEM_READ_32B || trans.opcode == MEM_READ_64B) begin
+      // Custom clock pattern using register access as carrier
+      `uvm_info("DRIVER", "Validated custom clock pattern using register access format", UVM_HIGH)
+    end else begin
+      `uvm_warning("DRIVER", $sformatf("Clock pattern using unusual opcode: %s", trans.opcode.name()))
+    end
   end
   
-  if (!trans.is_64bit && (trans.addr[1:0] != 2'b00)) begin
-    `uvm_error("DRIVER", $sformatf("32-bit transaction address 0x%06h not 32-bit aligned", trans.addr))
-    return 0;
+  // Message transaction validation
+  if (trans.pkt_type == PKT_MESSAGE) begin
+    if (trans.has_data) begin
+      `uvm_warning("DRIVER", "Message transaction has data payload - verify this is correct")
+    end
+    if (trans.opcode != MESSAGE_NO_DATA && trans.opcode != MGMT_MSG_NO_DATA) begin
+      `uvm_warning("DRIVER", $sformatf("Message transaction using non-message opcode: %s", trans.opcode.name()))
+    end
   end
   
-  // Byte enable validation for 32-bit transactions
-  if (!trans.is_64bit && (trans.be[7:4] != 4'b0000)) begin
-    `uvm_error("DRIVER", $sformatf("32-bit transaction has invalid BE[7:4]=0x%h (should be 0)", trans.be[7:4]))
-    return 0;
+  // Address alignment check (skip for clock patterns and messages)
+  if (!trans.is_clock_pattern && trans.pkt_type != PKT_MESSAGE) begin
+    if (trans.is_64bit && (trans.addr[2:0] != 3'b000)) begin
+      `uvm_error("DRIVER", $sformatf("64-bit transaction address 0x%06h not 64-bit aligned", trans.addr))
+      return 0;
+    end
+    
+    if (!trans.is_64bit && (trans.addr[1:0] != 2'b00)) begin
+      `uvm_error("DRIVER", $sformatf("32-bit transaction address 0x%06h not 32-bit aligned", trans.addr))
+      return 0;
+    end
+  end
+  
+  // Byte enable validation for 32-bit transactions (skip for messages and clock patterns)
+  if (!trans.is_64bit && !trans.is_clock_pattern && trans.pkt_type != PKT_MESSAGE) begin
+    if (trans.be[7:4] != 4'b0000) begin
+      `uvm_error("DRIVER", $sformatf("32-bit transaction has invalid BE[7:4]=0x%h (should be 0)", trans.be[7:4]))
+      return 0;
+    end
+  end
+  
+  // Completion specific validation
+  if (trans.pkt_type == PKT_COMPLETION) begin
+    if (trans.status[15:3] != 13'h0000) begin
+      `uvm_warning("DRIVER", $sformatf("Completion status has non-zero reserved bits: 0x%04h", trans.status))
+    end
   end
   
   return 1;
