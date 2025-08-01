@@ -118,7 +118,7 @@ class ucie_sb_driver extends uvm_driver #(ucie_sb_transaction);
   //=============================================================================
   
   // Configuration and interface
-  virtual ucie_sb_interface vif;
+  virtual ucie_sb_inf vif;
   ucie_sb_driver_config cfg;
   
   // Parameters based on UCIe specification
@@ -306,7 +306,7 @@ virtual function void ucie_sb_driver::build_phase(uvm_phase phase);
   super.build_phase(phase);
   
   // Get virtual interface
-  if (!uvm_config_db#(virtual ucie_sb_interface)::get(this, "", "vif", vif))
+  if (!uvm_config_db#(virtual ucie_sb_inf)::get(this, "", "vif", vif))
     `uvm_fatal("DRIVER", "Virtual interface not found")
   
   // Get configuration or create default

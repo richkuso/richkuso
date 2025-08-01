@@ -87,7 +87,7 @@ graph LR
 │   └── ucie_sb_sequences.sv                # Sequence Library (710 lines)
 │
 ├── 🏗️ Infrastructure  
-│   ├── ucie_sb_interface.sv                # SystemVerilog Interface (137 lines)
+│   ├── ucie_sb_inf.sv                      # SystemVerilog Interface (137 lines)
 │   ├── ucie_sb_pkg.sv                      # Package Definition (66 lines)
 │   └── ucie_sb_config.sv                   # Configuration Classes (277 lines)
 │
@@ -415,7 +415,7 @@ class basic_test extends uvm_test;
     uvm_config_db#(ucie_sb_agent_config)::set(this, "agent", "cfg", cfg);
     
     // Set interface
-    uvm_config_db#(virtual ucie_sb_interface)::set(this, "agent*", "vif", sb_intf);
+    uvm_config_db#(virtual ucie_sb_inf)::set(this, "agent*", "vif", sb_intf);
   endfunction
   
   task run_phase(uvm_phase phase);

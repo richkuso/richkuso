@@ -2,7 +2,7 @@
 # Use this file list for compilation with simulators
 
 # Interface and package definition
-ucie_sb_interface.sv
+ucie_sb_inf.sv
 
 # Individual class files (in dependency order)
 ucie_sb_config.sv

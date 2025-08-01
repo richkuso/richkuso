@@ -2,7 +2,7 @@
 // Defines signals for UCIe sideband protocol communication
 
 //=============================================================================
-// INTERFACE: ucie_sb_interface
+// INTERFACE: ucie_sb_inf
 //
 // DESCRIPTION:
 //   UCIe sideband interface defining the source-synchronous serial communication
@@ -18,7 +18,7 @@
 // VERSION: 1.0
 //=============================================================================
 
-interface ucie_sb_interface(input logic clk, input logic reset);
+interface ucie_sb_inf(input logic clk, input logic reset);
   
   //=============================================================================
   // SIGNAL DECLARATIONS
@@ -135,4 +135,4 @@ interface ucie_sb_interface(input logic clk, input logic reset);
   ASSERT_SBRX_32UI_GAP: assert property (min_gap_32ui_rx) else 
     $error("[GAP_CHECK] SBRX gap violation: clock edge spacing >1.5 cycles must be ≥32 UI (40ns)");
 
-endinterface : ucie_sb_interface
+endinterface : ucie_sb_inf

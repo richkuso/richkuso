@@ -29,7 +29,7 @@ class ucie_sb_base_test extends uvm_test;
     uvm_config_db#(ucie_sb_config)::set(this, "*", "cfg", cfg);
     
     // Note: Virtual interface is set by the testbench module
-    // uvm_config_db#(virtual ucie_sb_interface)::set(null, "*", "vif", sb_intf);
+    // uvm_config_db#(virtual ucie_sb_inf)::set(null, "*", "vif", sb_intf);
   endfunction
   
   virtual function void end_of_elaboration_phase(uvm_phase phase);

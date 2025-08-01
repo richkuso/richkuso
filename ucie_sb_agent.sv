@@ -149,7 +149,7 @@ class ucie_sb_agent_config extends uvm_object;
   uvm_active_passive_enum is_active = UVM_ACTIVE;
   
   // Interface handle
-  virtual ucie_sb_interface vif;
+  virtual ucie_sb_inf vif;
   
   // Driver configuration
   ucie_sb_driver_config driver_cfg;

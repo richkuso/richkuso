@@ -14,13 +14,13 @@ module ucie_sb_testbench;
   end
   
   // Interface instantiation - 16 separate sideband interfaces for 16 agents
-  ucie_sb_interface sb_intf[16];
+  ucie_sb_inf sb_intf[16];
   
   // Generate 16 interfaces
   genvar i;
   generate
     for (i = 0; i < 16; i++) begin : gen_interfaces
-      ucie_sb_interface sb_intf_inst(.clk(1'b0), .reset(sb_reset));
+      ucie_sb_inf sb_intf_inst(.clk(1'b0), .reset(sb_reset));
       assign sb_intf[i] = sb_intf_inst;
     end
   endgenerate
@@ -70,7 +70,7 @@ module ucie_sb_testbench;
     // Set dedicated interface for each of the 16 agents
     for (int k = 0; k < 16; k++) begin
       agent_path = $sformatf("uvm_test_top.sb_env.agent_%0d*", k);
-      uvm_config_db#(virtual ucie_sb_interface)::set(null, agent_path, "vif", sb_intf[k]);
+      uvm_config_db#(virtual ucie_sb_inf)::set(null, agent_path, "vif", sb_intf[k]);
       `uvm_info("TB", $sformatf("✅ Agent_%0d interface configured with sb_intf[%0d]", k, k), UVM_MEDIUM)
     end
     

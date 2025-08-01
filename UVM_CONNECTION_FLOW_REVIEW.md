@@ -8,7 +8,7 @@ This document reviews the complete UVM connection flow from testbench module thr
 ### Hardware Infrastructure
 ```systemverilog
 // 16 separate sideband interfaces
-ucie_sb_interface sb_intf[16];
+ucie_sb_inf sb_intf[16];
 
 // Generate blocks for:
 // - Interface instantiation (16 instances)
@@ -23,7 +23,7 @@ function void configure_uvm_interfaces();
   // Set dedicated interface for each of the 16 agents
   for (int k = 0; k < 16; k++) begin
     agent_path = $sformatf("uvm_test_top.sb_env.agent_%0d*", k);
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, agent_path, "vif", sb_intf[k]);
+    uvm_config_db#(virtual ucie_sb_inf)::set(null, agent_path, "vif", sb_intf[k]);
   end
   
   // Register checkers don't need virtual interfaces - they use FIFO-only architecture
@@ -203,7 +203,7 @@ virtual function void build_phase(uvm_phase phase);
   super.build_phase(phase);
   
   // Get virtual interface (set by testbench)
-  if (!uvm_config_db#(virtual ucie_sb_interface)::get(this, "", "vif", vif))
+  if (!uvm_config_db#(virtual ucie_sb_inf)::get(this, "", "vif", vif))
     `uvm_fatal("MONITOR", "Virtual interface not found")
   
   // Create analysis port

@@ -34,7 +34,7 @@
 
 ### Testbench Infrastructure
 - `ucie_sb_testbench.sv` - Main testbench with 16 interfaces
-- `ucie_sb_interface.sv` - Sideband interface definition
+- `ucie_sb_inf.sv` - Sideband interface definition
 - `ucie_sb_Makefile` - Build configuration
 
 ### Documentation
