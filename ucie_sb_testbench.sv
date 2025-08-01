@@ -41,21 +41,14 @@ module ucie_sb_testbench;
     .sb_reset(sb_reset)
   );
   
-  // Dedicated function for UVM interface configuration (more readable than wildcards)
+  // Optimized function for UVM interface configuration
   function void configure_uvm_interfaces();
     `uvm_info("TB", "=== Configuring UVM Interfaces ===", UVM_LOW)
     
-    // Set interface for test level (top-level access)
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top", "vif", sb_intf);
-    `uvm_info("TB", "✅ Test level interface configured", UVM_LOW)
-    
-    // Set interface for environment level (env can access for agent configuration)
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.env", "vif", sb_intf);
-    `uvm_info("TB", "✅ Environment level interface configured", UVM_LOW)
-    
-    // Set interface for all environment children (agents, checker, etc.)
-    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.env.*", "vif", sb_intf);
-    `uvm_info("TB", "✅ Environment children interfaces configured", UVM_LOW)
+    // Set interface for environment and all its children with single wildcard
+    // This covers: sb_env, tx_agent, rx_agent, driver, monitor, reg_checker
+    uvm_config_db#(virtual ucie_sb_interface)::set(null, "uvm_test_top.sb_env*", "vif", sb_intf);
+    `uvm_info("TB", "✅ Environment and children interfaces configured", UVM_LOW)
     
     // Verify interface connectivity to DUT
     `uvm_info("TB", $sformatf("Interface DUT connections verified: SBTX→DUT.sbtx, SBRX←DUT.sbrx"), UVM_LOW)

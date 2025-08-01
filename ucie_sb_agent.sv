@@ -293,10 +293,9 @@ endfunction
 // Distributes configuration to all sub-components
 //-----------------------------------------------------------------------------
 virtual function void ucie_sb_agent::configure_components();
-  // Set virtual interface for all components
-  if (cfg.vif != null) begin
-    uvm_config_db#(virtual ucie_sb_interface)::set(this, "*", "vif", cfg.vif);
-  end else begin
+  // Virtual interface is now set by testbench directly to all components
+  // No need to redistribute it here - just validate we have it
+  if (cfg.vif == null) begin
     `uvm_fatal("AGENT", "Virtual interface not provided in agent configuration")
   end
   
@@ -305,7 +304,7 @@ virtual function void ucie_sb_agent::configure_components();
     uvm_config_db#(ucie_sb_driver_config)::set(this, "driver", "cfg", cfg.driver_cfg);
   end
   
-  // Set feature enables
+  // Set feature enables for sub-components
   uvm_config_db#(bit)::set(this, "*", "enable_protocol_checking", cfg.enable_protocol_checking);
   uvm_config_db#(bit)::set(this, "*", "enable_statistics", cfg.enable_statistics);
   uvm_config_db#(bit)::set(this, "*", "enable_coverage", cfg.enable_coverage);

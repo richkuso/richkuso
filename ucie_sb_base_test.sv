@@ -4,7 +4,7 @@
 class ucie_sb_base_test extends uvm_test;
   `uvm_component_utils(ucie_sb_base_test)
   
-  ucie_sb_env env;
+  ucie_sb_env sb_env;
   ucie_sb_config cfg;
   
   function new(string name = "ucie_sb_base_test", uvm_component parent = null);
@@ -23,7 +23,7 @@ class ucie_sb_base_test extends uvm_test;
     });
     
     // Create environment
-    env = ucie_sb_env::type_id::create("env", this);
+    sb_env = ucie_sb_env::type_id::create("sb_env", this);
     
     // Set configuration in database
     uvm_config_db#(ucie_sb_config)::set(this, "*", "cfg", cfg);
