@@ -293,14 +293,15 @@ function string ucie_sb_transaction::convert2string();
 endfunction
 
 //=============================================================================
-// ENHANCED convert2string EXAMPLE
+// ENHANCED convert2string EXAMPLE - Compact Format
 //=============================================================================
 
-// Example showing the enhanced convert2string function with message code names
+// Example showing the enhanced convert2string function with compact formatting
+// Features: Message code names, compact layout, no emojis, multiple info per line
 task demonstrate_enhanced_convert2string();
   ucie_sb_transaction trans;
   
-  `uvm_info("EXAMPLE", "=== Enhanced convert2string Examples ===", UVM_LOW)
+  `uvm_info("EXAMPLE", "=== Enhanced convert2string Examples (Compact Format) ===", UVM_LOW)
   
   // Example 1: SBINIT Out of Reset Message
   trans = ucie_sb_transaction::type_id::create("sbinit_oor_msg");
