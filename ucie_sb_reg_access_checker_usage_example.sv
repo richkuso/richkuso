@@ -1,14 +1,43 @@
 // UCIe Sideband Register Access Checker Usage Example
-// Demonstrates how to configure and use TAG/non-TAG modes
+// Demonstrates FIFO-only architecture and TAG/non-TAG modes
 
 //=============================================================================
-// USAGE EXAMPLE: TAG Support Configuration
+// ARCHITECTURE COMPARISON: Before vs After
+//=============================================================================
+
+/*
+BEFORE (Analysis Port Wrappers - DEPRECATED):
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│ TX Monitor  │───▶│ tx_imp      │───▶│ write_tx()  │───▶│ tx_fifo     │
+└─────────────┘    │ (Analysis   │    │ (Function)  │    │ (TLM FIFO)  │
+                   │  Import)    │    └─────────────┘    └─────────────┘
+                   └─────────────┘
+
+AFTER (FIFO-Only - RECOMMENDED):
+┌─────────────┐    ┌─────────────┐
+│ TX Monitor  │───▶│ tx_fifo     │
+└─────────────┘    │.analysis_   │
+                   │ export      │
+                   └─────────────┘
+
+Benefits:
+✅ 50% fewer components (removed analysis imports + wrapper functions)
+✅ Direct connection - no function call overhead  
+✅ Simpler architecture - easier to understand and debug
+✅ Better performance - one less data copy operation
+✅ Cleaner testbench connections
+*/
+
+//=============================================================================
+// USAGE EXAMPLE: FIFO-Only Architecture with TAG Support Configuration
 //=============================================================================
 
 class my_test extends uvm_test;
   `uvm_component_utils(my_test)
   
   ucie_sb_reg_access_checker checker;
+  ucie_sb_agent tx_agent;
+  ucie_sb_agent rx_agent;
   
   function new(string name = "my_test", uvm_component parent = null);
     super.new(name, parent);
@@ -17,7 +46,9 @@ class my_test extends uvm_test;
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
     
-    // Create the checker
+    // Create agents and checker
+    tx_agent = ucie_sb_agent::type_id::create("tx_agent", this);
+    rx_agent = ucie_sb_agent::type_id::create("rx_agent", this);
     checker = ucie_sb_reg_access_checker::type_id::create("checker", this);
     
     // Example 1: Enable TAG support (default mode)
@@ -33,6 +64,27 @@ class my_test extends uvm_test;
     // Optional: Configure timeout checking
     checker.set_timeout(2000.0); // 2us timeout
     checker.enable_timeout_checking(1);
+  endfunction
+  
+  virtual function void connect_phase(uvm_phase phase);
+    super.connect_phase(phase);
+    
+    // ===================================================================
+    // FIFO-Only Architecture: Direct Monitor-to-FIFO Connections
+    // ===================================================================
+    
+    // Connect TX monitor directly to checker's TX FIFO
+    // This replaces the old: tx_monitor.ap.connect(checker.tx_imp)
+    tx_agent.monitor.ap.connect(checker.tx_fifo.analysis_export);
+    
+    // Connect RX monitor directly to checker's RX FIFO  
+    // This replaces the old: rx_monitor.ap.connect(checker.rx_imp)
+    rx_agent.monitor.ap.connect(checker.rx_fifo.analysis_export);
+    
+    `uvm_info("TEST", "=== FIFO-Only Architecture Connected ===", UVM_LOW)
+    `uvm_info("TEST", "TX Monitor → checker.tx_fifo.analysis_export", UVM_LOW)
+    `uvm_info("TEST", "RX Monitor → checker.rx_fifo.analysis_export", UVM_LOW)
+    `uvm_info("TEST", "No analysis port wrappers needed!", UVM_LOW)
   endfunction
   
   virtual function void end_of_elaboration_phase(uvm_phase phase);
@@ -193,4 +245,56 @@ Common statistics for both modes:
 - tx_completions_received: Total completions received on TX side
 - tx_matched_transactions: Successfully matched request-completion pairs
 - tx_timeout_errors: Requests that timed out waiting for completion
+*/
+
+//=============================================================================
+// SIMPLE CONNECTION EXAMPLE
+//=============================================================================
+
+/*
+For users who just want to see the basic connection pattern:
+
+class simple_testbench extends uvm_test;
+  ucie_sb_reg_access_checker checker;
+  ucie_sb_monitor tx_monitor, rx_monitor;
+  
+  function void build_phase(uvm_phase phase);
+    checker = ucie_sb_reg_access_checker::type_id::create("checker", this);
+    tx_monitor = ucie_sb_monitor::type_id::create("tx_monitor", this);
+    rx_monitor = ucie_sb_monitor::type_id::create("rx_monitor", this);
+  endfunction
+  
+  function void connect_phase(uvm_phase phase);
+    // Direct FIFO connections - that's it!
+    tx_monitor.ap.connect(checker.tx_fifo.analysis_export);
+    rx_monitor.ap.connect(checker.rx_fifo.analysis_export);
+  endfunction
+endclass
+*/
+
+//=============================================================================
+// CONFIGURATION EXAMPLES
+//=============================================================================
+
+/*
+// TAG Mode (Multiple Outstanding Requests)
+checker.set_tag_support(1);           // Enable TAG support
+checker.set_timeout(1000.0);          // 1μs timeout
+checker.enable_timeout_checking(1);   // Enable timeout monitoring
+
+// Non-TAG Mode (Blocking Behavior)  
+checker.set_tag_support(0);           // Disable TAG support
+checker.set_timeout(5000.0);          // 5μs timeout (longer for blocking)
+checker.enable_timeout_checking(1);   // Enable timeout monitoring
+
+// Performance Mode (Minimal Checking)
+checker.enable_checking = 1;          // Keep checking enabled
+checker.enable_timeout_check = 0;     // Disable timeout for speed
+checker.enable_statistics = 1;        // Keep statistics
+
+// Debug Mode (Maximum Visibility)
+checker.enable_checking = 1;          // Full checking
+checker.enable_timeout_check = 1;     // Timeout monitoring
+checker.enable_statistics = 1;        // Full statistics
+// Set UVM verbosity to UVM_DEBUG for detailed logs
 */
