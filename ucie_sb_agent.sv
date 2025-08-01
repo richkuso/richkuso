@@ -293,11 +293,8 @@ endfunction
 // Distributes configuration to all sub-components
 //-----------------------------------------------------------------------------
 virtual function void ucie_sb_agent::configure_components();
-  // Virtual interface is now set by testbench directly to all components
-  // No need to redistribute it here - just validate we have it
-  if (cfg.vif == null) begin
-    `uvm_fatal("AGENT", "Virtual interface not provided in agent configuration")
-  end
+  // Virtual interface is set directly by testbench to all components via wildcard
+  // No interface handling needed at agent level
   
   // Configure driver if in active mode
   if (cfg.is_active == UVM_ACTIVE && driver != null) begin

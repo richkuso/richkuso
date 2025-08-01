@@ -16,15 +16,12 @@ class ucie_sb_env extends uvm_env;
   endfunction
   
   virtual function void build_phase(uvm_phase phase);
-    virtual ucie_sb_interface vif;
     string agent_name;
     
     super.build_phase(phase);
     
-    // Get the virtual interface from config database
-    if (!uvm_config_db#(virtual ucie_sb_interface)::get(this, "", "vif", vif)) begin
-      `uvm_fatal("ENV", "Virtual interface not found in config database")
-    end
+    // Virtual interface is set directly by testbench to all components
+    // No need to retrieve it at environment level
     
     // Create and configure 16 inactive agents
     for (int i = 0; i < 16; i++) begin
@@ -33,7 +30,7 @@ class ucie_sb_env extends uvm_env;
       // Create agent configuration
       agent_cfgs[i] = ucie_sb_agent_config::type_id::create($sformatf("agent_cfg_%0d", i));
       agent_cfgs[i].is_active = UVM_PASSIVE;  // All agents are inactive (passive)
-      agent_cfgs[i].vif = vif;
+      // Note: vif is set directly by testbench to all components, no need to set here
       agent_cfgs[i].enable_coverage = 1;
       agent_cfgs[i].enable_protocol_checking = 1;
       agent_cfgs[i].enable_statistics = 1;
