@@ -233,6 +233,12 @@ class ucie_sb_transaction extends uvm_sequence_item;
   // Returns human-readable description of byte enables
   //-----------------------------------------------------------------------------
   extern function string get_be_description();
+  
+  //-----------------------------------------------------------------------------
+  // FUNCTION: is_valid
+  // Returns whether the transaction is valid according to UCIe protocol
+  //-----------------------------------------------------------------------------
+  extern function bit is_valid();
 
   //=============================================================================
   // CONSTRAINTS (Keep inline for readability)
@@ -804,4 +810,65 @@ function bit [63:0] ucie_sb_transaction::get_register_access_header();
   end
   
   return {phase1, phase0};
+endfunction
+
+//-----------------------------------------------------------------------------
+// FUNCTION: is_valid
+// Returns whether the transaction is valid according to UCIe protocol
+//-----------------------------------------------------------------------------
+function bit ucie_sb_transaction::is_valid();
+  // Basic validation checks
+  
+  // Check if opcode is valid
+  case (opcode)
+    MEM_READ_32B, MEM_WRITE_32B, MEM_READ_64B, MEM_WRITE_64B,
+    DMS_READ_32B, DMS_WRITE_32B, DMS_READ_64B, DMS_WRITE_64B,
+    CFG_READ_32B, CFG_WRITE_32B, CFG_READ_64B, CFG_WRITE_64B,
+    COMPLETION_NO_DATA, COMPLETION_32B, COMPLETION_64B,
+    MESSAGE_NO_DATA, MESSAGE_64B, MGMT_MSG_NO_DATA, MGMT_MSG_DATA,
+    CLOCK_PATTERN: begin
+      // Valid opcodes
+    end
+    default: return 0; // Invalid opcode
+  endcase
+  
+  // Check clock pattern validity
+  if (is_clock_pattern) begin
+    return is_valid_clock_pattern();
+  end
+  
+  // Check data consistency
+  if (has_data && is_64bit && data == 0) begin
+    // 64-bit transaction with zero data might be suspicious but not invalid
+  end
+  
+  // Check address alignment for register accesses
+  if (pkt_type == PKT_REG_ACCESS) begin
+    if (is_64bit && (addr[2:0] != 3'b000)) begin
+      return 0; // 64-bit access must be 8-byte aligned
+    end
+    if (!is_64bit && (addr[1:0] != 2'b00)) begin
+      return 0; // 32-bit access must be 4-byte aligned
+    end
+  end
+  
+  // Check byte enable validity for 32-bit operations
+  if (!is_64bit && be[7:4] != 4'b0000) begin
+    return 0; // Upper byte enables must be zero for 32-bit operations
+  end
+  
+  // Check message fields for message packets
+  if (pkt_type == PKT_MESSAGE) begin
+    case (msgcode)
+      MSG_SBINIT_OUT_OF_RESET, MSG_SBINIT_DONE_REQ, MSG_SBINIT_DONE_RESP: begin
+        // Valid message codes - check subcode consistency
+        if (msgcode == MSG_SBINIT_OUT_OF_RESET && msgsubcode != SUBCODE_SBINIT_OUT_OF_RESET) return 0;
+        if ((msgcode == MSG_SBINIT_DONE_REQ || msgcode == MSG_SBINIT_DONE_RESP) && msgsubcode != SUBCODE_SBINIT_DONE) return 0;
+      end
+      default: return 0; // Invalid message code
+    endcase
+  end
+  
+  // All checks passed
+  return 1;
 endfunction
