@@ -410,6 +410,7 @@ endtask
 //-----------------------------------------------------------------------------
 task ucie_sb_driver::drive_clock_pattern_transaction(ucie_sb_transaction trans);
   bit [63:0] header_packet;
+  bit data_success;
   
   `uvm_info("DRIVER", "Driving clock pattern transaction", UVM_MEDIUM)
   
@@ -442,7 +443,6 @@ task ucie_sb_driver::drive_clock_pattern_transaction(ucie_sb_transaction trans);
     `uvm_warning("DRIVER", "Clock pattern transaction has data payload - this is unusual")
     // Drive data if present, but no gap
     data_packet = trans.is_64bit ? trans.data : {32'h0, trans.data[31:0]};
-    bit data_success;
     drive_packet_with_clock(data_packet, data_success);
   end
   
