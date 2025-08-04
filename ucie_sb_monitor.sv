@@ -288,6 +288,7 @@ endtask
 // Waits for minimum gap between packets (32 UI with both CLK and DATA low)
 // During gap: SBRX_CLK and SBRX_DATA both stay low, no clock toggling
 // Enhanced with reset handling, timeout protection, and better error reporting
+// High precision monitoring: checks every 0.2ns for accurate gap detection
 //-----------------------------------------------------------------------------
 task ucie_sb_monitor::wait_for_packet_gap();
   time gap_start_time;
@@ -301,7 +302,7 @@ task ucie_sb_monitor::wait_for_packet_gap();
   // Calculate timeout (max reasonable gap: 1000 UI)
   timeout_time = 1000 * ui_time_ns * 1ns;
   
-  `uvm_info("MONITOR", $sformatf("Waiting for packet gap (32 UI minimum, UI=%.2fns, timeout=%0t)", 
+  `uvm_info("MONITOR", $sformatf("Waiting for packet gap (32 UI minimum, UI=%.2fns, timeout=%0t, precision=0.2ns)", 
                                  ui_time_ns, timeout_time), UVM_DEBUG)
   
   // Wait for both clock and data to go low (start of gap) with reset check
@@ -310,7 +311,7 @@ task ucie_sb_monitor::wait_for_packet_gap();
       `uvm_info("MONITOR", "Reset detected while waiting for gap start - aborting gap wait", UVM_DEBUG)
       return;
     end
-    #1ns; // Small delay to avoid infinite loop
+    #0.2ns; // Higher precision delay to avoid infinite loop
   end
   
   gap_start_time = $time;
@@ -324,7 +325,7 @@ task ucie_sb_monitor::wait_for_packet_gap();
       return;
     end
     
-    #1ns; // Check every nanosecond
+    #0.2ns; // Check every 0.2 nanoseconds for higher precision
     current_time = $time;
     gap_duration = current_time - gap_start_time;
     ui_count = int'(gap_duration / (ui_time_ns * 1ns));
@@ -354,14 +355,14 @@ task ucie_sb_monitor::wait_for_packet_gap();
           break;
         end
         
-        // Gap was too short, wait for signals to go low again and restart
-        while (vif.SBRX_CLK !== 1'b0 || vif.SBRX_DATA !== 1'b0) begin
-          if (vif.sb_reset) begin
-            `uvm_info("MONITOR", "Reset detected during gap restart - aborting gap wait", UVM_DEBUG)
-            return;
-          end
-          #1ns;
-        end
+                 // Gap was too short, wait for signals to go low again and restart
+         while (vif.SBRX_CLK !== 1'b0 || vif.SBRX_DATA !== 1'b0) begin
+           if (vif.sb_reset) begin
+             `uvm_info("MONITOR", "Reset detected during gap restart - aborting gap wait", UVM_DEBUG)
+             return;
+           end
+           #0.2ns;
+         end
         gap_start_time = $time;
         `uvm_info("MONITOR", $sformatf("Gap restarted due to insufficient duration (attempt %0d)", short_gap_count), UVM_DEBUG)
       end
