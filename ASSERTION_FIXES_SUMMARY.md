@@ -95,7 +95,7 @@ end
 ## Syntax Compliance ✅
 
 ### SystemVerilog Standards Compliance:
-- ✅ **IEEE 1800-2017 compliant** property syntax
+- ✅ **IEEE 1800-2012 compliant** property syntax
 - ✅ **Portable across simulators** (VCS, Questa, Xcelium)
 - ✅ **No invalid variable declarations** in properties
 - ✅ **Proper time handling** with $realtime

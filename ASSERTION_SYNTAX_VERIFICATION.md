@@ -80,7 +80,7 @@ ASSERT_SBTX_800MHZ_FREQ: assert property (sbtx_clk_800mhz_frequency) else
 
 ## SystemVerilog Standard Compliance ✅
 
-### IEEE 1800-2017 Compliance Check:
+### IEEE 1800-2012 Compliance Check:
 - ✅ **Section 16.12**: Property declarations are compliant
 - ✅ **Section 16.14**: Assert statements follow standard
 - ✅ **Section 11.3**: Comma operator usage is valid

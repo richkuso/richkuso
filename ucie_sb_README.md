@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-Educational-blue.svg)](LICENSE)
 [![UVM](https://img.shields.io/badge/UVM-1.2-green.svg)](https://www.accellera.org/downloads/standards/uvm)
-[![SystemVerilog](https://img.shields.io/badge/SystemVerilog-IEEE%201800-orange.svg)](https://standards.ieee.org/standard/1800-2017.html)
+[![SystemVerilog](https://img.shields.io/badge/SystemVerilog-IEEE%201800--2012-orange.svg)](https://standards.ieee.org/standard/1800-2012.html)
 [![UCIe](https://img.shields.io/badge/UCIe-1.1%20Compliant-red.svg)](https://www.uciexpress.org/)
 
 A comprehensive, production-ready UVM agent implementation for the UCIe (Universal Chiplet Interconnect Express) sideband protocol using SystemVerilog and UVM 1.2.
