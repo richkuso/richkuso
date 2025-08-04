@@ -278,7 +278,7 @@ endclass : ucie_sb_driver
 // FUNCTION: set_frequency
 // Sets clock frequency and updates timing parameters accordingly
 //-----------------------------------------------------------------------------
-function void set_frequency(real freq_hz);
+function void ucie_sb_driver_config::set_frequency(real freq_hz);
   clock_period = (1.0 / freq_hz) * 1e9; // Convert to ns
   clock_high_time = clock_period / 2.0;
   clock_low_time = clock_period / 2.0;
@@ -289,7 +289,7 @@ endfunction
 // FUNCTION: set_duty_cycle
 // Sets clock duty cycle while maintaining same period
 //-----------------------------------------------------------------------------
-function void set_duty_cycle(real duty_percent);
+function void ucie_sb_driver_config::set_duty_cycle(real duty_percent);
   clock_high_time = clock_period * (duty_percent / 100.0);
   clock_low_time = clock_period - clock_high_time;
 endfunction
@@ -302,7 +302,7 @@ endfunction
 // FUNCTION: build_phase
 // UVM build phase - gets interface and configuration
 //-----------------------------------------------------------------------------
-function void build_phase(uvm_phase phase);
+function void ucie_sb_driver::build_phase(uvm_phase phase);
   super.build_phase(phase);
   
   // Get virtual interface
@@ -329,7 +329,7 @@ endfunction
 // TASK: run_phase
 // UVM run phase - main driver loop for processing transactions
 //-----------------------------------------------------------------------------
-task run_phase(uvm_phase phase);
+task ucie_sb_driver::run_phase(uvm_phase phase);
   ucie_sb_transaction trans;
   
   `uvm_info("DRIVER", "Starting sideband driver run phase", UVM_LOW)
@@ -365,7 +365,7 @@ endtask
 // FUNCTION: report_phase
 // UVM report phase - prints statistics if enabled
 //-----------------------------------------------------------------------------
-function void report_phase(uvm_phase phase);
+function void ucie_sb_driver::report_phase(uvm_phase phase);
   super.report_phase(phase);
   if (cfg.enable_statistics) begin
     print_statistics();
@@ -376,7 +376,7 @@ endfunction
 // TASK: drive_transaction
 // Drives a complete transaction (header + optional data) with gaps
 //-----------------------------------------------------------------------------
-task drive_transaction(ucie_sb_transaction trans);
+task ucie_sb_driver::drive_transaction(ucie_sb_transaction trans);
   bit [63:0] header_packet;
   bit [63:0] data_packet;
   
@@ -532,7 +532,7 @@ endtask
 // FUNCTION: drive_packet_with_clock
 // Drives a 64-bit packet with source-synchronous clock generation
 //-----------------------------------------------------------------------------
-function bit drive_packet_with_clock(bit [63:0] packet);
+function bit ucie_sb_driver::drive_packet_with_clock(bit [63:0] packet);
   if (vif.sb_reset) begin
     `uvm_warning("DRIVER", "Cannot drive packet during reset")
     return 0;
@@ -562,7 +562,7 @@ endfunction
 // TASK: drive_gap
 // Drives idle gap with both clock and data low
 //-----------------------------------------------------------------------------
-task drive_gap(int num_cycles = MIN_GAP_CYCLES);
+task ucie_sb_driver::drive_gap(int num_cycles = MIN_GAP_CYCLES);
   `uvm_info("DRIVER", $sformatf("Driving %0d cycle gap (clock and data low)", num_cycles), UVM_DEBUG)
   
   // During gap: both clock and data are low
@@ -577,7 +577,7 @@ endtask
 // TASK: wait_for_reset_release
 // Waits for reset to be deasserted before starting operation
 //-----------------------------------------------------------------------------
-task wait_for_reset_release();
+task ucie_sb_driver::wait_for_reset_release();
   if (vif.sb_reset) begin
     `uvm_info("DRIVER", "Waiting for reset release...", UVM_MEDIUM)
     wait (!vif.sb_reset);
@@ -592,7 +592,7 @@ endtask
 // FUNCTION: validate_transaction
 // Validates transaction against UCIe specification requirements
 //-----------------------------------------------------------------------------
-function bit validate_transaction(ucie_sb_transaction trans);
+function bit ucie_sb_driver::validate_transaction(ucie_sb_transaction trans);
   if (!cfg.enable_protocol_checking) return 1;
   
   // Basic validation checks
@@ -671,7 +671,7 @@ endfunction
 // FUNCTION: update_statistics
 // Updates driver statistics with transaction information
 //-----------------------------------------------------------------------------
-function void update_statistics(ucie_sb_transaction trans);
+function void ucie_sb_driver::update_statistics(ucie_sb_transaction trans);
   if (!cfg.enable_statistics) return;
   
   packets_driven++;
@@ -689,7 +689,7 @@ endfunction
 // FUNCTION: print_statistics
 // Prints current driver statistics to log
 //-----------------------------------------------------------------------------
-function void print_statistics();
+function void ucie_sb_driver::print_statistics();
   `uvm_info("DRIVER", "=== Driver Statistics ===", UVM_LOW)
   `uvm_info("DRIVER", $sformatf("Packets driven: %0d", packets_driven), UVM_LOW)
   `uvm_info("DRIVER", $sformatf("Bits driven: %0d", bits_driven), UVM_LOW)

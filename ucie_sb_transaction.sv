@@ -322,7 +322,7 @@ endclass : ucie_sb_transaction
 // FUNCTION: post_randomize
 // Called automatically after randomization to update derived fields
 //-----------------------------------------------------------------------------
-function void post_randomize();
+function void ucie_sb_transaction::post_randomize();
   update_packet_info();
   calculate_parity();
   `uvm_info("TRANSACTION", {"Post-randomize: ", convert2string()}, UVM_HIGH)
@@ -332,7 +332,7 @@ endfunction
 // FUNCTION: update_packet_info
 // Updates derived packet information based on opcode
 //-----------------------------------------------------------------------------
-function void update_packet_info();
+function void ucie_sb_transaction::update_packet_info();
   // Determine packet type and data characteristics based on opcode
   case (opcode)
     // 32-bit Register Access Operations
@@ -429,7 +429,7 @@ endfunction
 // FUNCTION: calculate_parity
 // Calculates control parity (CP) and data parity (DP) per UCIe specification
 //-----------------------------------------------------------------------------
-function void calculate_parity();
+function void ucie_sb_transaction::calculate_parity();
   // Control parity (CP) - XOR of all control fields based on packet type
   if (is_clock_pattern) begin
     // Clock pattern has fixed parity
@@ -460,7 +460,7 @@ endfunction
 // FUNCTION: get_header
 // Packs transaction fields into 64-bit header packet format
 //-----------------------------------------------------------------------------
-function bit [63:0] get_header();
+function bit [63:0] ucie_sb_transaction::get_header();
   // Route to appropriate header generation based on packet type
   if (is_clock_pattern) begin
     return get_clock_pattern_header();
@@ -476,7 +476,7 @@ endfunction
 // FUNCTION: get_srcid_name
 // Returns human-readable name for source ID
 //-----------------------------------------------------------------------------
-function string get_srcid_name();
+function string ucie_sb_transaction::get_srcid_name();
   case (srcid)
     3'b001: return "D2D_ADAPTER";
     3'b010: return "PHYSICAL_LAYER";
@@ -489,7 +489,7 @@ endfunction
 // FUNCTION: get_dstid_name
 // Returns human-readable name for destination ID
 //-----------------------------------------------------------------------------
-function string get_dstid_name();
+function string ucie_sb_transaction::get_dstid_name();
   case (dstid)
     3'b000: return "LOCAL_DIE";
     3'b001: return "REMOTE_DIE_1";
@@ -503,7 +503,7 @@ endfunction
 // FUNCTION: is_remote_die_packet
 // Checks if packet is destined for remote die
 //-----------------------------------------------------------------------------
-function bit is_remote_die_packet();
+function bit ucie_sb_transaction::is_remote_die_packet();
   return (dstid != 3'b000);
 endfunction
 
@@ -511,7 +511,7 @@ endfunction
 // FUNCTION: is_poison_set
 // Checks if error poison bit is set
 //-----------------------------------------------------------------------------
-function bit is_poison_set();
+function bit ucie_sb_transaction::is_poison_set();
   return ep;
 endfunction
 
@@ -519,7 +519,7 @@ endfunction
 // FUNCTION: has_credit_return
 // Checks if credit return bit is set
 //-----------------------------------------------------------------------------
-function bit has_credit_return();
+function bit ucie_sb_transaction::has_credit_return();
   return cr;
 endfunction
 
@@ -528,7 +528,7 @@ endfunction
 // Converts transaction to formatted string for debugging/logging
 // Enhanced with message code names and improved formatting
 //-----------------------------------------------------------------------------
-function string convert2string();
+function string ucie_sb_transaction::convert2string();
   string s;
   string msg_name, submsg_name, status_name, be_desc;
   
@@ -679,7 +679,7 @@ endfunction
 // FUNCTION: get_message_header
 // Packs message fields into 64-bit header packet for messages without data
 //-----------------------------------------------------------------------------
-function bit [63:0] get_message_header();
+function bit [63:0] ucie_sb_transaction::get_message_header();
   bit [31:0] phase0, phase1;
   
   // Phase 0 (Bits 31 to 0) - Figure 7-3 format for Messages without Data
@@ -711,7 +711,7 @@ endfunction
 // FUNCTION: get_clock_pattern_header
 // Returns the header for clock pattern transaction (data payload contains the pattern)
 //-----------------------------------------------------------------------------
-function bit [63:0] get_clock_pattern_header();
+function bit [63:0] ucie_sb_transaction::get_clock_pattern_header();
   bit [31:0] phase0, phase1;
   
   // Clock pattern: the header itself IS the pattern
@@ -729,7 +729,7 @@ endfunction
 // FUNCTION: is_valid_clock_pattern
 // Validates that this is a proper clock pattern transaction (no data payload)
 //-----------------------------------------------------------------------------
-function bit is_valid_clock_pattern();
+function bit ucie_sb_transaction::is_valid_clock_pattern();
   bit [63:0] expected_header;
   
   if (!is_clock_pattern) begin
@@ -754,7 +754,7 @@ endfunction
 // FUNCTION: get_register_access_header
 // Packs register access/completion fields into 64-bit header packet per Figure 7-1/7-2
 //-----------------------------------------------------------------------------
-function bit [63:0] get_register_access_header();
+function bit [63:0] ucie_sb_transaction::get_register_access_header();
   bit [31:0] phase0, phase1;
   
   if (pkt_type == PKT_COMPLETION) begin
