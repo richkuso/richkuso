@@ -46,7 +46,7 @@ package ucie_sb_pkg;
   typedef enum bit [7:0] {
     SUBCODE_SBINIT_OUT_OF_RESET = 8'h00,
     SUBCODE_SBINIT_DONE_REQ     = 8'h01,
-    SUBCODE_SBINIT_DONE_RESP    = 8'h01
+    SUBCODE_SBINIT_DONE_RESP    = 8'h02
   } ucie_sb_msgsubcode_e;
 
   // Clock pattern constants
