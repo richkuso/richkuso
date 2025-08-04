@@ -223,7 +223,7 @@ class ucie_sb_driver extends uvm_driver #(ucie_sb_transaction);
   //
   // RETURNS: 1 if successful, 0 if failed
   //-----------------------------------------------------------------------------
-  extern virtual function bit drive_packet_with_clock(bit [63:0] packet);
+  extern virtual task drive_packet_with_clock(bit [63:0] packet, output bit success);
   
   //-----------------------------------------------------------------------------
   // TASK: drive_gap
@@ -425,7 +425,9 @@ task ucie_sb_driver::drive_clock_pattern_transaction(ucie_sb_transaction trans);
   end
   
   // Drive clock pattern - no gap for continuous patterns during initial flow
-  if (drive_packet_with_clock(header_packet)) begin
+  bit drive_success;
+  drive_packet_with_clock(header_packet, drive_success);
+  if (drive_success) begin
     last_packet_time = $time;
     `uvm_info("DRIVER", $sformatf("Successfully drove clock pattern: 0x%016h", header_packet), UVM_HIGH)
   end else begin
@@ -440,7 +442,8 @@ task ucie_sb_driver::drive_clock_pattern_transaction(ucie_sb_transaction trans);
     `uvm_warning("DRIVER", "Clock pattern transaction has data payload - this is unusual")
     // Drive data if present, but no gap
     data_packet = trans.is_64bit ? trans.data : {32'h0, trans.data[31:0]};
-    drive_packet_with_clock(data_packet);
+    bit data_success;
+    drive_packet_with_clock(data_packet, data_success);
   end
   
   // Note: No automatic gap after clock pattern - let sequence control timing
@@ -459,7 +462,9 @@ task ucie_sb_driver::drive_message_transaction(ucie_sb_transaction trans);
   header_packet = trans.get_header();
   
   // Drive the message header
-  if (drive_packet_with_clock(header_packet)) begin
+  bit header_success;
+  drive_packet_with_clock(header_packet, header_success);
+  if (header_success) begin
     last_packet_time = $time;
     `uvm_info("DRIVER", $sformatf("Successfully drove message header: 0x%016h", header_packet), UVM_HIGH)
   end else begin
@@ -491,7 +496,9 @@ task ucie_sb_driver::drive_standard_transaction(ucie_sb_transaction trans);
   header_packet = trans.get_header();
   
   // Drive the header packet with source-synchronous clock
-  if (drive_packet_with_clock(header_packet)) begin
+  bit packet_success;
+  drive_packet_with_clock(header_packet, packet_success);
+  if (packet_success) begin
     last_packet_time = $time;
     `uvm_info("DRIVER", $sformatf("Successfully drove header packet: 0x%016h", header_packet), UVM_HIGH)
   end else begin
@@ -516,7 +523,9 @@ task ucie_sb_driver::drive_standard_transaction(ucie_sb_transaction trans);
     `uvm_info("DRIVER", $sformatf("Driving data packet: 0x%016h", data_packet), UVM_HIGH)
     
     // Drive the data packet
-    if (drive_packet_with_clock(data_packet)) begin
+    bit data_packet_success;
+    drive_packet_with_clock(data_packet, data_packet_success);
+    if (data_packet_success) begin
       `uvm_info("DRIVER", "Successfully drove data packet", UVM_HIGH)
     end else begin
       `uvm_error("DRIVER", "Failed to drive data packet")
@@ -530,13 +539,14 @@ task ucie_sb_driver::drive_standard_transaction(ucie_sb_transaction trans);
 endtask
 
 //-----------------------------------------------------------------------------
-// FUNCTION: drive_packet_with_clock
+// TASK: drive_packet_with_clock
 // Drives a 64-bit packet with source-synchronous clock generation
 //-----------------------------------------------------------------------------
-function bit ucie_sb_driver::drive_packet_with_clock(bit [63:0] packet);
+task ucie_sb_driver::drive_packet_with_clock(bit [63:0] packet, output bit success);
   if (vif.sb_reset) begin
     `uvm_warning("DRIVER", "Cannot drive packet during reset")
-    return 0;
+    success = 0;
+    return;
   end
   
   `uvm_info("DRIVER", $sformatf("Driving 64-bit packet with clock: 0x%016h", packet), UVM_HIGH)
@@ -556,8 +566,8 @@ function bit ucie_sb_driver::drive_packet_with_clock(bit [63:0] packet);
   // Return clock to idle (low) state
   vif.SBTX_CLK = 1'b0;
   
-  return 1;
-endfunction
+  success = 1;
+endtask
 
 //-----------------------------------------------------------------------------
 // TASK: drive_gap
