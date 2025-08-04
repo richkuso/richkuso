@@ -236,8 +236,18 @@ task ucie_sb_monitor::run_phase(uvm_phase phase);
         wait_for_packet_gap();
       end
       
-      // Validate the complete transaction
-      check_transaction_validity(trans);
+      // Validate the complete transaction (skip for clock patterns)
+      if (!trans.is_clock_pattern) begin
+        check_transaction_validity(trans);
+      end else begin
+        // Clock patterns have their own validation
+        if (!trans.is_valid_clock_pattern()) begin
+          `uvm_error("MONITOR", "Clock pattern transaction has invalid data pattern")
+          protocol_errors++;
+        end else begin
+          `uvm_info("MONITOR", "Clock pattern validation PASSED", UVM_HIGH)
+        end
+      end
       
       // Update statistics
       update_statistics(trans);
@@ -479,15 +489,7 @@ function void ucie_sb_monitor::check_transaction_validity(ucie_sb_transaction tr
     protocol_errors++;
   end
   
-  // Check clock pattern validity
-  if (trans.is_clock_pattern) begin
-    if (!trans.is_valid_clock_pattern()) begin
-      `uvm_error("MONITOR", "Clock pattern transaction has invalid data pattern")
-      protocol_errors++;
-    end else begin
-      `uvm_info("MONITOR", "Clock pattern validation PASSED", UVM_HIGH)
-    end
-  end
+  // Note: Clock pattern validation is handled separately in run_phase
 endfunction
 
 
