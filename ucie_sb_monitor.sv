@@ -361,7 +361,8 @@ function ucie_sb_transaction ucie_sb_monitor::decode_header(bit [63:0] header);
   trans = ucie_sb_transaction::type_id::create("monitored_trans");
   
   // Extract opcode first to determine packet format
-  ucie_sb_opcode_e detected_opcode = ucie_sb_opcode_e'(phase0[4:0]);
+  ucie_sb_opcode_e detected_opcode;
+  detected_opcode = ucie_sb_opcode_e'(phase0[4:0]);
   trans.opcode = detected_opcode;
   
   // Check if this is a UCIe standard clock pattern by matching the fixed pattern

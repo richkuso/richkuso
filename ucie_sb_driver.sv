@@ -436,9 +436,10 @@ task ucie_sb_driver::drive_clock_pattern_transaction(ucie_sb_transaction trans);
   
   // Clock patterns typically don't have data payload
   if (trans.has_data) begin
+    bit [63:0] data_packet;
     `uvm_warning("DRIVER", "Clock pattern transaction has data payload - this is unusual")
     // Drive data if present, but no gap
-    bit [63:0] data_packet = trans.is_64bit ? trans.data : {32'h0, trans.data[31:0]};
+    data_packet = trans.is_64bit ? trans.data : {32'h0, trans.data[31:0]};
     drive_packet_with_clock(data_packet);
   end
   
