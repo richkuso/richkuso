@@ -110,7 +110,7 @@ class ucie_sb_monitor extends uvm_monitor;
   //
   // RETURNS: 64-bit captured packet
   //-----------------------------------------------------------------------------
-  extern virtual function bit [63:0] capture_serial_packet();
+  extern virtual task capture_serial_packet(output bit [63:0] packet);
   
   //-----------------------------------------------------------------------------
   // FUNCTION: decode_header
@@ -206,7 +206,7 @@ task ucie_sb_monitor::run_phase(uvm_phase phase);
     wait_for_packet_start();
     
     // Capture the header packet
-    header_packet = capture_serial_packet();
+    capture_serial_packet(header_packet);
     `uvm_info("MONITOR", $sformatf("Captured header packet: 0x%016h", header_packet), UVM_HIGH)
     
     // Decode header into transaction
@@ -222,7 +222,7 @@ task ucie_sb_monitor::run_phase(uvm_phase phase);
         wait_for_packet_start();
         
         // Capture data packet
-        data_packet = capture_serial_packet();
+        capture_serial_packet(data_packet);
         `uvm_info("MONITOR", $sformatf("Captured data packet: 0x%016h", data_packet), UVM_HIGH)
         
         // Extract data based on transaction width
@@ -327,11 +327,10 @@ task ucie_sb_monitor::wait_for_packet_gap();
 endtask
 
 //-----------------------------------------------------------------------------
-// FUNCTION: capture_serial_packet
+// TASK: capture_serial_packet
 // Captures a 64-bit serial packet from RX interface sampling on negedge clock
 //-----------------------------------------------------------------------------
-function bit [63:0] ucie_sb_monitor::capture_serial_packet();
-  bit [63:0] packet;
+task ucie_sb_monitor::capture_serial_packet(output bit [63:0] packet);
   
   `uvm_info("MONITOR", "Starting packet capture on negedge SBRX_CLK", UVM_DEBUG)
   
@@ -342,8 +341,7 @@ function bit [63:0] ucie_sb_monitor::capture_serial_packet();
   end
   
   `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h", packet), UVM_DEBUG)
-  return packet;
-endfunction
+endtask
 
 //-----------------------------------------------------------------------------
 // FUNCTION: decode_header
