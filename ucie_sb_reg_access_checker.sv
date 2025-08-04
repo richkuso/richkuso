@@ -569,6 +569,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
   
   virtual function bit validate_completion(ucie_sb_transaction comp, outstanding_req_t req);
     bit valid = 1;
+    bit expected_has_data;
+    bit expected_64bit;
     
     // Check srcid/dstid swap (completion returns to requester)
     if (comp.srcid != req.dstid) begin
@@ -585,8 +587,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
     
     // Check data size consistency for read completions
     if (req.is_read) begin
-      bit expected_has_data = 1;
-      bit expected_64bit = req.is_64bit;
+      expected_has_data = 1;
+      expected_64bit = req.is_64bit;
       
       if (comp.has_data != expected_has_data) begin
         `uvm_error("REG_CHECKER", $sformatf("Read completion data mismatch: expected has_data=%0b, got=%0b", 

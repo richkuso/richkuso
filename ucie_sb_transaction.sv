@@ -537,6 +537,7 @@ endfunction
 function string ucie_sb_transaction::convert2string();
   string s;
   string msg_name, submsg_name, status_name, be_desc;
+  bit [63:0] header;
   
   s = $sformatf("\n+--- UCIe Sideband Transaction ---+");
   
@@ -597,13 +598,13 @@ function string ucie_sb_transaction::convert2string();
   
   // Header information (1 line)
   if (is_clock_pattern && opcode == CLOCK_PATTERN) begin
-    bit [63:0] header = get_clock_pattern_header();
+    header = get_clock_pattern_header();
     s = {s, $sformatf("\n| Header: 0x%016h (Clock Pattern)        |", header)};
   end else if (pkt_type == PKT_MESSAGE && !has_data) begin
-    bit [63:0] header = get_message_header();
+    header = get_message_header();
     s = {s, $sformatf("\n| Header: 0x%016h (Message)              |", header)};
   end else begin
-    bit [63:0] header = get_header();
+    header = get_header();
     s = {s, $sformatf("\n| Header: 0x%016h (Standard)             |", header)};
   end
   
