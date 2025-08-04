@@ -412,6 +412,7 @@ task ucie_sb_driver::drive_clock_pattern_transaction(ucie_sb_transaction trans);
   bit [63:0] header_packet;
   bit [63:0] data_packet;
   bit data_success;
+  bit drive_success;
   
   `uvm_info("DRIVER", "Driving clock pattern transaction", UVM_MEDIUM)
   
@@ -427,7 +428,6 @@ task ucie_sb_driver::drive_clock_pattern_transaction(ucie_sb_transaction trans);
   end
   
   // Drive clock pattern - no gap for continuous patterns during initial flow
-  bit drive_success;
   drive_packet_with_clock(header_packet, drive_success);
   if (drive_success) begin
     last_packet_time = $time;
