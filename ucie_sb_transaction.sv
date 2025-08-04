@@ -255,7 +255,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
   
   constraint dstid_c {
     if (pkt_type == PKT_REG_ACCESS) {
-      if (is_remote_die_packet()) {
+      if (dstid != 3'b000) {  // Remote die packet check (was is_remote_die_packet())
         dstid inside {3'b000, 3'b001, 3'b010, 3'b011};
       } else {
         dstid == 3'b000;
