@@ -208,7 +208,7 @@ endclass : ucie_sb_agent_config
 // FUNCTION: build_phase
 // UVM build phase - creates components and configures them
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_agent::build_phase(uvm_phase phase);
+function void build_phase(uvm_phase phase);
   super.build_phase(phase);
   
   // Get or create agent configuration
@@ -242,7 +242,7 @@ endfunction
 // FUNCTION: connect_phase
 // UVM connect phase - connects components together
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_agent::connect_phase(uvm_phase phase);
+function void connect_phase(uvm_phase phase);
   super.connect_phase(phase);
   
   // Connect monitor analysis port to agent analysis port
@@ -261,7 +261,7 @@ endfunction
 // FUNCTION: end_of_elaboration_phase
 // UVM end of elaboration phase - final setup and validation
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_agent::end_of_elaboration_phase(uvm_phase phase);
+function void end_of_elaboration_phase(uvm_phase phase);
   super.end_of_elaboration_phase(phase);
   
   // Print configuration for debugging
@@ -276,7 +276,7 @@ endfunction
 // FUNCTION: report_phase
 // UVM report phase - prints agent statistics and configuration
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_agent::report_phase(uvm_phase phase);
+function void report_phase(uvm_phase phase);
   super.report_phase(phase);
   
   if (cfg.enable_statistics) begin
@@ -292,7 +292,7 @@ endfunction
 // FUNCTION: configure_components
 // Distributes configuration to all sub-components
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_agent::configure_components();
+function void configure_components();
   // Virtual interface is set directly by testbench to all components via wildcard
   // No interface handling needed at agent level
   
@@ -313,7 +313,7 @@ endfunction
 // FUNCTION: set_default_config
 // Sets default configuration values for the agent
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_agent::set_default_config();
+function void set_default_config();
   cfg.is_active = UVM_ACTIVE;
   cfg.enable_coverage = 1;
   cfg.enable_protocol_checking = 1;
@@ -332,7 +332,7 @@ endfunction
 // FUNCTION: print_config
 // Prints current agent configuration for debugging
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_agent::print_config();
+function void print_config();
   `uvm_info("AGENT", "=== Agent Configuration ===", UVM_LOW)
   `uvm_info("AGENT", $sformatf("Mode: %s", cfg.is_active.name()), UVM_LOW)
   `uvm_info("AGENT", $sformatf("Coverage enabled: %0b", cfg.enable_coverage), UVM_LOW)
@@ -355,7 +355,7 @@ endfunction
 // FUNCTION: set_800mhz_config
 // Configures driver for 800MHz operation with UCIe defaults
 //-----------------------------------------------------------------------------
-function void ucie_sb_agent_config::set_800mhz_config();
+function void set_800mhz_config();
   driver_cfg.set_frequency(800e6);
   driver_cfg.set_duty_cycle(50.0);
   driver_cfg.min_gap_cycles = 32;
@@ -366,7 +366,7 @@ endfunction
 // FUNCTION: set_400mhz_config
 // Configures driver for 400MHz operation (for testing/debug)
 //-----------------------------------------------------------------------------
-function void ucie_sb_agent_config::set_400mhz_config();
+function void set_400mhz_config();
   driver_cfg.set_frequency(400e6);
   driver_cfg.set_duty_cycle(50.0);
   driver_cfg.min_gap_cycles = 32;
@@ -377,7 +377,7 @@ endfunction
 // FUNCTION: print_config
 // Prints current configuration settings for debugging
 //-----------------------------------------------------------------------------
-function void ucie_sb_agent_config::print_config();
+function void print_config();
   `uvm_info("AGENT_CONFIG", "=== Agent Config ===", UVM_LOW)
   `uvm_info("AGENT_CONFIG", $sformatf("Mode: %s", is_active.name()), UVM_LOW)
   `uvm_info("AGENT_CONFIG", $sformatf("Coverage: %0b", enable_coverage), UVM_LOW)

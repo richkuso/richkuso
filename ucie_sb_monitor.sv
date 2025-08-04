@@ -168,7 +168,7 @@ endclass : ucie_sb_monitor
 // FUNCTION: build_phase
 // UVM build phase - gets interface and creates analysis port
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_monitor::build_phase(uvm_phase phase);
+function void build_phase(uvm_phase phase);
   super.build_phase(phase);
   
   // Get virtual interface
@@ -191,7 +191,7 @@ endfunction
 // TASK: run_phase
 // UVM run phase - main monitor loop for capturing transactions
 //-----------------------------------------------------------------------------
-virtual task ucie_sb_monitor::run_phase(uvm_phase phase);
+task run_phase(uvm_phase phase);
   ucie_sb_transaction trans;
   bit [63:0] header_packet;
   bit [63:0] data_packet;
@@ -256,7 +256,7 @@ endtask
 // FUNCTION: report_phase
 // UVM report phase - prints statistics
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_monitor::report_phase(uvm_phase phase);
+function void report_phase(uvm_phase phase);
   super.report_phase(phase);
   print_statistics();
 endfunction
@@ -266,7 +266,7 @@ endfunction
 // Waits for start of packet transmission (posedge clock only)
 // Data can be high or low based on opcode - only clock edge matters
 //-----------------------------------------------------------------------------
-virtual task ucie_sb_monitor::wait_for_packet_start();
+task wait_for_packet_start();
   // Wait for positive edge of RX clock - this indicates packet transmission start
   @(posedge vif.SBRX_CLK);
   
@@ -278,7 +278,7 @@ endtask
 // Waits for minimum gap between packets (32 UI with both CLK and DATA low)
 // During gap: SBRX_CLK and SBRX_DATA both stay low, no clock toggling
 //-----------------------------------------------------------------------------
-virtual task ucie_sb_monitor::wait_for_packet_gap();
+task wait_for_packet_gap();
   time gap_start_time;
   time current_time;
   time gap_duration;
@@ -330,7 +330,7 @@ endtask
 // FUNCTION: capture_serial_packet
 // Captures a 64-bit serial packet from RX interface sampling on negedge clock
 //-----------------------------------------------------------------------------
-virtual function bit [63:0] ucie_sb_monitor::capture_serial_packet();
+function bit [63:0] capture_serial_packet();
   bit [63:0] packet;
   
   `uvm_info("MONITOR", "Starting packet capture on negedge SBRX_CLK", UVM_DEBUG)
@@ -349,7 +349,7 @@ endfunction
 // FUNCTION: decode_header
 // Decodes 64-bit header packet into transaction object
 //-----------------------------------------------------------------------------
-virtual function ucie_sb_transaction ucie_sb_monitor::decode_header(bit [63:0] header);
+function ucie_sb_transaction decode_header(bit [63:0] header);
   ucie_sb_transaction trans;
   bit [31:0] phase0, phase1;
   
@@ -436,7 +436,7 @@ endfunction
 // FUNCTION: check_transaction_validity
 // Validates captured transaction against UCIe specification
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_monitor::check_transaction_validity(ucie_sb_transaction trans);
+function void check_transaction_validity(ucie_sb_transaction trans);
   // Check parity
   bit expected_cp, expected_dp;
   
@@ -497,7 +497,7 @@ endfunction
 // FUNCTION: update_statistics
 // Updates monitor statistics with captured transaction
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_monitor::update_statistics(ucie_sb_transaction trans);
+function void update_statistics(ucie_sb_transaction trans);
   packets_captured++;
   bits_captured += 64; // Header packet
   
@@ -513,7 +513,7 @@ endfunction
 // FUNCTION: print_statistics
 // Prints current monitor statistics to log
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_monitor::print_statistics();
+function void print_statistics();
   `uvm_info("MONITOR", "=== Monitor Statistics ===", UVM_LOW)
   `uvm_info("MONITOR", $sformatf("Packets captured: %0d", packets_captured), UVM_LOW)
   `uvm_info("MONITOR", $sformatf("Bits captured: %0d", bits_captured), UVM_LOW)
@@ -529,7 +529,7 @@ endfunction
 // FUNCTION: set_ui_time
 // Sets the UI time for gap detection based on clock frequency
 //-----------------------------------------------------------------------------
-virtual function void ucie_sb_monitor::set_ui_time(real ui_ns);
+function void set_ui_time(real ui_ns);
   ui_time_ns = ui_ns;
   `uvm_info("MONITOR", $sformatf("UI time set to %.2fns (%.1fMHz equivalent)", ui_ns, 1000.0/ui_ns), UVM_LOW)
 endfunction
