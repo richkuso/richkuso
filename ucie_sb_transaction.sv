@@ -609,7 +609,7 @@ endfunction
 // FUNCTION: get_msgcode_name
 // Returns human-readable name for message code
 //-----------------------------------------------------------------------------
-function string get_msgcode_name(bit [7:0] code);
+function string ucie_sb_transaction::get_msgcode_name(bit [7:0] code);
   case (code)
     MSG_SBINIT_OUT_OF_RESET: return "SBINIT_OUT_OF_RESET";
     MSG_SBINIT_DONE_REQ:     return "SBINIT_DONE_REQ";
@@ -622,7 +622,7 @@ endfunction
 // FUNCTION: get_msgsubcode_name
 // Returns human-readable name for message subcode
 //-----------------------------------------------------------------------------
-function string get_msgsubcode_name(bit [7:0] subcode);
+function string ucie_sb_transaction::get_msgsubcode_name(bit [7:0] subcode);
   case (subcode)
     SUBCODE_SBINIT_OUT_OF_RESET: return "SBINIT_OUT_OF_RESET";
     SUBCODE_SBINIT_DONE:         return "SBINIT_DONE";
@@ -634,7 +634,7 @@ endfunction
 // FUNCTION: get_completion_status_name
 // Returns human-readable name for completion status
 //-----------------------------------------------------------------------------
-function string get_completion_status_name(bit [15:0] status);
+function string ucie_sb_transaction::get_completion_status_name(bit [15:0] status);
   bit [2:0] completion_status = status[2:0];
   case (completion_status)
     3'b000: return "Successful Completion";
@@ -653,7 +653,7 @@ endfunction
 // FUNCTION: get_be_description
 // Returns human-readable description of byte enables
 //-----------------------------------------------------------------------------
-function string get_be_description();
+function string ucie_sb_transaction::get_be_description();
   case (be)
     8'b11111111: return "All";
     8'b00001111: return "Low4B";

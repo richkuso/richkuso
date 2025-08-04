@@ -408,7 +408,7 @@ endtask
 // TASK: drive_clock_pattern_transaction
 // Drives clock pattern transactions with optimized timing
 //-----------------------------------------------------------------------------
-virtual task drive_clock_pattern_transaction(ucie_sb_transaction trans);
+task ucie_sb_driver::drive_clock_pattern_transaction(ucie_sb_transaction trans);
   bit [63:0] header_packet;
   
   `uvm_info("DRIVER", "Driving clock pattern transaction", UVM_MEDIUM)
@@ -449,7 +449,7 @@ endtask
 // TASK: drive_message_transaction  
 // Drives message transactions (SBINIT, etc.)
 //-----------------------------------------------------------------------------
-virtual task drive_message_transaction(ucie_sb_transaction trans);
+task ucie_sb_driver::drive_message_transaction(ucie_sb_transaction trans);
   bit [63:0] header_packet;
   
   `uvm_info("DRIVER", "Driving message transaction", UVM_MEDIUM)
@@ -480,7 +480,7 @@ endtask
 // TASK: drive_standard_transaction
 // Drives standard register access and completion transactions
 //-----------------------------------------------------------------------------
-virtual task drive_standard_transaction(ucie_sb_transaction trans);
+task ucie_sb_driver::drive_standard_transaction(ucie_sb_transaction trans);
   bit [63:0] header_packet;
   bit [63:0] data_packet;
   
