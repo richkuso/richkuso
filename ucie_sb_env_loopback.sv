@@ -1,8 +1,8 @@
-// UCIe Sideband UVM Environment
-// Contains the testbench environment with 16 inactive agents and checker
+// UCIe Sideband UVM Loopback Environment
+// Contains the testbench environment with 16 inactive agents and checker for loopback testing
 
-class ucie_sb_env extends uvm_env;
-  `uvm_component_utils(ucie_sb_env)
+class ucie_sb_env_loopback extends uvm_env;
+  `uvm_component_utils(ucie_sb_env_loopback)
   
   // 16 inactive agents for monitoring
   ucie_sb_agent agents[16];
@@ -13,7 +13,7 @@ class ucie_sb_env extends uvm_env;
   // Agent configurations
   ucie_sb_agent_config agent_cfgs[16];
   
-  function new(string name = "ucie_sb_env", uvm_component parent = null);
+  function new(string name = "ucie_sb_env_loopback", uvm_component parent = null);
     super.new(name, parent);
   endfunction
   

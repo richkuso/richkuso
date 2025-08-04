@@ -17,7 +17,7 @@ ucie_sb_agent.sv
 ucie_sb_pkg.sv
 
 # Test environment and classes
-ucie_sb_env.sv
+ucie_sb_env_loopback.sv
 ucie_sb_base_test.sv
 ucie_sb_clock_pattern_test.sv
 ucie_sb_memory_test.sv

@@ -7,7 +7,7 @@ package ucie_sb_test_pkg;
   `include "uvm_macros.svh"
   
   // Include all test-related classes
-  `include "ucie_sb_env.sv"
+  `include "ucie_sb_env_loopback.sv"
   `include "ucie_sb_base_test.sv"
   `include "ucie_sb_clock_pattern_test.sv"
   `include "ucie_sb_memory_test.sv"
