@@ -287,17 +287,29 @@ endtask
 // TASK: wait_for_packet_gap
 // Waits for minimum gap between packets (32 UI with both CLK and DATA low)
 // During gap: SBRX_CLK and SBRX_DATA both stay low, no clock toggling
+// Enhanced with reset handling, timeout protection, and better error reporting
 //-----------------------------------------------------------------------------
 task ucie_sb_monitor::wait_for_packet_gap();
   time gap_start_time;
   time current_time;
   time gap_duration;
+  time timeout_time;
   int ui_count;
+  int short_gap_count = 0;
+  bit gap_valid = 0;
   
-  `uvm_info("MONITOR", $sformatf("Waiting for packet gap (32 UI minimum, UI=%.2fns)", ui_time_ns), UVM_DEBUG)
+  // Calculate timeout (max reasonable gap: 1000 UI)
+  timeout_time = 1000 * ui_time_ns * 1ns;
   
-  // Wait for both clock and data to go low (start of gap)
+  `uvm_info("MONITOR", $sformatf("Waiting for packet gap (32 UI minimum, UI=%.2fns, timeout=%0t)", 
+                                 ui_time_ns, timeout_time), UVM_DEBUG)
+  
+  // Wait for both clock and data to go low (start of gap) with reset check
   while (vif.SBRX_CLK !== 1'b0 || vif.SBRX_DATA !== 1'b0) begin
+    if (vif.sb_reset) begin
+      `uvm_info("MONITOR", "Reset detected while waiting for gap start - aborting gap wait", UVM_DEBUG)
+      return;
+    end
     #1ns; // Small delay to avoid infinite loop
   end
   
@@ -305,35 +317,65 @@ task ucie_sb_monitor::wait_for_packet_gap();
   `uvm_info("MONITOR", $sformatf("Gap started at time %0t", gap_start_time), UVM_DEBUG)
   
   // Monitor the gap duration - both signals must stay low
-  forever begin
+  while (!gap_valid) begin
+    // Check for reset during gap monitoring
+    if (vif.sb_reset) begin
+      `uvm_info("MONITOR", "Reset detected during gap monitoring - aborting gap wait", UVM_DEBUG)
+      return;
+    end
+    
     #1ns; // Check every nanosecond
     current_time = $time;
     gap_duration = current_time - gap_start_time;
     ui_count = int'(gap_duration / (ui_time_ns * 1ns));
     
+    // Timeout protection
+    if (gap_duration > timeout_time) begin
+      `uvm_warning("MONITOR", $sformatf("Gap timeout: %0d UI (timeout at 1000 UI) - assuming valid gap", ui_count))
+      gap_valid = 1;
+      break;
+    end
+    
     // Check if either signal goes high (gap ends)
     if (vif.SBRX_CLK === 1'b1 || vif.SBRX_DATA === 1'b1) begin
       if (ui_count >= 32) begin
         `uvm_info("MONITOR", $sformatf("Valid gap detected: %0d UI (%0t)", ui_count, gap_duration), UVM_DEBUG)
-        break;
+        gap_valid = 1;
       end else begin
-        `uvm_warning("MONITOR", $sformatf("Gap too short: %0d UI (minimum 32 UI required)", ui_count))
+        short_gap_count++;
+        `uvm_warning("MONITOR", $sformatf("Gap too short: %0d UI (minimum 32 UI required) - attempt %0d", 
+                                          ui_count, short_gap_count))
+        
+        // Limit retries to prevent infinite loops
+        if (short_gap_count >= 5) begin
+          `uvm_error("MONITOR", $sformatf("Too many short gaps (%0d attempts) - forcing gap acceptance", short_gap_count))
+          protocol_errors++;
+          gap_valid = 1;
+          break;
+        end
+        
         // Gap was too short, wait for signals to go low again and restart
         while (vif.SBRX_CLK !== 1'b0 || vif.SBRX_DATA !== 1'b0) begin
+          if (vif.sb_reset) begin
+            `uvm_info("MONITOR", "Reset detected during gap restart - aborting gap wait", UVM_DEBUG)
+            return;
+          end
           #1ns;
         end
         gap_start_time = $time;
-        `uvm_info("MONITOR", "Gap restarted due to insufficient duration", UVM_DEBUG)
+        `uvm_info("MONITOR", $sformatf("Gap restarted due to insufficient duration (attempt %0d)", short_gap_count), UVM_DEBUG)
       end
     end
     
-    // Optional: Log progress for very long gaps
-    if (ui_count > 0 && (ui_count % 16 == 0)) begin
-      `uvm_info("MONITOR", $sformatf("Gap progress: %0d UI", ui_count), UVM_HIGH)
+    // Periodic progress logging for very long gaps (reduced frequency)
+    if (ui_count > 32 && (ui_count % 64 == 0)) begin
+      `uvm_info("MONITOR", $sformatf("Long gap in progress: %0d UI", ui_count), UVM_HIGH)
     end
   end
   
-  `uvm_info("MONITOR", $sformatf("Packet gap complete: %0d UI duration", ui_count), UVM_DEBUG)
+  `uvm_info("MONITOR", $sformatf("Packet gap complete: %0d UI duration%s", ui_count, 
+                                 short_gap_count > 0 ? $sformatf(" (after %0d short gap retries)", short_gap_count) : ""), 
+                                 UVM_DEBUG)
 endtask
 
 //-----------------------------------------------------------------------------
