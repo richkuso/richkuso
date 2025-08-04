@@ -455,6 +455,7 @@ endtask
 //-----------------------------------------------------------------------------
 task ucie_sb_driver::drive_message_transaction(ucie_sb_transaction trans);
   bit [63:0] header_packet;
+  bit header_success;
   
   `uvm_info("DRIVER", "Driving message transaction", UVM_MEDIUM)
   
@@ -462,7 +463,6 @@ task ucie_sb_driver::drive_message_transaction(ucie_sb_transaction trans);
   header_packet = trans.get_header();
   
   // Drive the message header
-  bit header_success;
   drive_packet_with_clock(header_packet, header_success);
   if (header_success) begin
     last_packet_time = $time;
@@ -489,6 +489,8 @@ endtask
 task ucie_sb_driver::drive_standard_transaction(ucie_sb_transaction trans);
   bit [63:0] header_packet;
   bit [63:0] data_packet;
+  bit packet_success;
+  bit data_packet_success;
   
   `uvm_info("DRIVER", "Driving standard register access/completion transaction", UVM_MEDIUM)
   
@@ -496,7 +498,6 @@ task ucie_sb_driver::drive_standard_transaction(ucie_sb_transaction trans);
   header_packet = trans.get_header();
   
   // Drive the header packet with source-synchronous clock
-  bit packet_success;
   drive_packet_with_clock(header_packet, packet_success);
   if (packet_success) begin
     last_packet_time = $time;
@@ -523,7 +524,6 @@ task ucie_sb_driver::drive_standard_transaction(ucie_sb_transaction trans);
     `uvm_info("DRIVER", $sformatf("Driving data packet: 0x%016h", data_packet), UVM_HIGH)
     
     // Drive the data packet
-    bit data_packet_success;
     drive_packet_with_clock(data_packet, data_packet_success);
     if (data_packet_success) begin
       `uvm_info("DRIVER", "Successfully drove data packet", UVM_HIGH)
