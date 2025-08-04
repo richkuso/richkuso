@@ -595,7 +595,7 @@ class ucie_sb_init_seq extends ucie_sb_base_sequence;
     assert(trans.randomize() with {
       opcode == MESSAGE_NO_DATA;
       msgcode == MSG_SBINIT_DONE_REQ;  // 0x95
-      msgsubcode == SUBCODE_SBINIT_DONE_REQ;  // 0x01
+      msgsubcode == SUBCODE_SBINIT_DONE;  // 0x01
       msginfo == 16'h0000;  // Always 0000h for done request
       srcid == init_srcid;
       dstid == init_dstid;
@@ -613,7 +613,7 @@ class ucie_sb_init_seq extends ucie_sb_base_sequence;
     assert(trans.randomize() with {
       opcode == MESSAGE_NO_DATA;
       msgcode == MSG_SBINIT_DONE_RESP;  // 0x9A
-      msgsubcode == SUBCODE_SBINIT_DONE_RESP;  // 0x02
+      msgsubcode == SUBCODE_SBINIT_DONE;  // 0x01
       msginfo == 16'h0000;  // Always 0000h for done response
       srcid == init_dstid;  // Response comes from destination
       dstid == init_srcid;  // Back to original source

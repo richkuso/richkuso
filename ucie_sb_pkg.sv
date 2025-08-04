@@ -45,8 +45,7 @@ package ucie_sb_pkg;
   // Message subcodes for messages without data (Table 7-8)
   typedef enum bit [7:0] {
     SUBCODE_SBINIT_OUT_OF_RESET = 8'h00,
-    SUBCODE_SBINIT_DONE_REQ     = 8'h01,
-    SUBCODE_SBINIT_DONE_RESP    = 8'h02
+    SUBCODE_SBINIT_DONE         = 8'h01
   } ucie_sb_msgsubcode_e;
 
   // Clock pattern constants

@@ -286,10 +286,10 @@ class ucie_sb_transaction extends uvm_sequence_item;
         msgsubcode == SUBCODE_SBINIT_OUT_OF_RESET;
       }
       if (msgcode == MSG_SBINIT_DONE_REQ) {
-        msgsubcode == SUBCODE_SBINIT_DONE_REQ;
+        msgsubcode == SUBCODE_SBINIT_DONE;
       }
       if (msgcode == MSG_SBINIT_DONE_RESP) {
-        msgsubcode == SUBCODE_SBINIT_DONE_RESP;
+        msgsubcode == SUBCODE_SBINIT_DONE;
       }
       
       // MsgInfo constraints based on message type
@@ -625,8 +625,7 @@ endfunction
 function string get_msgsubcode_name(bit [7:0] subcode);
   case (subcode)
     SUBCODE_SBINIT_OUT_OF_RESET: return "SBINIT_OUT_OF_RESET";
-    SUBCODE_SBINIT_DONE_REQ:     return "SBINIT_DONE_REQ";
-    SUBCODE_SBINIT_DONE_RESP:    return "SBINIT_DONE_RESP";
+    SUBCODE_SBINIT_DONE:         return "SBINIT_DONE";
     default:                     return $sformatf("UNKNOWN_0x%02h", subcode);
   endcase
 endfunction
