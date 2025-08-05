@@ -1,56 +1,85 @@
-// UCIe Sideband Register Access Checker
-// Monitors TX register access requests and matches with RX completions
-
-//=============================================================================
-// CLASS: ucie_sb_reg_access_checker
-//
-// DESCRIPTION:
-//   Checker that monitors bidirectional sideband register access transactions.
-//   Handles both TX→RX and RX→TX request-completion flows. Ensures proper 
-//   request-completion pairing with correct tag matching and validates protocol 
-//   compliance for both directions.
-//
-// FEATURES:
-//   - Bidirectional request-completion tracking (TX↔RX)
-//   - Separate tracking for TX-initiated and RX-initiated transactions
-//   - Tag-based matching with direction awareness (when TAG support enabled)
-//   - Non-TAG mode with blocking behavior (when TAG support disabled)
-//   - Validates proper source/destination swapping for both directions
-//   - Timeout detection for missing completions
-//   - Comprehensive statistics for both directions
-//   - FIFO-only architecture for optimal performance
-//
-// ARCHITECTURE:
-//   - Direct FIFO connections (no analysis port wrappers)
-//   - Asynchronous processing via dedicated tasks
-//   - Monitors connect directly to tx_fifo.analysis_export and rx_fifo.analysis_export
-//
-// AUTHOR: UCIe Sideband UVM Agent
-// VERSION: 4.0 - FIFO-Only Architecture
-//=============================================================================
+/*******************************************************************************
+ * UCIe Sideband Register Access Protocol Checker
+ * 
+ * OVERVIEW:
+ *   Advanced bidirectional protocol checker for UCIe (Universal Chiplet 
+ *   Interconnect Express) sideband register access transactions. Provides
+ *   comprehensive request-completion matching, timing analysis, and protocol
+ *   compliance verification across both TX and RX paths.
+ *
+ * VERIFICATION ARCHITECTURE:
+ *   • Bidirectional transaction flow monitoring (TX↔RX)
+ *   • Tag-based request tracking with 32-entry capacity per direction
+ *   • Non-TAG mode support with blocking behavior validation
+ *   • Asynchronous FIFO-based processing for optimal performance
+ *   • Real-time protocol compliance checking and error detection
+ *
+ * TRANSACTION FLOW COVERAGE:
+ *   • TX→RX Flow: TX sends request, RX returns completion
+ *   • RX→TX Flow: RX sends request, TX returns completion
+ *   • Request Types: MEM/DMS/CFG operations (32-bit/64-bit)
+ *   • Completion Types: No data, 32-bit data, 64-bit data
+ *
+ * PROTOCOL VALIDATION:
+ *   • Source/destination ID swapping verification
+ *   • Tag consistency and reuse detection
+ *   • Data width matching between requests and completions
+ *   • Timeout detection for missing completions
+ *   • Protocol error counting and reporting
+ *
+ * PERFORMANCE ANALYSIS:
+ *   • Response time statistics (min/max/average)
+ *   • Transaction throughput monitoring
+ *   • FIFO depth tracking and optimization
+ *   • Bidirectional flow performance comparison
+ *
+ * OPERATIONAL MODES:
+ *   • TAG Mode: Full 32-tag support with concurrent transactions
+ *   • Non-TAG Mode: Single outstanding request with blocking validation
+ *   • Configurable timeout monitoring and error handling
+ *
+ * INTEGRATION:
+ *   • Direct FIFO connectivity for monitor attachment
+ *   • UVM analysis port compatibility
+ *   • Configuration database parameter control
+ *   • Comprehensive statistics and debug reporting
+ *
+ * COMPLIANCE:
+ *   • IEEE 1800-2017 SystemVerilog
+ *   • UVM 1.2 methodology
+ *   • UCIe 1.1 specification
+ *
+ * AUTHOR: UCIe Sideband UVM Agent
+ * VERSION: 4.0 - Advanced bidirectional verification architecture
+ ******************************************************************************/
 
 class ucie_sb_reg_access_checker extends uvm_component;
   `uvm_component_utils(ucie_sb_reg_access_checker)
   
-  //=============================================================================
-  // CLASS FIELDS
-  //=============================================================================
+  /*---------------------------------------------------------------------------
+   * TRANSACTION INTERFACE FIFOS
+   * Direct analysis export connections for monitor attachment
+   *---------------------------------------------------------------------------*/
   
-  // Direct FIFO analysis exports for receiving transactions
-  // Connect monitors directly to these exports:
-  //   tx_monitor.ap.connect(checker.tx_fifo.analysis_export);
-  //   rx_monitor.ap.connect(checker.rx_fifo.analysis_export);
   uvm_tlm_analysis_fifo #(ucie_sb_transaction) tx_fifo;
   uvm_tlm_analysis_fifo #(ucie_sb_transaction) rx_fifo;
   
-  // Configuration parameters
+  /*---------------------------------------------------------------------------
+   * CONFIGURATION PARAMETERS
+   * Runtime behavior and feature control settings
+   *---------------------------------------------------------------------------*/
+  
   bit enable_checking = 1;
   bit enable_timeout_check = 1;
-  real timeout_ns = 1000.0;  // 1us timeout for completions
+  real timeout_ns = 1000.0;
   bit enable_statistics = 1;
-  bit enable_tag_support = 1;  // Enable/disable TAG functionality
+  bit enable_tag_support = 1;
   
-  // Outstanding request tracking with direction awareness
+  /*---------------------------------------------------------------------------
+   * OUTSTANDING REQUEST TRACKING STRUCTURE
+   * Comprehensive request metadata for bidirectional flow management
+   *---------------------------------------------------------------------------*/
+  
   typedef struct {
     ucie_sb_transaction req_trans;
     realtime req_time;
@@ -59,88 +88,98 @@ class ucie_sb_reg_access_checker extends uvm_component;
     bit [23:0] addr;
     bit is_read;
     bit is_64bit;
-    bit is_tx_initiated;  // 1=TX→RX request, 0=RX→TX request
+    bit is_tx_initiated;
   } outstanding_req_t;
   
-  // Tag-based request tracking (5-bit tag = 32 entries per direction)
-  // TX-initiated requests (TX sends request, expects RX completion)
+  /*---------------------------------------------------------------------------
+   * TAG-BASED REQUEST TRACKING ARRAYS
+   * Separate tracking for TX-initiated and RX-initiated transactions
+   *---------------------------------------------------------------------------*/
+  
   outstanding_req_t tx_outstanding_requests[32];
   bit tx_tag_in_use[32];
   
-  // RX-initiated requests (RX sends request, expects TX completion)  
   outstanding_req_t rx_outstanding_requests[32];
   bit rx_tag_in_use[32];
   
-  // Non-TAG mode tracking - only one outstanding request per direction
-  bit tx_has_outstanding_request = 0;  // For non-TAG mode blocking
-  bit rx_has_outstanding_request = 0;  // For non-TAG mode blocking
-  outstanding_req_t tx_single_outstanding_request;  // Single request tracking
-  outstanding_req_t rx_single_outstanding_request;  // Single request tracking
+  /*---------------------------------------------------------------------------
+   * NON-TAG MODE TRACKING
+   * Single outstanding request tracking with blocking validation
+   *---------------------------------------------------------------------------*/
   
-  // Statistics - Bidirectional
-  // TX-initiated flows (TX request → RX completion)
+  bit tx_has_outstanding_request = 0;
+  bit rx_has_outstanding_request = 0;
+  outstanding_req_t tx_single_outstanding_request;
+  outstanding_req_t rx_single_outstanding_request;
+  
+  /*---------------------------------------------------------------------------
+   * BIDIRECTIONAL STATISTICS COUNTERS
+   * Comprehensive performance and error tracking per direction
+   *---------------------------------------------------------------------------*/
+  
   int tx_requests_sent = 0;
   int tx_completions_received = 0;
   int tx_matched_transactions = 0;
   int tx_tag_mismatches = 0;
   int tx_timeout_errors = 0;
-  int tx_tag_violations = 0;  // TAG field violations in non-TAG mode
-  int tx_blocking_violations = 0;  // Blocking violations in non-TAG mode
+  int tx_tag_violations = 0;
+  int tx_blocking_violations = 0;
   
-  // RX-initiated flows (RX request → TX completion)
   int rx_requests_sent = 0;
   int rx_completions_received = 0;
   int rx_matched_transactions = 0;
   int rx_tag_mismatches = 0;
   int rx_timeout_errors = 0;
-  int rx_tag_violations = 0;  // TAG field violations in non-TAG mode
-  int rx_blocking_violations = 0;  // Blocking violations in non-TAG mode
+  int rx_tag_violations = 0;
+  int rx_blocking_violations = 0;
   
-  // General statistics
+  /*---------------------------------------------------------------------------
+   * GENERAL PERFORMANCE METRICS
+   * System-wide statistics and FIFO utilization tracking
+   *---------------------------------------------------------------------------*/
+  
   int protocol_errors = 0;
   int tx_transactions_queued = 0;
   int rx_transactions_queued = 0;
   int max_tx_fifo_depth = 0;
   int max_rx_fifo_depth = 0;
   
-  // Timing tracking - Bidirectional
-  // TX-initiated timing
+  /*---------------------------------------------------------------------------
+   * TIMING ANALYSIS METRICS
+   * Response time statistics for performance characterization
+   *---------------------------------------------------------------------------*/
+  
   realtime tx_total_response_time = 0;
   realtime tx_min_response_time = 0;
   realtime tx_max_response_time = 0;
   
-  // RX-initiated timing
   realtime rx_total_response_time = 0;
   realtime rx_min_response_time = 0;
   realtime rx_max_response_time = 0;
   
-  //=============================================================================
-  // CONSTRUCTOR
-  //=============================================================================
-  
+  /*---------------------------------------------------------------------------
+   * CONSTRUCTOR - Initialize tracking arrays and state
+   *---------------------------------------------------------------------------*/
   function new(string name = "ucie_sb_reg_access_checker", uvm_component parent = null);
     super.new(name, parent);
     
-    // Initialize tracking arrays for both directions
     for (int i = 0; i < 32; i++) begin
       tx_tag_in_use[i] = 0;
       rx_tag_in_use[i] = 0;
     end
     
-    // Initialize non-TAG mode tracking
     tx_has_outstanding_request = 0;
     rx_has_outstanding_request = 0;
   endfunction
   
-  //=============================================================================
-  // UVM PHASES
-  //=============================================================================
+  /*---------------------------------------------------------------------------
+   * UVM PHASE IMPLEMENTATIONS
+   * Standard UVM component lifecycle management
+   *---------------------------------------------------------------------------*/
   
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
     
-    // Create FIFOs with direct analysis exports
-    // Monitors will connect directly to these exports
     tx_fifo = new("tx_fifo", this);
     rx_fifo = new("rx_fifo", this);
     
@@ -157,16 +196,10 @@ class ucie_sb_reg_access_checker extends uvm_component;
   
   virtual task run_phase(uvm_phase phase);
     fork
-      // Process TX transactions from FIFO
       tx_processor();
-      
-      // Process RX transactions from FIFO  
       rx_processor();
-      
-      // Monitor FIFO depths for statistics
       fifo_monitor();
       
-      // Timeout monitoring
       if (enable_timeout_check) begin
         timeout_monitor();
       end
@@ -179,32 +212,42 @@ class ucie_sb_reg_access_checker extends uvm_component;
     check_outstanding_requests();
   endfunction
   
-  //=============================================================================
-  // FIFO PROCESSORS (ASYNCHRONOUS)
-  //=============================================================================
+  /*---------------------------------------------------------------------------
+   * ASYNCHRONOUS TRANSACTION PROCESSORS
+   * Parallel processing engines for TX and RX transaction streams
+   *---------------------------------------------------------------------------*/
   
-  // TX FIFO processor - handles both requests and completions
+  /*-----------------------------------------------------------------------------
+   * TX TRANSACTION PROCESSOR
+   * 
+   * Processes all transactions from TX path including:
+   *   • TX-initiated requests (TX→RX flow)
+   *   • RX-initiated completions (RX→TX response)
+   *   • Protocol validation and error detection
+   *   • Statistics collection and performance tracking
+   *
+   * PROCESSING FLOW:
+   *   1. Retrieve transaction from TX FIFO (blocking)
+   *   2. Classify transaction type (request vs completion)
+   *   3. Route to appropriate handler based on flow direction
+   *   4. Update statistics and performance metrics
+   *-----------------------------------------------------------------------------*/
   virtual task tx_processor();
     ucie_sb_transaction trans;
     
     forever begin
-      // Get transaction from TX FIFO (blocking)
       tx_fifo.get(trans);
       
-      // Skip processing if checker disabled
       if (!enable_checking) continue;
       
-      // Update transaction statistics
       tx_transactions_queued++;
       
       `uvm_info("REG_CHECKER", $sformatf("Processing TX transaction: opcode=%s, tag=%0d", 
                                          trans.opcode.name(), trans.tag), UVM_DEBUG)
       
-      // Process register access requests (TX→RX flow)
       if (is_register_access_request(trans)) begin
         process_tx_request(trans);
       end
-      // Process completions (RX→TX response)
       else if (is_completion(trans)) begin
         process_rx_completion(trans);
       end
@@ -215,28 +258,37 @@ class ucie_sb_reg_access_checker extends uvm_component;
     end
   endtask
   
-  // RX FIFO processor - handles both requests and completions
+  /*-----------------------------------------------------------------------------
+   * RX TRANSACTION PROCESSOR
+   * 
+   * Processes all transactions from RX path including:
+   *   • RX-initiated requests (RX→TX flow)
+   *   • TX-initiated completions (TX→RX response)
+   *   • Bidirectional flow coordination and validation
+   *   • Performance analysis and error tracking
+   *
+   * PROCESSING FLOW:
+   *   1. Retrieve transaction from RX FIFO (blocking)
+   *   2. Determine transaction role in bidirectional flow
+   *   3. Execute appropriate validation and matching logic
+   *   4. Maintain timing statistics and error counters
+   *-----------------------------------------------------------------------------*/
   virtual task rx_processor();
     ucie_sb_transaction trans;
     
     forever begin
-      // Get transaction from RX FIFO (blocking)
       rx_fifo.get(trans);
       
-      // Skip processing if checker disabled
       if (!enable_checking) continue;
       
-      // Update transaction statistics
       rx_transactions_queued++;
       
       `uvm_info("REG_CHECKER", $sformatf("Processing RX transaction: opcode=%s, tag=%0d", 
                                          trans.opcode.name(), trans.tag), UVM_DEBUG)
       
-      // Process register access requests (RX→TX flow)
       if (is_register_access_request(trans)) begin
         process_rx_request(trans);
       end
-      // Process completions (TX→RX response)
       else if (is_completion(trans)) begin
         process_tx_completion(trans);
       end
@@ -247,12 +299,23 @@ class ucie_sb_reg_access_checker extends uvm_component;
     end
   endtask
   
-  // FIFO depth monitoring for statistics
+  /*-----------------------------------------------------------------------------
+   * FIFO UTILIZATION MONITOR
+   * 
+   * Continuous monitoring of FIFO depths for performance analysis:
+   *   • Maximum depth tracking for capacity planning
+   *   • High utilization alerting for bottleneck detection
+   *   • System load characterization and optimization
+   *
+   * MONITORING METRICS:
+   *   • Peak FIFO depth per direction
+   *   • Current utilization levels
+   *   • Performance warning thresholds
+   *-----------------------------------------------------------------------------*/
   virtual task fifo_monitor();
     forever begin
-      #100ns; // Check every 100ns
+      #100ns;
       
-      // Track maximum FIFO depths
       if (tx_fifo.size() > max_tx_fifo_depth) begin
         max_tx_fifo_depth = tx_fifo.size();
       end
@@ -261,7 +324,6 @@ class ucie_sb_reg_access_checker extends uvm_component;
         max_rx_fifo_depth = rx_fifo.size();
       end
       
-      // Debug high FIFO usage
       if (tx_fifo.size() > 10) begin
         `uvm_info("REG_CHECKER", $sformatf("High TX FIFO usage: %0d transactions", tx_fifo.size()), UVM_MEDIUM)
       end
@@ -272,18 +334,36 @@ class ucie_sb_reg_access_checker extends uvm_component;
     end
   endtask
   
-  //=============================================================================
-  // BIDIRECTIONAL REQUEST/COMPLETION PROCESSING
-  //=============================================================================
+  /*---------------------------------------------------------------------------
+   * BIDIRECTIONAL REQUEST PROCESSING ENGINES
+   * Specialized handlers for each transaction flow direction
+   *---------------------------------------------------------------------------*/
   
-  // TX-initiated request processing (TX sends request)
+  /*-----------------------------------------------------------------------------
+   * TX-INITIATED REQUEST PROCESSOR
+   * 
+   * Handles register access requests originating from TX path:
+   *   • Tag allocation and reuse validation
+   *   • Non-TAG mode blocking behavior verification
+   *   • Request metadata storage for completion matching
+   *   • Protocol compliance checking and error reporting
+   *
+   * TAG MODE OPERATION:
+   *   • Validates tag availability (32-entry space)
+   *   • Stores complete request context for matching
+   *   • Enables concurrent transaction support
+   *
+   * NON-TAG MODE OPERATION:
+   *   • Enforces single outstanding request limitation
+   *   • Validates TAG field is zero
+   *   • Implements blocking behavior per specification
+   *-----------------------------------------------------------------------------*/
   virtual function void process_tx_request(ucie_sb_transaction trans);
     bit [4:0] tag = trans.tag;
     
     `uvm_info("REG_CHECKER", $sformatf("Processing TX request: opcode=%s, tag=%0d, addr=0x%06h", 
                                        trans.opcode.name(), tag, trans.addr), UVM_HIGH)
     
-    // Validate TAG field for non-TAG mode
     if (!enable_tag_support && tag != 4'h0) begin
       `uvm_error("REG_CHECKER", $sformatf("TX request TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
       tx_tag_violations++;
@@ -291,16 +371,13 @@ class ucie_sb_reg_access_checker extends uvm_component;
       return;
     end
     
-    // Check if TAG support is enabled
     if (enable_tag_support) begin
-      // Check if tag is already in use for TX-initiated requests
       if (tx_tag_in_use[tag]) begin
         `uvm_error("REG_CHECKER", $sformatf("TX tag %0d already in use! Previous request not completed", tag))
         protocol_errors++;
         return;
       end
       
-      // Store TX-initiated request information
       tx_outstanding_requests[tag].req_trans = trans;
       tx_outstanding_requests[tag].req_time = $realtime;
       tx_outstanding_requests[tag].srcid = trans.srcid;
@@ -316,14 +393,12 @@ class ucie_sb_reg_access_checker extends uvm_component;
       `uvm_info("REG_CHECKER", $sformatf("Stored TX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
                                          tag, trans.srcid, trans.dstid, trans.addr, tx_outstanding_requests[tag].is_read), UVM_MEDIUM)
     end else begin
-      // Non-TAG mode: Block if a request is already outstanding
       if (tx_has_outstanding_request) begin
         `uvm_error("REG_CHECKER", $sformatf("TX blocking violation: New TX request while outstanding request exists"))
         tx_blocking_violations++;
         return;
       end
       
-      // Store single outstanding request
       tx_single_outstanding_request.req_trans = trans;
       tx_single_outstanding_request.req_time = $realtime;
       tx_single_outstanding_request.srcid = trans.srcid;
@@ -341,14 +416,27 @@ class ucie_sb_reg_access_checker extends uvm_component;
     end
   endfunction
   
-  // RX-initiated request processing (RX sends request)
+  /*-----------------------------------------------------------------------------
+   * RX-INITIATED REQUEST PROCESSOR
+   * 
+   * Handles register access requests originating from RX path:
+   *   • Independent tag space management for RX→TX flow
+   *   • Parallel tracking with TX-initiated requests
+   *   • Non-TAG mode blocking validation for RX direction
+   *   • Bidirectional flow coordination and statistics
+   *
+   * ARCHITECTURAL DESIGN:
+   *   • Separate tag arrays prevent cross-direction interference
+   *   • Independent blocking state for non-TAG mode
+   *   • Parallel processing enables full-duplex operation
+   *   • Comprehensive error detection and reporting
+   *-----------------------------------------------------------------------------*/
   virtual function void process_rx_request(ucie_sb_transaction trans);
     bit [4:0] tag = trans.tag;
     
     `uvm_info("REG_CHECKER", $sformatf("Processing RX request: opcode=%s, tag=%0d, addr=0x%06h", 
                                        trans.opcode.name(), tag, trans.addr), UVM_HIGH)
     
-    // Validate TAG field for non-TAG mode
     if (!enable_tag_support && tag != 4'h0) begin
       `uvm_error("REG_CHECKER", $sformatf("RX request TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
       rx_tag_violations++;
@@ -356,16 +444,13 @@ class ucie_sb_reg_access_checker extends uvm_component;
       return;
     end
     
-    // Check if TAG support is enabled
     if (enable_tag_support) begin
-      // Check if tag is already in use for RX-initiated requests
       if (rx_tag_in_use[tag]) begin
         `uvm_error("REG_CHECKER", $sformatf("RX tag %0d already in use! Previous request not completed", tag))
         protocol_errors++;
         return;
       end
       
-      // Store RX-initiated request information
       rx_outstanding_requests[tag].req_trans = trans;
       rx_outstanding_requests[tag].req_time = $realtime;
       rx_outstanding_requests[tag].srcid = trans.srcid;
@@ -381,14 +466,12 @@ class ucie_sb_reg_access_checker extends uvm_component;
       `uvm_info("REG_CHECKER", $sformatf("Stored RX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
                                          tag, trans.srcid, trans.dstid, trans.addr, rx_outstanding_requests[tag].is_read), UVM_MEDIUM)
     end else begin
-      // Non-TAG mode: Block if a request is already outstanding
       if (rx_has_outstanding_request) begin
         `uvm_error("REG_CHECKER", $sformatf("RX blocking violation: New RX request while outstanding request exists"))
         rx_blocking_violations++;
         return;
       end
       
-      // Store single outstanding request
       rx_single_outstanding_request.req_trans = trans;
       rx_single_outstanding_request.req_time = $realtime;
       rx_single_outstanding_request.srcid = trans.srcid;
@@ -406,7 +489,21 @@ class ucie_sb_reg_access_checker extends uvm_component;
     end
   endfunction
   
-  // TX completion processing (response to RX-initiated request)
+  /*-----------------------------------------------------------------------------
+   * TX COMPLETION PROCESSOR (RX→TX Response)
+   * 
+   * Processes completion transactions responding to RX-initiated requests:
+   *   • Matches completions with corresponding RX requests
+   *   • Validates source/destination ID swapping
+   *   • Calculates response time statistics
+   *   • Manages tag deallocation and state cleanup
+   *
+   * VALIDATION CHECKS:
+   *   • Tag correspondence with outstanding RX request
+   *   • Source/destination ID proper swapping
+   *   • Data width consistency for read completions
+   *   • Protocol compliance and error detection
+   *-----------------------------------------------------------------------------*/
   virtual function void process_rx_completion(ucie_sb_transaction trans);
     bit [4:0] tag = trans.tag;
     realtime response_time;
@@ -414,7 +511,6 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("Processing TX completion (RX→TX response): tag=%0d, srcid=%0d, dstid=%0d, status=0x%04h", 
                                        tag, trans.srcid, trans.dstid, trans.status), UVM_HIGH)
     
-    // Validate TAG field for non-TAG mode
     if (!enable_tag_support && tag != 4'h0) begin
       `uvm_error("REG_CHECKER", $sformatf("TX completion TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
       tx_tag_violations++;
@@ -422,26 +518,21 @@ class ucie_sb_reg_access_checker extends uvm_component;
       return;
     end
     
-    // Check if TAG support is enabled
     if (enable_tag_support) begin
-      // Check if tag has corresponding RX-initiated request
       if (!rx_tag_in_use[tag]) begin
         `uvm_error("REG_CHECKER", $sformatf("TX completion tag %0d has no corresponding RX request!", tag))
         protocol_errors++;
         return;
       end
       
-      // Validate request-completion matching
       if (!validate_completion(trans, rx_outstanding_requests[tag])) begin
         rx_tag_mismatches++;
         return;
       end
       
-      // Calculate response time for RX-initiated request
       response_time = $realtime - rx_outstanding_requests[tag].req_time;
       update_rx_timing_statistics(response_time);
       
-      // Mark RX tag as free
       rx_tag_in_use[tag] = 0;
       rx_completions_received++;
       rx_matched_transactions++;
@@ -449,24 +540,20 @@ class ucie_sb_reg_access_checker extends uvm_component;
               `uvm_info("REG_CHECKER", $sformatf("Matched RX→TX completion: tag=%0d, response_time=%.1fns", 
                                            tag, response_time/1ns), UVM_MEDIUM)
       end else begin
-       // Non-TAG mode: Check if there's an outstanding RX request
        if (!rx_has_outstanding_request) begin
          `uvm_error("REG_CHECKER", $sformatf("TX completion with no outstanding RX request in non-TAG mode!"))
          protocol_errors++;
          return;
        end
        
-       // Validate request-completion matching
        if (!validate_completion(trans, rx_single_outstanding_request)) begin
          rx_tag_mismatches++;
          return;
        end
        
-       // Calculate response time for RX-initiated request
        response_time = $realtime - rx_single_outstanding_request.req_time;
        update_rx_timing_statistics(response_time);
        
-       // Clear the single outstanding RX request
        rx_has_outstanding_request = 0;
        rx_completions_received++;
        rx_matched_transactions++;
@@ -476,7 +563,21 @@ class ucie_sb_reg_access_checker extends uvm_component;
      end
   endfunction
   
-  // RX completion processing (response to TX-initiated request)
+  /*-----------------------------------------------------------------------------
+   * RX COMPLETION PROCESSOR (TX→RX Response)
+   * 
+   * Processes completion transactions responding to TX-initiated requests:
+   *   • Matches completions with corresponding TX requests
+   *   • Implements comprehensive protocol validation
+   *   • Tracks performance metrics and timing statistics
+   *   • Manages bidirectional flow coordination
+   *
+   * MATCHING ALGORITHM:
+   *   • Tag-based lookup in TX outstanding request array
+   *   • Protocol field validation (srcid/dstid swapping)
+   *   • Data consistency checking for read operations
+   *   • Response time calculation and statistical analysis
+   *-----------------------------------------------------------------------------*/
   virtual function void process_tx_completion(ucie_sb_transaction trans);
     bit [4:0] tag = trans.tag;
     realtime response_time;
@@ -484,7 +585,6 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("Processing RX completion (TX→RX response): tag=%0d, srcid=%0d, dstid=%0d, status=0x%04h", 
                                        tag, trans.srcid, trans.dstid, trans.status), UVM_HIGH)
     
-    // Validate TAG field for non-TAG mode
     if (!enable_tag_support && tag != 4'h0) begin
       `uvm_error("REG_CHECKER", $sformatf("RX completion TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
       rx_tag_violations++;
@@ -492,26 +592,21 @@ class ucie_sb_reg_access_checker extends uvm_component;
       return;
     end
     
-    // Check if TAG support is enabled
     if (enable_tag_support) begin
-      // Check if tag has corresponding TX-initiated request
       if (!tx_tag_in_use[tag]) begin
         `uvm_error("REG_CHECKER", $sformatf("RX completion tag %0d has no corresponding TX request!", tag))
         protocol_errors++;
         return;
       end
       
-      // Validate request-completion matching
       if (!validate_completion(trans, tx_outstanding_requests[tag])) begin
         tx_tag_mismatches++;
         return;
       end
       
-      // Calculate response time for TX-initiated request
       response_time = $realtime - tx_outstanding_requests[tag].req_time;
       update_tx_timing_statistics(response_time);
       
-      // Mark TX tag as free
       tx_tag_in_use[tag] = 0;
       tx_completions_received++;
       tx_matched_transactions++;
@@ -519,24 +614,20 @@ class ucie_sb_reg_access_checker extends uvm_component;
               `uvm_info("REG_CHECKER", $sformatf("Matched TX→RX completion: tag=%0d, response_time=%.1fns", 
                                            tag, response_time/1ns), UVM_MEDIUM)
       end else begin
-       // Non-TAG mode: Check if there's an outstanding TX request
        if (!tx_has_outstanding_request) begin
          `uvm_error("REG_CHECKER", $sformatf("RX completion with no outstanding TX request in non-TAG mode!"))
          protocol_errors++;
          return;
        end
        
-       // Validate request-completion matching
        if (!validate_completion(trans, tx_single_outstanding_request)) begin
          tx_tag_mismatches++;
          return;
        end
        
-       // Calculate response time for TX-initiated request
        response_time = $realtime - tx_single_outstanding_request.req_time;
        update_tx_timing_statistics(response_time);
        
-       // Clear the single outstanding TX request
        tx_has_outstanding_request = 0;
        tx_completions_received++;
        tx_matched_transactions++;
@@ -546,9 +637,10 @@ class ucie_sb_reg_access_checker extends uvm_component;
      end
   endfunction
   
-  //=============================================================================
-  // VALIDATION FUNCTIONS
-  //=============================================================================
+  /*---------------------------------------------------------------------------
+   * PROTOCOL VALIDATION FUNCTIONS
+   * Core validation logic for transaction classification and compliance
+   *---------------------------------------------------------------------------*/
   
   virtual function bit is_register_access_request(ucie_sb_transaction trans);
     return (trans.pkt_type == PKT_REG_ACCESS && 
@@ -567,12 +659,26 @@ class ucie_sb_reg_access_checker extends uvm_component;
                                  MEM_READ_64B, DMS_READ_64B, CFG_READ_64B});
   endfunction
   
+  /*-----------------------------------------------------------------------------
+   * COMPLETION VALIDATION ENGINE
+   * 
+   * Comprehensive validation of request-completion matching:
+   *   • Source/destination ID swapping verification
+   *   • Data presence and width consistency checking
+   *   • Protocol compliance validation
+   *   • Error detection and reporting
+   *
+   * VALIDATION CRITERIA:
+   *   • Completion srcid must equal request dstid
+   *   • Completion dstid must equal request srcid
+   *   • Read completions must have appropriate data payload
+   *   • Data width must match request specifications
+   *-----------------------------------------------------------------------------*/
   virtual function bit validate_completion(ucie_sb_transaction comp, outstanding_req_t req);
     bit valid = 1;
     bit expected_has_data;
     bit expected_64bit;
     
-    // Check srcid/dstid swap (completion returns to requester)
     if (comp.srcid != req.dstid) begin
       `uvm_error("REG_CHECKER", $sformatf("Completion srcid mismatch: expected=%0d, got=%0d", 
                                           req.dstid, comp.srcid))
@@ -585,7 +691,6 @@ class ucie_sb_reg_access_checker extends uvm_component;
       valid = 0;
     end
     
-    // Check data size consistency for read completions
     if (req.is_read) begin
       expected_has_data = 1;
       expected_64bit = req.is_64bit;
@@ -606,19 +711,34 @@ class ucie_sb_reg_access_checker extends uvm_component;
     return valid;
   endfunction
   
-  //=============================================================================
-  // TIMEOUT MONITORING
-  //=============================================================================
+  /*---------------------------------------------------------------------------
+   * TIMEOUT MONITORING SYSTEM
+   * Real-time detection of missing completions and protocol violations
+   *---------------------------------------------------------------------------*/
   
+  /*-----------------------------------------------------------------------------
+   * TIMEOUT MONITORING ENGINE
+   * 
+   * Continuous monitoring for request timeout violations:
+   *   • Periodic scanning of outstanding request arrays
+   *   • Configurable timeout threshold enforcement
+   *   • Automatic cleanup of timed-out requests
+   *   • Comprehensive error reporting and statistics
+   *
+   * MONITORING SCOPE:
+   *   • TX-initiated requests (both TAG and non-TAG modes)
+   *   • RX-initiated requests (both TAG and non-TAG modes)
+   *   • Configurable timeout periods per system requirements
+   *   • Automatic state cleanup for system recovery
+   *-----------------------------------------------------------------------------*/
   virtual task timeout_monitor();
     realtime current_time;
     
     forever begin
-      #(timeout_ns * 1ns / 10); // Check every 1/10 of timeout period
+      #(timeout_ns * 1ns / 10);
       
       current_time = $realtime;
       
-      // Check TX-initiated request timeouts
       if (enable_tag_support) begin
         for (int tag = 0; tag < 32; tag++) begin
           if (tx_tag_in_use[tag]) begin
@@ -627,7 +747,7 @@ class ucie_sb_reg_access_checker extends uvm_component;
                                                   tag, tx_outstanding_requests[tag].addr, 
                                                   (current_time - tx_outstanding_requests[tag].req_time)/1ns))
               tx_timeout_errors++;
-              tx_tag_in_use[tag] = 0; // Clear timed-out request
+              tx_tag_in_use[tag] = 0;
             end
           end
         end
@@ -637,12 +757,11 @@ class ucie_sb_reg_access_checker extends uvm_component;
             `uvm_error("REG_CHECKER", $sformatf("Single TX request timeout: elapsed=%.1fns", 
                                                 (current_time - tx_single_outstanding_request.req_time)/1ns))
             tx_timeout_errors++;
-            tx_has_outstanding_request = 0; // Clear timed-out request
+            tx_has_outstanding_request = 0;
           end
         end
       end
       
-      // Check RX-initiated request timeouts
       if (enable_tag_support) begin
         for (int tag = 0; tag < 32; tag++) begin
           if (rx_tag_in_use[tag]) begin
@@ -651,7 +770,7 @@ class ucie_sb_reg_access_checker extends uvm_component;
                                                   tag, rx_outstanding_requests[tag].addr, 
                                                   (current_time - rx_outstanding_requests[tag].req_time)/1ns))
               rx_timeout_errors++;
-              rx_tag_in_use[tag] = 0; // Clear timed-out request
+              rx_tag_in_use[tag] = 0;
             end
           end
         end
@@ -661,16 +780,17 @@ class ucie_sb_reg_access_checker extends uvm_component;
             `uvm_error("REG_CHECKER", $sformatf("Single RX request timeout: elapsed=%.1fns", 
                                                 (current_time - rx_single_outstanding_request.req_time)/1ns))
             rx_timeout_errors++;
-            rx_has_outstanding_request = 0; // Clear timed-out request
+            rx_has_outstanding_request = 0;
           end
         end
       end
     end
   endtask
   
-  //=============================================================================
-  // STATISTICS AND REPORTING
-  //=============================================================================
+  /*---------------------------------------------------------------------------
+   * PERFORMANCE ANALYSIS AND REPORTING
+   * Comprehensive statistics collection and analysis framework
+   *---------------------------------------------------------------------------*/
   
   virtual function void update_tx_timing_statistics(realtime response_time);
     tx_total_response_time += response_time;
@@ -696,6 +816,22 @@ class ucie_sb_reg_access_checker extends uvm_component;
     end
   endfunction
   
+  /*-----------------------------------------------------------------------------
+   * COMPREHENSIVE STATISTICS REPORTING
+   * 
+   * Generates detailed performance and compliance analysis including:
+   *   • Bidirectional flow statistics and comparison
+   *   • FIFO utilization and performance metrics
+   *   • Response time analysis (min/max/average)
+   *   • Error detection and protocol violation summary
+   *
+   * REPORT SECTIONS:
+   *   • Configuration summary and operational mode
+   *   • FIFO performance and utilization statistics
+   *   • TX→RX flow analysis and metrics
+   *   • RX→TX flow analysis and metrics
+   *   • Protocol error summary and compliance status
+   *-----------------------------------------------------------------------------*/
   virtual function void print_statistics();
     realtime tx_avg_response_time, rx_avg_response_time;
     
@@ -745,11 +881,19 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", "========================================================", UVM_LOW)
   endfunction
   
+  /*-----------------------------------------------------------------------------
+   * OUTSTANDING REQUEST AUDIT
+   * 
+   * End-of-test validation for incomplete transactions:
+   *   • Scans all outstanding request arrays
+   *   • Reports incomplete transactions as warnings/errors
+   *   • Provides debugging information for unmatched requests
+   *   • Ensures clean test completion verification
+   *-----------------------------------------------------------------------------*/
   virtual function void check_outstanding_requests();
     int tx_outstanding_count = 0;
     int rx_outstanding_count = 0;
     
-    // Check TX-initiated outstanding requests
     if (enable_tag_support) begin
       for (int tag = 0; tag < 32; tag++) begin
         if (tx_tag_in_use[tag]) begin
@@ -766,7 +910,6 @@ class ucie_sb_reg_access_checker extends uvm_component;
       end
     end
     
-    // Check RX-initiated outstanding requests
     if (enable_tag_support) begin
       for (int tag = 0; tag < 32; tag++) begin
         if (rx_tag_in_use[tag]) begin
@@ -802,9 +945,10 @@ class ucie_sb_reg_access_checker extends uvm_component;
     end
   endfunction
   
-  //=============================================================================
-  // CONFIGURATION FUNCTIONS
-  //=============================================================================
+  /*---------------------------------------------------------------------------
+   * CONFIGURATION AND CONTROL INTERFACE
+   * Runtime configuration and system management functions
+   *---------------------------------------------------------------------------*/
   
   virtual function void set_timeout(real timeout_ns_val);
     timeout_ns = timeout_ns_val;
@@ -821,8 +965,16 @@ class ucie_sb_reg_access_checker extends uvm_component;
     `uvm_info("REG_CHECKER", $sformatf("TAG support %s", enable ? "enabled" : "disabled"), UVM_LOW)
   endfunction
   
+  /*-----------------------------------------------------------------------------
+   * STATISTICS RESET AND MANAGEMENT
+   * 
+   * Comprehensive reset of all statistical counters and tracking state:
+   *   • Bidirectional flow statistics reset
+   *   • Timing analysis data clearing
+   *   • Outstanding request state cleanup
+   *   • FIFO utilization metrics reset
+   *-----------------------------------------------------------------------------*/
   virtual function void reset_statistics();
-    // TX-initiated statistics
     tx_requests_sent = 0;
     tx_completions_received = 0;
     tx_matched_transactions = 0;
@@ -834,7 +986,6 @@ class ucie_sb_reg_access_checker extends uvm_component;
     tx_min_response_time = 0;
     tx_max_response_time = 0;
     
-    // RX-initiated statistics
     rx_requests_sent = 0;
     rx_completions_received = 0;
     rx_matched_transactions = 0;
@@ -846,23 +997,22 @@ class ucie_sb_reg_access_checker extends uvm_component;
     rx_min_response_time = 0;
     rx_max_response_time = 0;
     
-    // General statistics
     protocol_errors = 0;
     tx_transactions_queued = 0;
     rx_transactions_queued = 0;
     max_tx_fifo_depth = 0;
     max_rx_fifo_depth = 0;
     
-    // Reset non-TAG mode tracking
     tx_has_outstanding_request = 0;
     rx_has_outstanding_request = 0;
     
     `uvm_info("REG_CHECKER", "Bidirectional statistics reset", UVM_LOW)
   endfunction
   
-  //=============================================================================
-  // FIFO MANAGEMENT FUNCTIONS
-  //=============================================================================
+  /*---------------------------------------------------------------------------
+   * FIFO MANAGEMENT INTERFACE
+   * Direct FIFO access and control for advanced usage scenarios
+   *---------------------------------------------------------------------------*/
   
   virtual function int get_tx_fifo_depth();
     return tx_fifo.size();
