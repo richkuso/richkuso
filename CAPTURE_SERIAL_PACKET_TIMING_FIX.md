@@ -46,7 +46,8 @@ task ucie_sb_monitor::capture_serial_packet(output bit [63:0] packet);
   
   // ✅ FIX: Wait for half clock cycle to complete the 64-bit transmission
   // After 64 negedges, clock will be gated - need half UI delay to finish bit 63
-  #(ui_time_ns * 0.5 * 1ns);
+  // Adding 10% margin for timing robustness
+  #(ui_time_ns * 0.5 * 1.1 * 1ns);
   
   `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h (64-bit transmission finished after half-cycle delay)", packet), UVM_DEBUG)
 endtask
@@ -57,7 +58,7 @@ endtask
 1. wait_for_packet_start()    -> @(posedge SBRX_CLK)     // Bit 0 setup
 2. capture_serial_packet():
    - 64x @(negedge SBRX_CLK)  -> Sample bits 0-63       // Data sampling
-   - #(ui_time_ns * 0.5 * 1ns) -> Complete bit 63       // ✅ NEW: Half-cycle delay
+   - #(ui_time_ns * 0.5 * 1.1 * 1ns) -> Complete bit 63 // ✅ NEW: Half-cycle delay + 10% margin
 3. wait_for_packet_gap()      -> Now clock is gated low  // ✅ CORRECT: Proper timing
 ```
 

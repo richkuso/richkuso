@@ -54,13 +54,13 @@ Bit#:      0    1    2    3    4    5    6    7   ...   61   62   63
 1. wait_for_packet_start()     -> Detects posedge at UI 0
 2. capture_serial_packet():
    - 64 negedge samples        -> UI 0.5 to 63.5 (data capture)
-   - Half-cycle delay          -> UI 63.5 to 64.0 (bit completion)
-   // ✅ ENDS HERE: At UI 64.0 (bit 63 complete!)
-3. wait_for_packet_gap()       -> Starts at UI 64.0
-   // ✅ CORRECT: Transmission fully complete!
+   - Half-cycle delay + 10%    -> UI 63.5 to 64.05 (bit completion + margin)
+   // ✅ ENDS HERE: At UI 64.05 (bit 63 complete with margin!)
+3. wait_for_packet_gap()       -> Starts at UI 64.05
+   // ✅ CORRECT: Transmission fully complete with margin!
 ```
 
-**Solution**: **0.5 UI delay** ensures complete bit transmission!
+**Solution**: **0.55 UI delay (0.5 + 10% margin)** ensures complete bit transmission!
 
 ---
 
@@ -71,8 +71,8 @@ Bit#:      0    1    2    3    4    5    6    7   ...   61   62   63
 // UI time configuration (800MHz = 1.25ns)
 real ui_time_ns = 1.25;
 
-// Half-cycle delay for bit completion
-#(ui_time_ns * 0.5 * 1ns);  // = 0.625ns delay
+// Half-cycle delay for bit completion + 10% margin for robustness
+#(ui_time_ns * 0.5 * 1.1 * 1ns);  // = 0.6875ns delay (0.625ns + 10% margin)
 ```
 
 ### **Clock Gating Behavior:**
@@ -87,7 +87,7 @@ real ui_time_ns = 1.25;
 
 | **Aspect** | **Before Fix** | **After Fix** |
 |------------|----------------|---------------|
-| **Gap Start** | UI 63.5 ❌ | UI 64.0 ✅ |
+| **Gap Start** | UI 63.5 ❌ | UI 64.05 ✅ |
 | **Bit 63 Complete** | Incomplete ❌ | Complete ✅ |
 | **Protocol Compliance** | Violated ❌ | Compliant ✅ |
 | **Timing Error** | -0.5 UI ❌ | 0.0 UI ✅ |
