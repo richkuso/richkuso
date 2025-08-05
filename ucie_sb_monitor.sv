@@ -10,7 +10,7 @@
  *   • Source-synchronous data capture at up to 800MHz
  *   • Complete UCIe 1.1 protocol compliance validation  
  *   • All 19 sideband opcodes supported
- *   • Robust gap timing validation (32 UI minimum)
+ *   • Timestamp-based gap timing validation (32 UI minimum)
  *   • Comprehensive parity checking (CP/DP)
  *   • Clock gating aware timing with 10% safety margin
  *   • Statistics collection and error reporting
@@ -24,7 +24,7 @@
  * TIMING ARCHITECTURE:
  *   • Negedge sampling for source-synchronous recovery
  *   • Half-cycle delay + 10% margin for clock gating
- *   • High-precision gap detection (0.2ns resolution)
+ *   • Timestamp-based gap measurement between packets
  *   • Configurable UI timing for different frequencies
  *
  * COMPLIANCE:
@@ -33,7 +33,7 @@
  *   • UCIe 1.1 specification
  *
  * AUTHOR: UCIe Sideband UVM Agent
- * VERSION: 2.0 - Enhanced with timing robustness
+ * VERSION: 2.1 - Enhanced with timestamp-based gap validation
  ******************************************************************************/
 
 class ucie_sb_monitor extends uvm_monitor;
@@ -53,12 +53,21 @@ class ucie_sb_monitor extends uvm_monitor;
   real ui_time_ns = 1.25;                         // UI period (800MHz default)
   
   /*---------------------------------------------------------------------------
+   * TIMING TRACKING FOR GAP VALIDATION
+   *---------------------------------------------------------------------------*/
+  
+  time packet_end_time = 0;                       // Timestamp of last packet end
+  time packet_start_time = 0;                     // Timestamp of current packet start
+  bit first_packet = 1;                           // Flag for first packet detection
+  
+  /*---------------------------------------------------------------------------
    * STATISTICS AND MONITORING COUNTERS
    *---------------------------------------------------------------------------*/
   
   int packets_captured = 0;                       // Total packets monitored
   int bits_captured = 0;                          // Total bits captured  
   int protocol_errors = 0;                        // Protocol violations detected
+  int gap_violations = 0;                         // Gap timing violations
 
   /*---------------------------------------------------------------------------
    * CONSTRUCTOR - Initialize monitor component
@@ -76,8 +85,8 @@ class ucie_sb_monitor extends uvm_monitor;
   extern virtual task run_phase(uvm_phase phase);
   extern virtual function void report_phase(uvm_phase phase);
   extern virtual task wait_for_packet_start();
-  extern virtual task wait_for_packet_gap();
   extern virtual task capture_serial_packet(output bit [63:0] packet);
+  extern virtual function void validate_packet_gap();
   extern virtual function ucie_sb_transaction decode_header(bit [63:0] header);
   extern virtual function void check_transaction_validity(ucie_sb_transaction trans);
   extern virtual function void update_statistics(ucie_sb_transaction trans);
@@ -117,21 +126,28 @@ function void ucie_sb_monitor::build_phase(uvm_phase phase);
 endfunction
 
 /*-----------------------------------------------------------------------------
- * RUN PHASE - Main monitoring loop
+ * RUN PHASE - Main monitoring loop with timestamp-based gap validation
  * 
  * Protocol Flow:
  *   1. Wait for reset deassertion
- *   2. Detect packet start (posedge clock)
- *   3. Capture 64-bit header packet
- *   4. Decode header into transaction object
- *   5. Wait for inter-packet gap
- *   6. If data present: capture data packet + gap
+ *   2. Detect packet start and capture timestamp
+ *   3. Validate gap timing from previous packet (if not first)
+ *   4. Capture 64-bit header packet (stores end timestamp)
+ *   5. Decode header into transaction object
+ *   6. If data present: capture data packet (updates end timestamp)
  *   7. Validate complete transaction
  *   8. Update statistics and broadcast transaction
+ *
+ * Gap Validation Strategy:
+ *   • Use timestamps instead of signal-level detection
+ *   • Calculate gap = packet_start_time - packet_end_time
+ *   • Verify gap meets 32 UI minimum requirement
+ *   • More accurate and robust than signal monitoring
  *
  * Error Handling:
  *   • Decode failures logged and counted
  *   • Protocol violations tracked
+ *   • Gap violations tracked separately
  *   • Clock pattern validation separate from normal packets
  *-----------------------------------------------------------------------------*/
 task ucie_sb_monitor::run_phase(uvm_phase phase);
@@ -139,12 +155,19 @@ task ucie_sb_monitor::run_phase(uvm_phase phase);
   bit [63:0] header_packet;
   bit [63:0] data_packet;
   
-  `uvm_info("MONITOR", "Starting sideband monitor run phase", UVM_LOW)
+  `uvm_info("MONITOR", "Starting sideband monitor run phase with timestamp-based gap validation", UVM_LOW)
   
   forever begin
     wait (!vif.sb_reset);
     
     wait_for_packet_start();
+    
+    if (!first_packet) begin
+      validate_packet_gap();
+    end else begin
+      first_packet = 0;
+      `uvm_info("MONITOR", "First packet detected - skipping gap validation", UVM_DEBUG)
+    end
     
     capture_serial_packet(header_packet);
     `uvm_info("MONITOR", $sformatf("Captured header packet: 0x%016h", header_packet), UVM_HIGH)
@@ -152,10 +175,9 @@ task ucie_sb_monitor::run_phase(uvm_phase phase);
     trans = decode_header(header_packet);
     
     if (trans != null) begin
-      wait_for_packet_gap();
-      
       if (trans.has_data) begin
         wait_for_packet_start();
+        validate_packet_gap();
         
         capture_serial_packet(data_packet);
         `uvm_info("MONITOR", $sformatf("Captured data packet: 0x%016h", data_packet), UVM_HIGH)
@@ -165,8 +187,6 @@ task ucie_sb_monitor::run_phase(uvm_phase phase);
         end else begin
           trans.data = {32'h0, data_packet[31:0]};
         end
-        
-        wait_for_packet_gap();
       end
       
       if (!trans.is_clock_pattern) begin
@@ -202,125 +222,32 @@ function void ucie_sb_monitor::report_phase(uvm_phase phase);
 endfunction
 
 /*-----------------------------------------------------------------------------
- * PACKET START DETECTION
+ * PACKET START DETECTION WITH TIMESTAMP CAPTURE
  * 
  * UCIe Protocol Requirement:
  *   • Packet transmission begins with clock posedge
  *   • Data value at start is opcode-dependent (don't check data)
  *   • Only clock edge indicates valid transmission start
  *
+ * Timestamp-Based Enhancement:
+ *   • Capture precise timestamp when packet starts
+ *   • Used for gap calculation with previous packet
+ *   • Enables accurate timing validation
+ *
  * Implementation:
  *   • Wait for SBRX_CLK posedge (source-synchronous)
+ *   • Store timestamp immediately after detection
  *   • Data setup occurs on this edge for bit 0 sampling
  *-----------------------------------------------------------------------------*/
 task ucie_sb_monitor::wait_for_packet_start();
   @(posedge vif.SBRX_CLK);
+  packet_start_time = $time;
   
-  `uvm_info("MONITOR", "Packet start detected on posedge SBRX_CLK", UVM_DEBUG)
+  `uvm_info("MONITOR", $sformatf("Packet start detected at time %0t", packet_start_time), UVM_DEBUG)
 endtask
 
 /*-----------------------------------------------------------------------------
- * INTER-PACKET GAP VALIDATION
- * 
- * UCIe Protocol Requirements:
- *   • Minimum 32 UI gap between packets
- *   • Both SBRX_CLK and SBRX_DATA must be low during gap
- *   • No clock toggling during gap period
- *
- * Enhanced Features:
- *   • High precision monitoring (0.2ns resolution)
- *   • Reset detection and graceful abort
- *   • Timeout protection (1000 UI maximum)
- *   • Short gap retry logic with bounded attempts
- *   • Detailed logging for debugging
- *
- * Robustness:
- *   • Handles clock gating scenarios
- *   • Prevents infinite loops with timeout
- *   • Comprehensive error reporting
- *-----------------------------------------------------------------------------*/
-task ucie_sb_monitor::wait_for_packet_gap();
-  time gap_start_time;
-  time current_time;
-  time gap_duration;
-  time timeout_time;
-  int ui_count;
-  int short_gap_count = 0;
-  bit gap_valid = 0;
-  
-  timeout_time = 1000 * ui_time_ns * 1ns;
-  
-  `uvm_info("MONITOR", $sformatf("Waiting for packet gap (32 UI minimum, UI=%.2fns, timeout=%0t, precision=0.2ns)", 
-                                 ui_time_ns, timeout_time), UVM_DEBUG)
-  
-  while (vif.SBRX_CLK !== 1'b0 || vif.SBRX_DATA !== 1'b0) begin
-    if (vif.sb_reset) begin
-      `uvm_info("MONITOR", "Reset detected while waiting for gap start - aborting gap wait", UVM_DEBUG)
-      return;
-    end
-    #0.2ns;
-  end
-  
-  gap_start_time = $time;
-  `uvm_info("MONITOR", $sformatf("Gap started at time %0t", gap_start_time), UVM_DEBUG)
-  
-  while (!gap_valid) begin
-    if (vif.sb_reset) begin
-      `uvm_info("MONITOR", "Reset detected during gap monitoring - aborting gap wait", UVM_DEBUG)
-      return;
-    end
-    
-    #0.2ns;
-    current_time = $time;
-    gap_duration = current_time - gap_start_time;
-    ui_count = int'(gap_duration / (ui_time_ns * 1ns));
-    
-    if (gap_duration > timeout_time) begin
-      `uvm_warning("MONITOR", $sformatf("Gap timeout: %0d UI (timeout at 1000 UI) - assuming valid gap", ui_count))
-      gap_valid = 1;
-      break;
-    end
-    
-    if (vif.SBRX_CLK === 1'b1 || vif.SBRX_DATA === 1'b1) begin
-      if (ui_count >= 32) begin
-        `uvm_info("MONITOR", $sformatf("Valid gap detected: %0d UI (%0t)", ui_count, gap_duration), UVM_DEBUG)
-        gap_valid = 1;
-      end else begin
-        short_gap_count++;
-        `uvm_warning("MONITOR", $sformatf("Gap too short: %0d UI (minimum 32 UI required) - attempt %0d", 
-                                          ui_count, short_gap_count))
-        
-        if (short_gap_count >= 5) begin
-          `uvm_error("MONITOR", $sformatf("Too many short gaps (%0d attempts) - forcing gap acceptance", short_gap_count))
-          protocol_errors++;
-          gap_valid = 1;
-          break;
-        end
-        
-         while (vif.SBRX_CLK !== 1'b0 || vif.SBRX_DATA !== 1'b0) begin
-           if (vif.sb_reset) begin
-             `uvm_info("MONITOR", "Reset detected during gap restart - aborting gap wait", UVM_DEBUG)
-             return;
-           end
-           #0.2ns;
-         end
-        gap_start_time = $time;
-        `uvm_info("MONITOR", $sformatf("Gap restarted due to insufficient duration (attempt %0d)", short_gap_count), UVM_DEBUG)
-      end
-    end
-    
-    if (ui_count > 32 && (ui_count % 64 == 0)) begin
-      `uvm_info("MONITOR", $sformatf("Long gap in progress: %0d UI", ui_count), UVM_HIGH)
-    end
-  end
-  
-  `uvm_info("MONITOR", $sformatf("Packet gap complete: %0d UI duration%s", ui_count, 
-                                 short_gap_count > 0 ? $sformatf(" (after %0d short gap retries)", short_gap_count) : ""), 
-                                 UVM_DEBUG)
-endtask
-
-/*-----------------------------------------------------------------------------
- * SERIAL PACKET CAPTURE WITH CLOCK GATING SUPPORT
+ * SERIAL PACKET CAPTURE WITH END TIMESTAMP RECORDING
  * 
  * Source-Synchronous Protocol:
  *   • Data sampled on clock falling edges (negedge)
@@ -330,12 +257,17 @@ endtask
  * Timing Robustness:
  *   • After 64 negedge samples, add half-cycle delay
  *   • 10% timing margin for process/voltage/temperature variations
- *   • Ensures complete bit transmission before gap detection
+ *   • Record precise end timestamp for gap calculation
+ *
+ * Timestamp Enhancement:
+ *   • Store packet end time after bit 63 completion
+ *   • Used for gap validation to next packet
+ *   • More accurate than signal-level detection
  *
  * Clock Gating Handling:
  *   • No posedge available after bit 63 due to gating
  *   • Calculated delay: (UI_time * 0.5 * 1.1) for margin
- *   • Prevents premature gap detection during transmission
+ *   • End timestamp accounts for complete transmission
  *
  * Error Prevention:
  *   • Eliminates race conditions with gap detection
@@ -353,9 +285,58 @@ task ucie_sb_monitor::capture_serial_packet(output bit [63:0] packet);
   end
   
   #(ui_time_ns * 0.5 * 1.1 * 1ns);
+  packet_end_time = $time;
   
-  `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h (64-bit transmission finished after half-cycle delay + 10%% margin)", packet), UVM_DEBUG)
+  `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h (end time: %0t)", packet, packet_end_time), UVM_DEBUG)
 endtask
+
+/*-----------------------------------------------------------------------------
+ * TIMESTAMP-BASED GAP VALIDATION
+ * 
+ * UCIe Protocol Requirements:
+ *   • Minimum 32 UI gap between packets
+ *   • Gap measured from end of previous packet to start of next
+ *   • More accurate than signal-level monitoring
+ *
+ * Validation Method:
+ *   • Calculate gap = packet_start_time - packet_end_time
+ *   • Convert gap duration to UI count
+ *   • Verify gap meets 32 UI minimum requirement
+ *
+ * Advantages over Signal Monitoring:
+ *   • Immune to clock gating effects
+ *   • More precise timing measurement
+ *   • No dependency on signal levels during gap
+ *   • Eliminates race conditions
+ *
+ * Error Reporting:
+ *   • Gap violations logged with precise timing
+ *   • UI count and actual duration reported
+ *   • Separate counter for gap violations
+ *   • Non-blocking validation continues monitoring
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_monitor::validate_packet_gap();
+  time gap_duration;
+  int ui_count;
+  real gap_ui_real;
+  
+  gap_duration = packet_start_time - packet_end_time;
+  gap_ui_real = real'(gap_duration) / (ui_time_ns * 1ns);
+  ui_count = int'(gap_ui_real);
+  
+  `uvm_info("MONITOR", $sformatf("Gap validation: duration=%0t, UI count=%0d (%.2f UI)", 
+                                 gap_duration, ui_count, gap_ui_real), UVM_DEBUG)
+  
+  if (ui_count < 32) begin
+    `uvm_error("MONITOR", $sformatf("Gap violation: %0d UI (%.2f UI) < 32 UI minimum requirement", 
+                                    ui_count, gap_ui_real))
+    gap_violations++;
+    protocol_errors++;
+  end else begin
+    `uvm_info("MONITOR", $sformatf("Gap validation PASSED: %0d UI (%.2f UI) >= 32 UI", 
+                                   ui_count, gap_ui_real), UVM_DEBUG)
+  end
+endfunction
 
 /*-----------------------------------------------------------------------------
  * HEADER PACKET DECODING
@@ -523,6 +504,7 @@ endfunction
  *   • Total packets captured
  *   • Total bits processed (header + data)
  *   • Protocol error count
+ *   • Gap violation count (new)
  *
  * Bit Counting:
  *   • Header packet: Always 64 bits
@@ -542,8 +524,8 @@ function void ucie_sb_monitor::update_statistics(ucie_sb_transaction trans);
     bits_captured += 64;
   end
   
-  `uvm_info("MONITOR", $sformatf("Statistics: %0d packets, %0d bits captured", 
-            packets_captured, bits_captured), UVM_DEBUG)
+  `uvm_info("MONITOR", $sformatf("Statistics: %0d packets, %0d bits captured, %0d gap violations", 
+            packets_captured, bits_captured, gap_violations), UVM_DEBUG)
 endfunction
 
 /*-----------------------------------------------------------------------------
@@ -552,12 +534,14 @@ endfunction
  * Report Contents:
  *   • Total packets and bits captured
  *   • Protocol error count and rate
+ *   • Gap violation count and rate (new)
  *   • Average bits per packet
  *   • Error rate percentage
  *
  * Calculations:
  *   • Bit efficiency: total_bits / total_packets
  *   • Error rate: (errors / packets) * 100%
+ *   • Gap violation rate: (gap_violations / packets) * 100%
  *   • Zero-packet protection for division
  *
  * Output Format:
@@ -570,9 +554,11 @@ function void ucie_sb_monitor::print_statistics();
   `uvm_info("MONITOR", $sformatf("Packets captured: %0d", packets_captured), UVM_LOW)
   `uvm_info("MONITOR", $sformatf("Bits captured: %0d", bits_captured), UVM_LOW)
   `uvm_info("MONITOR", $sformatf("Protocol errors: %0d", protocol_errors), UVM_LOW)
+  `uvm_info("MONITOR", $sformatf("Gap violations: %0d", gap_violations), UVM_LOW)
   if (packets_captured > 0) begin
     `uvm_info("MONITOR", $sformatf("Average bits per packet: %.1f", real'(bits_captured)/real'(packets_captured)), UVM_LOW)
     `uvm_info("MONITOR", $sformatf("Error rate: %.2f%%", real'(protocol_errors)/real'(packets_captured)*100.0), UVM_LOW)
+    `uvm_info("MONITOR", $sformatf("Gap violation rate: %.2f%%", real'(gap_violations)/real'(packets_captured)*100.0), UVM_LOW)
   end
   `uvm_info("MONITOR", "=========================", UVM_LOW)
 endfunction
