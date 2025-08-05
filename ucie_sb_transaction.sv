@@ -436,27 +436,28 @@ endfunction
 // Calculates control parity (CP) and data parity (DP) per UCIe specification
 //-----------------------------------------------------------------------------
 function void ucie_sb_transaction::calculate_parity();
-  // Control parity (CP) - XOR of all control fields based on packet type
-  if (is_clock_pattern) begin
-    // Clock pattern has fixed parity
-    cp = 1'b0;
-    dp = 1'b0;
-  end else if (pkt_type == PKT_MESSAGE && !has_data) begin
-    // Message without data parity calculation
-    cp = ^{opcode, srcid, dstid, msgcode, msginfo, msgsubcode};
-  end else if (pkt_type == PKT_COMPLETION) begin
-    // Completion parity calculation (Figure 7-2)
-    cp = ^{opcode, srcid, dstid, tag, be, ep, cr, status[2:0]};
-  end else begin
-    // Register access request parity calculation (Figure 7-1)
-    cp = ^{opcode, srcid, dstid, tag, be, ep, cr, addr[23:0]};
-  end
-  
   // Data parity (DP) - XOR of data if present
   if (has_data) begin
     dp = is_64bit ? ^data : ^data[31:0];
   end else begin
     dp = 1'b0;
+  end
+  
+  // Control parity (CP) - XOR of all control fields based on packet type
+  if (pkt_type == PKT_CLOCK_PATTERN) begin
+    // Clock pattern has fixed parity
+    cp = 1'b0;
+    dp = 1'b0;
+  end else if (pkt_type == PKT_REG_ACCESS) begin    
+    cp = ^{srcid, tag, be, ep, opcode, dp, cr, dstid, addr[23:0]};
+  end else if (pkt_type == PKT_COMPLETION) begin    
+    cp = ^{srcid, tag, be, ep, opcode, dp, cr, dstid, status[2:0]};  
+  end else if (pkt_type == PKT_MESSAGE) begin
+    cp = ^{srcid, msgcode, opcode, dp, dstid, msginfo, msgsubcode};	
+  end else if (pkt_type == PKT_MGMT) begin    
+    // Management messages not supported
+    `uvm_warning("TRANSACTION", "Management message parity calculation not supported")
+    cp = 1'b0;
   end
   
   `uvm_info("TRANSACTION", $sformatf("Calculated parity: CP=%0b, DP=%0b", cp, dp), UVM_DEBUG)

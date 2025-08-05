@@ -459,19 +459,37 @@ endfunction
 function void ucie_sb_monitor::check_transaction_validity(ucie_sb_transaction trans);
   bit expected_cp, expected_dp;
   
-  expected_cp = ^{trans.opcode, trans.srcid, trans.dstid, trans.tag, trans.be, trans.ep, trans.cr, trans.addr[15:0]};
-  
-  if (trans.cp != expected_cp) begin
-    `uvm_error("MONITOR", $sformatf("Control parity mismatch: expected=%0b, actual=%0b", expected_cp, trans.cp))
-    protocol_errors++;
-  end
-  
+  // Calculate expected data parity first (needed for control parity)
   if (trans.has_data) begin
     expected_dp = trans.is_64bit ? ^trans.data : ^trans.data[31:0];
     if (trans.dp != expected_dp) begin
       `uvm_error("MONITOR", $sformatf("Data parity mismatch: expected=%0b, actual=%0b", expected_dp, trans.dp))
       protocol_errors++;
     end
+  end else begin
+    expected_dp = 1'b0;
+  end
+  
+  // Calculate expected control parity based on packet type (includes DP)
+  if (trans.pkt_type == PKT_CLOCK_PATTERN) begin
+    expected_cp = 1'b0;
+  end else if (trans.pkt_type == PKT_REG_ACCESS) begin    
+    expected_cp = ^{trans.srcid, trans.tag, trans.be, trans.ep, trans.opcode, expected_dp, trans.cr, trans.dstid, trans.addr[23:0]};
+  end else if (trans.pkt_type == PKT_COMPLETION) begin    
+    expected_cp = ^{trans.srcid, trans.tag, trans.be, trans.ep, trans.opcode, expected_dp, trans.cr, trans.dstid, trans.status[2:0]};  
+  end else if (trans.pkt_type == PKT_MESSAGE) begin
+    expected_cp = ^{trans.srcid, trans.msgcode, trans.opcode, expected_dp, trans.dstid, trans.msginfo, trans.msgsubcode};	
+  end else if (trans.pkt_type == PKT_MGMT) begin    
+    `uvm_warning("MONITOR", "Management message parity validation not supported")
+    expected_cp = 1'b0;
+  end else begin
+    `uvm_warning("MONITOR", $sformatf("Unknown packet type for parity validation: %s", trans.pkt_type.name()))
+    expected_cp = 1'b0;
+  end
+  
+  if (trans.cp != expected_cp) begin
+    `uvm_error("MONITOR", $sformatf("Control parity mismatch: expected=%0b, actual=%0b", expected_cp, trans.cp))
+    protocol_errors++;
   end
   
   if (trans.srcid == 3'b000) begin
