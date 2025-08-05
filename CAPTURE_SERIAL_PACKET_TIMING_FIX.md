@@ -16,22 +16,23 @@ The monitor's `capture_serial_packet()` function was ending **half a clock cycle
 // PROBLEMATIC FLOW (BEFORE FIX):
 1. wait_for_packet_start()    -> @(posedge SBRX_CLK)  // Bit 0 setup
 2. capture_serial_packet()    -> 64x @(negedge SBRX_CLK)  // Sample bits 0-63
-   // ❌ ISSUE: After 64 negedges, clock is still HIGH for bit 63!
+   // ❌ ISSUE: After 64 negedges, bit 63 needs half cycle to complete!
 3. wait_for_packet_gap()      -> Starts immediately
-   // ❌ WRONG: Clock hasn't gone low yet - gap detection is premature!
+   // ❌ WRONG: Bit 63 transmission not complete - gap detection is premature!
 ```
 
 ### **Root Cause:**
 - **Negedge sampling**: Correctly samples data on falling clock edges
-- **Missing final posedge**: After sampling bit 63 on negedge, the posedge for bit 63 completion was missing
-- **Early gap detection**: `wait_for_packet_gap()` started while clock was still high
+- **Clock gating**: After valid data, clock gets gated (no more posedges available)
+- **Missing half-cycle delay**: After sampling bit 63 on negedge, need half UI delay for bit completion
+- **Early gap detection**: `wait_for_packet_gap()` started before bit 63 transmission finished
 
 ---
 
 ## ✅ **Solution Implemented**
 
 ### **Fix Applied:**
-Added a **final posedge wait** after the 64-bit sampling loop to ensure complete packet transmission.
+Added a **half clock cycle delay** after the 64-bit sampling loop to ensure complete packet transmission when clock is gated.
 
 ```systemverilog
 // CORRECTED FLOW (AFTER FIX):
@@ -43,11 +44,11 @@ task ucie_sb_monitor::capture_serial_packet(output bit [63:0] packet);
     packet[i] = vif.SBRX_DATA;
   end
   
-  // ✅ FIX: Wait for final posedge to complete the 64-bit transmission
-  // After 64 negedges, we need one more posedge to finish bit 63
-  @(posedge vif.SBRX_CLK);
+  // ✅ FIX: Wait for half clock cycle to complete the 64-bit transmission
+  // After 64 negedges, clock will be gated - need half UI delay to finish bit 63
+  #(ui_time_ns * 0.5 * 1ns);
   
-  `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h (64-bit transmission finished)", packet), UVM_DEBUG)
+  `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h (64-bit transmission finished after half-cycle delay)", packet), UVM_DEBUG)
 endtask
 ```
 
@@ -56,8 +57,8 @@ endtask
 1. wait_for_packet_start()    -> @(posedge SBRX_CLK)     // Bit 0 setup
 2. capture_serial_packet():
    - 64x @(negedge SBRX_CLK)  -> Sample bits 0-63       // Data sampling
-   - @(posedge SBRX_CLK)      -> Complete bit 63         // ✅ NEW: Final posedge
-3. wait_for_packet_gap()      -> Now clock is low        // ✅ CORRECT: Proper timing
+   - #(ui_time_ns * 0.5 * 1ns) -> Complete bit 63       // ✅ NEW: Half-cycle delay
+3. wait_for_packet_gap()      -> Now clock is gated low  // ✅ CORRECT: Proper timing
 ```
 
 ---
@@ -93,8 +94,8 @@ Complete:         ↑        ↑        ↑        ↑ (posedge)
 
 ### **64-bit Packet Timing:**
 - **Bits 0-63**: Sampled on 64 negedges ✅
-- **Bit 63 completion**: Requires final posedge ✅ **ADDED**
-- **Gap start**: After final posedge when clock goes low ✅
+- **Bit 63 completion**: Requires half UI delay (clock gated) ✅ **ADDED**
+- **Gap start**: After half-cycle delay when clock is gated low ✅
 
 ---
 
@@ -102,7 +103,7 @@ Complete:         ↑        ↑        ↑        ↑ (posedge)
 
 ### **Primary Changes:**
 - **`ucie_sb_monitor.sv`**: 
-  - Enhanced `capture_serial_packet()` task with final posedge wait
+  - Enhanced `capture_serial_packet()` task with half-cycle delay for clock gating
   - Updated function documentation comments
   - Added debug message for transmission completion
 
@@ -129,10 +130,10 @@ Complete:         ↑        ↑        ↑        ↑ (posedge)
 
 ## 🏆 **Conclusion**
 
-This **critical timing fix** ensures that the UCIe sideband monitor correctly handles source-synchronous packet transmission timing. The addition of the final posedge wait guarantees that:
+This **critical timing fix** ensures that the UCIe sideband monitor correctly handles source-synchronous packet transmission timing with clock gating. The addition of the half-cycle delay guarantees that:
 
 1. **Complete packet capture** before gap detection
-2. **Accurate protocol timing** validation
+2. **Accurate protocol timing** validation with clock gating support
 3. **Proper UCIe compliance** monitoring
 4. **Reliable verification** operation
 

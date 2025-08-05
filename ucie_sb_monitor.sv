@@ -107,7 +107,7 @@ class ucie_sb_monitor extends uvm_monitor;
   // FUNCTION: capture_serial_packet
   // Captures a 64-bit serial packet from RX interface sampling on negedge clock
   // Uses negedge sampling for proper source-synchronous data recovery
-  // Waits for final posedge to complete 64-bit transmission before returning
+  // Waits for half clock cycle delay to complete 64-bit transmission (clock gated)
   //
   // RETURNS: 64-bit captured packet
   //-----------------------------------------------------------------------------
@@ -383,7 +383,7 @@ endtask
 //-----------------------------------------------------------------------------
 // TASK: capture_serial_packet
 // Captures a 64-bit serial packet from RX interface sampling on negedge clock
-// Waits for final posedge to complete 64-bit transmission before returning
+// Waits for half clock cycle delay to complete 64-bit transmission (clock gated)
 //-----------------------------------------------------------------------------
 task ucie_sb_monitor::capture_serial_packet(output bit [63:0] packet);
   
@@ -395,11 +395,11 @@ task ucie_sb_monitor::capture_serial_packet(output bit [63:0] packet);
     `uvm_info("MONITOR", $sformatf("Captured bit[%0d] = %0b", i, packet[i]), UVM_HIGH)
   end
   
-  // Wait for final posedge to complete the 64-bit transmission
-  // After 64 negedges, we need one more posedge to finish bit 63
-  @(posedge vif.SBRX_CLK);
+  // Wait for half clock cycle to complete the 64-bit transmission
+  // After 64 negedges, clock will be gated - need half UI delay to finish bit 63
+  #(ui_time_ns * 0.5 * 1ns);
   
-  `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h (64-bit transmission finished)", packet), UVM_DEBUG)
+  `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h (64-bit transmission finished after half-cycle delay)", packet), UVM_DEBUG)
 endtask
 
 //-----------------------------------------------------------------------------
