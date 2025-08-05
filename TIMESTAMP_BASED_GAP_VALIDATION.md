@@ -65,8 +65,7 @@ endtask
 task ucie_sb_monitor::capture_serial_packet(output bit [63:0] packet);
   // ... 64-bit sampling loop ...
   
-  #(ui_time_ns * 0.5 * 1.1 * 1ns);  // Half-cycle + 10% margin
-  packet_end_time = $time;           // ✅ Precise end timestamp
+  packet_end_time = $time;           // ✅ Precise end timestamp at 64th negedge
   
   `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h (end time: %0t)", 
                                  packet, packet_end_time), UVM_DEBUG)

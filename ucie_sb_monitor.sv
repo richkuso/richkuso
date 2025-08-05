@@ -12,7 +12,7 @@
  *   • All 19 sideband opcodes supported
  *   • Timestamp-based gap timing validation (32 UI minimum)
  *   • Comprehensive parity checking (CP/DP)
- *   • Clock gating aware timing with 10% safety margin
+ *   • Precise timestamp-based timing measurement
  *   • Statistics collection and error reporting
  *
  * PROTOCOL SUPPORT:
@@ -23,8 +23,8 @@
  *
  * TIMING ARCHITECTURE:
  *   • Negedge sampling for source-synchronous recovery
- *   • Half-cycle delay + 10% margin for clock gating
  *   • Timestamp-based gap measurement between packets
+ *   • End timestamp captured at 64th negedge completion
  *   • Configurable UI timing for different frequencies
  *
  * COMPLIANCE:
@@ -254,20 +254,20 @@ endtask
  *   • 64 bits captured sequentially (bit 0 to bit 63)
  *   • Clock may be gated after final data bit
  *
- * Timing Robustness:
- *   • After 64 negedge samples, add half-cycle delay
- *   • 10% timing margin for process/voltage/temperature variations
- *   • Record precise end timestamp for gap calculation
+ * Timing Strategy:
+ *   • Record end timestamp immediately after 64th negedge sample
+ *   • Timestamp represents end of bit 63 sampling point
+ *   • Used for precise gap calculation to next packet
  *
  * Timestamp Enhancement:
- *   • Store packet end time after bit 63 completion
+ *   • Store packet end time at bit 63 negedge completion
  *   • Used for gap validation to next packet
  *   • More accurate than signal-level detection
  *
- * Clock Gating Handling:
- *   • No posedge available after bit 63 due to gating
- *   • Calculated delay: (UI_time * 0.5 * 1.1) for margin
- *   • End timestamp accounts for complete transmission
+ * Implementation:
+ *   • No additional delays after sampling
+ *   • End timestamp captured at 64th negedge completion
+ *   • Gap measurement from this precise sampling point
  *
  * Error Prevention:
  *   • Eliminates race conditions with gap detection
@@ -284,7 +284,6 @@ task ucie_sb_monitor::capture_serial_packet(output bit [63:0] packet);
     `uvm_info("MONITOR", $sformatf("Captured bit[%0d] = %0b", i, packet[i]), UVM_HIGH)
   end
   
-  #(ui_time_ns * 0.5 * 1.1 * 1ns);
   packet_end_time = $time;
   
   `uvm_info("MONITOR", $sformatf("Packet capture complete: 0x%016h (end time: %0t)", packet, packet_end_time), UVM_DEBUG)
