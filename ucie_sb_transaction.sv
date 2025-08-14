@@ -481,69 +481,134 @@ endfunction
 function string ucie_sb_transaction::convert2string();
   string s;
   string msg_name, submsg_name, status_name, be_desc;
+  string opcode_str, pkt_type_str, srcid_str, dstid_str;
   bit [63:0] header;
+  int max_width = 80;  // Maximum line width for consistent formatting
   
-  s = $sformatf("\n+--- UCIe Sideband Transaction ---+");
-  
-  s = {s, $sformatf("\n| Opcode: %-18s Type: %-15s Tag: 0x%02h |", opcode.name(), pkt_type.name(), tag)};
-  s = {s, $sformatf("\n| Src: %-12s(0x%01h)  Dst: %-12s(0x%01h) |", get_srcid_name(), srcid, get_dstid_name(), dstid)};
-  
+  // Get formatted strings with consistent widths
+  opcode_str = $sformatf("%-20s", opcode.name());
+  pkt_type_str = $sformatf("%-15s", pkt_type.name());
+  srcid_str = $sformatf("%-12s", get_srcid_name());
+  dstid_str = $sformatf("%-12s", get_dstid_name());
   be_desc = get_be_description();
-  s = {s, $sformatf("\n| Addr: 0x%06h  BE: 0x%02h(%-8s)  EP:%0b CR:%0b |", addr, be, be_desc, ep, cr)};
   
+  // Header with centered title
+  s = $sformatf("\n╔════════════════════════════════════════════════════════════════════════════╗");
+  s = {s, $sformatf("\n║                          UCIe Sideband Transaction                         ║")};
+  s = {s, $sformatf("\n╠════════════════════════════════════════════════════════════════════════════╣")};
+  
+  // Primary transaction information - well aligned
+  s = {s, $sformatf("\n║ Opcode: %s │ Type: %s │ Tag: 0x%02h    ║", opcode_str, pkt_type_str, tag)};
+  s = {s, $sformatf("\n║ Source: %s(0x%01h) │ Dest: %s(0x%01h) │ EP:%0b CR:%0b    ║", 
+                    srcid_str, srcid, dstid_str, dstid, ep, cr)};
+  
+  // Address and Byte Enable information
+  s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+  s = {s, $sformatf("\n║ Address: 0x%06h │ Byte Enable: 0x%02h (%-8s) │ Flags: CP:%0b DP:%0b ║", 
+                    addr, be, be_desc, cp, dp)};
+  
+  // Data payload section
+  s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
   if (has_data) begin
-    s = {s, $sformatf("\n| Data: 0x%016h (%s)  CP:%0b DP:%0b |", data, is_64bit ? "64-bit" : "32-bit", cp, dp)};
+    s = {s, $sformatf("\n║ Data Payload: 0x%016h                                    ║", data)};
+    s = {s, $sformatf("\n║ Data Width:   %-10s │ HasData: %-5s │ Valid: %-5s          ║", 
+                      is_64bit ? "64-bit" : "32-bit", 
+                      has_data ? "TRUE" : "FALSE",
+                      is_valid() ? "TRUE" : "FALSE")};
   end else begin
-    s = {s, $sformatf("\n| Data: No payload                    CP:%0b DP:%0b |", cp, dp)};
+    s = {s, $sformatf("\n║ Data Payload: <No Data>                                                    ║")};
+    s = {s, $sformatf("\n║ Data Width:   %-10s │ HasData: %-5s │ Valid: %-5s          ║", 
+                      "N/A", 
+                      has_data ? "TRUE" : "FALSE",
+                      is_valid() ? "TRUE" : "FALSE")};
   end
   
+  // Packet-specific information sections
   if (pkt_type == PKT_MESSAGE) begin
     msg_name = get_msgcode_name(msgcode);
     submsg_name = get_msgsubcode_name(msgsubcode);
-    s = {s, $sformatf("\n| MsgCode: %-18s(0x%02h)  Info: 0x%04h |", msg_name, msgcode, msginfo)};
-    s = {s, $sformatf("\n| SubCode: %-18s(0x%02h)              |", submsg_name, msgsubcode)};
     
+    s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+    s = {s, $sformatf("\n║                              MESSAGE DETAILS                               ║")};
+    s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+    s = {s, $sformatf("\n║ Message Code:    %-25s │ Code: 0x%02h             ║", msg_name, msgcode)};
+    s = {s, $sformatf("\n║ Sub-Message:     %-25s │ Sub:  0x%02h             ║", submsg_name, msgsubcode)};
+    s = {s, $sformatf("\n║ Message Info:    0x%04h                                                   ║", msginfo)};
+    
+    // Add meaning interpretation for known message types
     if (msgcode == MSG_SBINIT_OUT_OF_RESET) begin
-      s = {s, $sformatf("\n| Meaning: SBINIT Out of Reset - Result: 0x%01h (%s) |", 
+      s = {s, $sformatf("\n║ Interpretation:  SBINIT Out of Reset - Result: 0x%01h (%s)              ║", 
                         msginfo[3:0], (msginfo[3:0] == 4'h1) ? "Success" : "Unknown")};
     end else if (msgcode == MSG_SBINIT_DONE_REQ) begin
-      s = {s, $sformatf("\n| Meaning: SBINIT Done Request                    |")};
+      s = {s, $sformatf("\n║ Interpretation:  SBINIT Done Request                                      ║")};
     end else if (msgcode == MSG_SBINIT_DONE_RESP) begin
-      s = {s, $sformatf("\n| Meaning: SBINIT Done Response                   |")};
+      s = {s, $sformatf("\n║ Interpretation:  SBINIT Done Response                                     ║")};
     end
   end
   
   if (pkt_type == PKT_COMPLETION) begin
     status_name = get_completion_status_name(status);
-    s = {s, $sformatf("\n| Status: 0x%04h (%-25s) |", status, status_name)};
+    
+    s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+    s = {s, $sformatf("\n║                            COMPLETION DETAILS                             ║")};
+    s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+    s = {s, $sformatf("\n║ Status Code:     0x%04h                                                   ║", status)};
+    s = {s, $sformatf("\n║ Status Meaning:  %-55s ║", status_name)};
+    
     if (has_data) begin
-      s = {s, $sformatf("\n| Return: 0x%016h (%s)              |", data, is_64bit ? "64-bit" : "32-bit")};
+      s = {s, $sformatf("\n║ Return Data:     0x%016h (%-8s)                        ║", 
+                        data, is_64bit ? "64-bit" : "32-bit")};
     end
   end
   
+  // Clock pattern special handling
   if (is_clock_pattern || opcode == CLOCK_PATTERN) begin
+    s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+    s = {s, $sformatf("\n║                            CLOCK PATTERN INFO                             ║")};
+    s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+    
     if (opcode == CLOCK_PATTERN) begin
-      s = {s, $sformatf("\n| Clock Pattern: UCIe Standard (0x5555555555555555) |")};
+      s = {s, $sformatf("\n║ Pattern Type:    UCIe Standard Clock Pattern                              ║")};
+      s = {s, $sformatf("\n║ Pattern Value:   0x5555555555555555                                       ║")};
     end else begin
-      s = {s, $sformatf("\n| Clock Pattern: Custom - Addr:0x%06h Data:0x%016h |", addr, data)};
+      s = {s, $sformatf("\n║ Pattern Type:    Custom Clock Pattern                                     ║")};
+      s = {s, $sformatf("\n║ Custom Address:  0x%06h                                                 ║", addr)};
+      s = {s, $sformatf("\n║ Custom Data:     0x%016h                                        ║", data)};
     end
   end
   
-  s = {s, $sformatf("\n| Flags: HasData:%0b Is64bit:%0b ClkPat:%0b Valid:%0b    |", 
-                    has_data, is_64bit, is_clock_pattern, is_valid())};
+  // Header information section
+  s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+  s = {s, $sformatf("\n║                              HEADER ANALYSIS                              ║")};
+  s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
   
   if (is_clock_pattern && opcode == CLOCK_PATTERN) begin
     header = get_clock_pattern_header();
-    s = {s, $sformatf("\n| Header: 0x%016h (Clock Pattern)        |", header)};
+    s = {s, $sformatf("\n║ Header Value:    0x%016h                                        ║", header)};
+    s = {s, $sformatf("\n║ Header Type:     Clock Pattern Header                                     ║")};
   end else if (pkt_type == PKT_MESSAGE && !has_data) begin
     header = get_message_header();
-    s = {s, $sformatf("\n| Header: 0x%016h (Message)              |", header)};
+    s = {s, $sformatf("\n║ Header Value:    0x%016h                                        ║", header)};
+    s = {s, $sformatf("\n║ Header Type:     Message Header                                           ║")};
   end else begin
     header = get_header();
-    s = {s, $sformatf("\n| Header: 0x%016h (Standard)             |", header)};
+    s = {s, $sformatf("\n║ Header Value:    0x%016h                                        ║", header)};
+    s = {s, $sformatf("\n║ Header Type:     Standard Transaction Header                              ║")};
   end
   
-  s = {s, $sformatf("\n+------------------------------------+")};
+  // Summary section with key flags
+  s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+  s = {s, $sformatf("\n║                               SUMMARY FLAGS                               ║")};
+  s = {s, $sformatf("\n╠────────────────────────────────────────────────────────────────────────────╢")};
+  s = {s, $sformatf("\n║ Has Data: %-5s │ 64-bit: %-5s │ Clock Pattern: %-5s │ Valid: %-5s ║", 
+                    has_data ? "TRUE" : "FALSE",
+                    is_64bit ? "TRUE" : "FALSE", 
+                    is_clock_pattern ? "TRUE" : "FALSE",
+                    is_valid() ? "TRUE" : "FALSE")};
+  
+  // Footer
+  s = {s, $sformatf("\n╚════════════════════════════════════════════════════════════════════════════╝")};
+  
   return s;
 endfunction
 
