@@ -503,14 +503,7 @@ function string ucie_sb_transaction::convert2string();
     s = {s, $sformatf("\n| MsgCode: %-18s (0x%02h)  Info: 0x%04h            |", msg_name, msgcode, msginfo)};
     s = {s, $sformatf("\n| SubCode: %-18s (0x%02h)                          |", submsg_name, msgsubcode)};
     
-    if (msgcode == MSG_SBINIT_OUT_OF_RESET) begin
-      s = {s, $sformatf("\n| Meaning: SBINIT Out of Reset - Result: 0x%01h (%s)               |", 
-                        msginfo[3:0], (msginfo[3:0] == 4'h1) ? "Success" : "Unknown")};
-    end else if (msgcode == MSG_SBINIT_DONE_REQ) begin
-      s = {s, $sformatf("\n| Meaning: SBINIT Done Request                               |")};
-    end else if (msgcode == MSG_SBINIT_DONE_RESP) begin
-      s = {s, $sformatf("\n| Meaning: SBINIT Done Response                              |")};
-    end
+
   end
   
   if (pkt_type == PKT_COMPLETION) begin
