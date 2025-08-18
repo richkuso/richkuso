@@ -588,7 +588,7 @@ function void ucie_sb_reg_access_checker::process_rx_completion(ucie_sb_transact
                                          tag, response_time/1ns), UVM_MEDIUM)
     end else begin
      if (!rx_has_outstanding_request) begin
-       `uvm_error("REG_CHECKER", $sformatf("RX completion with no outstanding RX request in non-TAG mode!"))
+       `uvm_error("REG_CHECKER", $sformatf("RX completion with no outstanding TX request in non-TAG mode!"))
        protocol_errors++;
        return;
      end
