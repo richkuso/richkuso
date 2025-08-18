@@ -537,7 +537,7 @@ function void ucie_sb_reg_access_checker::process_rx_request(ucie_sb_transaction
 endfunction
 
 /*-----------------------------------------------------------------------------
- * TX COMPLETION PROCESSOR (RX→TX Response)
+ * RX COMPLETION PROCESSOR (RX→TX Response)
  * 
  * Processes completion transactions responding to RX-initiated requests:
  *   • Matches completions with corresponding RX requests
@@ -555,11 +555,11 @@ function void ucie_sb_reg_access_checker::process_rx_completion(ucie_sb_transact
   bit [4:0] tag = trans.tag;
   realtime response_time;
   
-  `uvm_info("REG_CHECKER", $sformatf("Processing TX completion (RX→TX response): tag=%0d, srcid=%0d, dstid=%0d, status=0x%04h", 
+  `uvm_info("REG_CHECKER", $sformatf("Processing RX completion (RX→TX response): tag=%0d, srcid=%0d, dstid=%0d, status=0x%04h", 
                                      tag, trans.srcid, trans.dstid, trans.status), UVM_HIGH)
   
   if (!enable_tag_support && tag != 4'h0) begin
-    `uvm_error("REG_CHECKER", $sformatf("TX completion TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
+    `uvm_error("REG_CHECKER", $sformatf("RX completion TAG violation: expected 4'h0, got %0d in non-TAG mode", tag))
     tx_tag_violations++;
     protocol_errors++;
     return;
@@ -567,7 +567,7 @@ function void ucie_sb_reg_access_checker::process_rx_completion(ucie_sb_transact
   
   if (enable_tag_support) begin
     if (!rx_tag_in_use[tag]) begin
-      `uvm_error("REG_CHECKER", $sformatf("TX completion tag %0d has no corresponding RX request!", tag))
+      `uvm_error("REG_CHECKER", $sformatf("RX completion tag %0d has no corresponding RX request!", tag))
       protocol_errors++;
       return;
     end
@@ -588,7 +588,7 @@ function void ucie_sb_reg_access_checker::process_rx_completion(ucie_sb_transact
                                          tag, response_time/1ns), UVM_MEDIUM)
     end else begin
      if (!rx_has_outstanding_request) begin
-       `uvm_error("REG_CHECKER", $sformatf("TX completion with no outstanding RX request in non-TAG mode!"))
+       `uvm_error("REG_CHECKER", $sformatf("RX completion with no outstanding RX request in non-TAG mode!"))
        protocol_errors++;
        return;
      end
