@@ -160,17 +160,7 @@ class ucie_sb_reg_access_checker extends uvm_component;
   /*---------------------------------------------------------------------------
    * CONSTRUCTOR - Initialize tracking arrays and state
    *---------------------------------------------------------------------------*/
-  function new(string name = "ucie_sb_reg_access_checker", uvm_component parent = null);
-    super.new(name, parent);
-    
-    for (int i = 0; i < 32; i++) begin
-      tx_tag_in_use[i] = 0;
-      rx_tag_in_use[i] = 0;
-    end
-    
-    tx_has_outstanding_request = 0;
-    rx_has_outstanding_request = 0;
-  endfunction
+  extern function new(string name = "ucie_sb_reg_access_checker", uvm_component parent = null);
   
   /*---------------------------------------------------------------------------
    * EXTERN METHOD DECLARATIONS
@@ -218,6 +208,18 @@ endclass : ucie_sb_reg_access_checker
  * IMPLEMENTATION SECTION
  * All method implementations with detailed behavioral documentation
  ******************************************************************************/
+
+function ucie_sb_reg_access_checker::new(string name = "ucie_sb_reg_access_checker", uvm_component parent = null);
+  super.new(name, parent);
+  
+  for (int i = 0; i < 32; i++) begin
+    tx_tag_in_use[i] = 0;
+    rx_tag_in_use[i] = 0;
+  end
+  
+  tx_has_outstanding_request = 0;
+  rx_has_outstanding_request = 0;
+endfunction
 
 /*-----------------------------------------------------------------------------
  * UVM PHASE IMPLEMENTATIONS
