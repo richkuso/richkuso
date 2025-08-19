@@ -64,6 +64,12 @@ class ucie_sb_reg_access_checker extends uvm_component;
   uvm_tlm_analysis_fifo #(ucie_sb_transaction) tx_fifo;
   uvm_tlm_analysis_fifo #(ucie_sb_transaction) rx_fifo;
   
+  // Internal dispatch FIFOs to separate requests and completions per flow
+  uvm_tlm_fifo #(ucie_sb_transaction) tx_req_fifo_int;  // TX-initiated requests
+  uvm_tlm_fifo #(ucie_sb_transaction) tx_comp_fifo_int; // Completions for TX-initiated requests (from RX path)
+  uvm_tlm_fifo #(ucie_sb_transaction) rx_req_fifo_int;  // RX-initiated requests
+  uvm_tlm_fifo #(ucie_sb_transaction) rx_comp_fifo_int; // Completions for RX-initiated requests (from TX path)
+  
   /*---------------------------------------------------------------------------
    * CONFIGURATION PARAMETERS
    * Runtime behavior and feature control settings
@@ -175,6 +181,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
   extern virtual task tx_processor();
   extern virtual task rx_processor();
   extern virtual task fifo_monitor();
+  extern virtual task tx_path_demux();
+  extern virtual task rx_path_demux();
   
   extern virtual function void process_tx_request(ucie_sb_transaction trans);
   extern virtual function void process_rx_request(ucie_sb_transaction trans);
@@ -232,6 +240,11 @@ function void ucie_sb_reg_access_checker::build_phase(uvm_phase phase);
   tx_fifo = new("tx_fifo", this);
   rx_fifo = new("rx_fifo", this);
   
+  tx_req_fifo_int  = new("tx_req_fifo_int", this, 32);
+  tx_comp_fifo_int = new("tx_comp_fifo_int", this, 32);
+  rx_req_fifo_int  = new("rx_req_fifo_int", this, 32);
+  rx_comp_fifo_int = new("rx_comp_fifo_int", this, 32);
+  
   `uvm_info("REG_CHECKER", "Register access checker built with FIFO-only architecture", UVM_LOW)
   `uvm_info("REG_CHECKER", "Connect monitors to: tx_fifo.analysis_export and rx_fifo.analysis_export", UVM_LOW)
 endfunction
@@ -245,6 +258,10 @@ endfunction
 
 task ucie_sb_reg_access_checker::run_phase(uvm_phase phase);
   fork
+    // Demux raw TX/RX stream into per-direction request/completion FIFOs
+    tx_path_demux();
+    rx_path_demux();
+    // Process TX and RX flows using proper sources
     tx_processor();
     rx_processor();
     fifo_monitor();
@@ -285,24 +302,34 @@ task ucie_sb_reg_access_checker::tx_processor();
   ucie_sb_transaction trans;
   
   forever begin
-    tx_fifo.get(trans);
-    
-    if (!enable_checking) continue;
-    
-    tx_transactions_queued++;
-    
-    `uvm_info("REG_CHECKER", $sformatf("Processing TX transaction: opcode=%s, tag=%0d", 
-                                       trans.opcode.name(), trans.tag), UVM_DEBUG)
-    
-    if (is_register_access_request(trans)) begin
+    // First, service TX-initiated requests
+    if (tx_req_fifo_int.nb_get(trans)) begin
+      if (!enable_checking) continue;
+      tx_transactions_queued++;
+      `uvm_info("REG_CHECKER", $sformatf("TX flow: handling request opcode=%s, tag=%0d", trans.opcode.name(), trans.tag), UVM_DEBUG)
       process_tx_request(trans);
+      continue;
     end
-    else if (is_completion(trans)) begin
-      process_rx_completion(trans);
+    
+    // Then, service completions for TX-initiated requests (from RX path)
+    if (tx_comp_fifo_int.nb_get(trans)) begin
+      if (!enable_checking) continue;
+      `uvm_info("REG_CHECKER", $sformatf("TX flow: handling completion opcode=%s, tag=%0d", trans.opcode.name(), trans.tag), UVM_DEBUG)
+      process_tx_completion(trans);
+      continue;
     end
-    else begin
-      `uvm_info("REG_CHECKER", $sformatf("Ignoring non-register TX transaction: opcode=%s", 
-                                         trans.opcode.name()), UVM_HIGH)
+    
+    // If nothing pending, block briefly on either source to avoid busy loop
+    // Prefer requests to progress pipelining
+    if (tx_req_fifo_int.try_peek(trans)) begin
+      tx_req_fifo_int.get(trans);
+      if (!enable_checking) continue;
+      tx_transactions_queued++;
+      process_tx_request(trans);
+    end else begin
+      tx_comp_fifo_int.get(trans);
+      if (!enable_checking) continue;
+      process_tx_completion(trans);
     end
   end
 endtask
@@ -326,24 +353,33 @@ task ucie_sb_reg_access_checker::rx_processor();
   ucie_sb_transaction trans;
   
   forever begin
-    rx_fifo.get(trans);
-    
-    if (!enable_checking) continue;
-    
-    rx_transactions_queued++;
-    
-    `uvm_info("REG_CHECKER", $sformatf("Processing RX transaction: opcode=%s, tag=%0d", 
-                                       trans.opcode.name(), trans.tag), UVM_DEBUG)
-    
-    if (is_register_access_request(trans)) begin
+    // First, service RX-initiated requests
+    if (rx_req_fifo_int.nb_get(trans)) begin
+      if (!enable_checking) continue;
+      rx_transactions_queued++;
+      `uvm_info("REG_CHECKER", $sformatf("RX flow: handling request opcode=%s, tag=%0d", trans.opcode.name(), trans.tag), UVM_DEBUG)
       process_rx_request(trans);
+      continue;
     end
-    else if (is_completion(trans)) begin
-      process_tx_completion(trans);
+    
+    // Then, service completions for RX-initiated requests (from TX path)
+    if (rx_comp_fifo_int.nb_get(trans)) begin
+      if (!enable_checking) continue;
+      `uvm_info("REG_CHECKER", $sformatf("RX flow: handling completion opcode=%s, tag=%0d", trans.opcode.name(), trans.tag), UVM_DEBUG)
+      process_rx_completion(trans);
+      continue;
     end
-    else begin
-      `uvm_info("REG_CHECKER", $sformatf("Ignoring non-register RX transaction: opcode=%s", 
-                                         trans.opcode.name()), UVM_HIGH)
+    
+    // If nothing pending, block briefly on either source to avoid busy loop
+    if (rx_req_fifo_int.try_peek(trans)) begin
+      rx_req_fifo_int.get(trans);
+      if (!enable_checking) continue;
+      rx_transactions_queued++;
+      process_rx_request(trans);
+    end else begin
+      rx_comp_fifo_int.get(trans);
+      if (!enable_checking) continue;
+      process_rx_completion(trans);
     end
   end
 endtask
@@ -379,6 +415,44 @@ task ucie_sb_reg_access_checker::fifo_monitor();
     
     if (rx_fifo.size() > 10) begin
       `uvm_info("REG_CHECKER", $sformatf("High RX FIFO usage: %0d transactions", rx_fifo.size()), UVM_MEDIUM)
+    end
+  end
+endtask
+
+/*-----------------------------------------------------------------------------
+ * PATH DEMULTIPLEXERS
+ * Separate raw TX/RX streams into request vs completion per-direction FIFOs
+ *----------------------------------------------------------------------------*/
+task ucie_sb_reg_access_checker::tx_path_demux();
+  ucie_sb_transaction trans;
+  forever begin
+    tx_fifo.get(trans);
+    if (is_register_access_request(trans)) begin
+      // TX-initiated request
+      tx_req_fifo_int.put(trans);
+    end else if (is_completion(trans)) begin
+      // Completion for RX-initiated request (belongs to RX flow)
+      rx_comp_fifo_int.put(trans);
+    end else begin
+      `uvm_info("REG_CHECKER", $sformatf("TX path ignoring non-register transaction: opcode=%s",
+                                         trans.opcode.name()), UVM_HIGH)
+    end
+  end
+endtask
+
+task ucie_sb_reg_access_checker::rx_path_demux();
+  ucie_sb_transaction trans;
+  forever begin
+    rx_fifo.get(trans);
+    if (is_register_access_request(trans)) begin
+      // RX-initiated request
+      rx_req_fifo_int.put(trans);
+    end else if (is_completion(trans)) begin
+      // Completion for TX-initiated request (belongs to TX flow)
+      tx_comp_fifo_int.put(trans);
+    end else begin
+      `uvm_info("REG_CHECKER", $sformatf("RX path ignoring non-register transaction: opcode=%s",
+                                         trans.opcode.name()), UVM_HIGH)
     end
   end
 endtask
