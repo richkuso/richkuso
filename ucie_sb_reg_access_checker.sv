@@ -663,21 +663,21 @@ function void ucie_sb_reg_access_checker::process_rx_completion(ucie_sb_transact
             `uvm_info("REG_CHECKER", $sformatf("Matched RX→TX completion: tag=%0d, response_time=%.1fns", 
                                          tag, response_time/1ns), UVM_MEDIUM)
     end else begin
-     if (!tx_processor_has_outstanding_request) begin
-       `uvm_error("REG_CHECKER", $sformatf("TX completion with no outstanding TX request in non-TAG mode!"))
+     if (!rx_processor_has_outstanding_request) begin
+       `uvm_error("REG_CHECKER", $sformatf("TX completion with no outstanding RX request in non-TAG mode!"))
        protocol_errors++;
        return;
      end
      
-     if (!validate_completion(trans, tx_single_outstanding_request)) begin
+     if (!validate_completion(trans, rx_single_outstanding_request)) begin
        rx_tag_mismatches++;
        return;
      end
      
-     response_time = $realtime - tx_single_outstanding_request.req_time;
+     response_time = $realtime - rx_single_outstanding_request.req_time;
      update_rx_timing_statistics(response_time);
      
-     tx_processor_has_outstanding_request = 0;
+     rx_processor_has_outstanding_request = 0;
      rx_completions_received++;
      rx_matched_transactions++;
      
@@ -737,21 +737,21 @@ function void ucie_sb_reg_access_checker::process_tx_completion(ucie_sb_transact
             `uvm_info("REG_CHECKER", $sformatf("Matched TX→RX completion: tag=%0d, response_time=%.1fns", 
                                          tag, response_time/1ns), UVM_MEDIUM)
     end else begin
-     if (!rx_processor_has_outstanding_request) begin
-       `uvm_error("REG_CHECKER", $sformatf("RX completion with no outstanding RX request in non-TAG mode!"))
+     if (!tx_processor_has_outstanding_request) begin
+       `uvm_error("REG_CHECKER", $sformatf("RX completion with no outstanding TX request in non-TAG mode!"))
        protocol_errors++;
        return;
      end
      
-     if (!validate_completion(trans, rx_single_outstanding_request)) begin
+     if (!validate_completion(trans, tx_single_outstanding_request)) begin
        tx_tag_mismatches++;
        return;
      end
      
-     response_time = $realtime - rx_single_outstanding_request.req_time;
+     response_time = $realtime - tx_single_outstanding_request.req_time;
      update_tx_timing_statistics(response_time);
      
-     rx_processor_has_outstanding_request = 0;
+     tx_processor_has_outstanding_request = 0;
      tx_completions_received++;
      tx_matched_transactions++;
      
