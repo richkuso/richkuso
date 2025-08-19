@@ -303,7 +303,7 @@ task ucie_sb_reg_access_checker::tx_processor();
   
   forever begin
     // First, service TX-initiated requests
-    if (tx_req_fifo_int.nb_get(trans)) begin
+    if (tx_req_fifo_int.try_get(trans)) begin
       if (!enable_checking) continue;
       tx_transactions_queued++;
       `uvm_info("REG_CHECKER", $sformatf("TX flow: handling request opcode=%s, tag=%0d", trans.opcode.name(), trans.tag), UVM_DEBUG)
@@ -312,7 +312,7 @@ task ucie_sb_reg_access_checker::tx_processor();
     end
     
     // Then, service completions for TX-initiated requests (from RX path)
-    if (tx_comp_fifo_int.nb_get(trans)) begin
+    if (tx_comp_fifo_int.try_get(trans)) begin
       if (!enable_checking) continue;
       `uvm_info("REG_CHECKER", $sformatf("TX flow: handling completion opcode=%s, tag=%0d", trans.opcode.name(), trans.tag), UVM_DEBUG)
       process_tx_completion(trans);
@@ -354,7 +354,7 @@ task ucie_sb_reg_access_checker::rx_processor();
   
   forever begin
     // First, service RX-initiated requests
-    if (rx_req_fifo_int.nb_get(trans)) begin
+    if (rx_req_fifo_int.try_get(trans)) begin
       if (!enable_checking) continue;
       rx_transactions_queued++;
       `uvm_info("REG_CHECKER", $sformatf("RX flow: handling request opcode=%s, tag=%0d", trans.opcode.name(), trans.tag), UVM_DEBUG)
@@ -363,7 +363,7 @@ task ucie_sb_reg_access_checker::rx_processor();
     end
     
     // Then, service completions for RX-initiated requests (from TX path)
-    if (rx_comp_fifo_int.nb_get(trans)) begin
+    if (rx_comp_fifo_int.try_get(trans)) begin
       if (!enable_checking) continue;
       `uvm_info("REG_CHECKER", $sformatf("RX flow: handling completion opcode=%s, tag=%0d", trans.opcode.name(), trans.tag), UVM_DEBUG)
       process_rx_completion(trans);
@@ -401,20 +401,20 @@ task ucie_sb_reg_access_checker::fifo_monitor();
   forever begin
     #100ns;
     
-    if (tx_fifo.size() > max_tx_fifo_depth) begin
-      max_tx_fifo_depth = tx_fifo.size();
+    if (tx_fifo.used() > max_tx_fifo_depth) begin
+      max_tx_fifo_depth = tx_fifo.used();
     end
     
-    if (rx_fifo.size() > max_rx_fifo_depth) begin
-      max_rx_fifo_depth = rx_fifo.size();
+    if (rx_fifo.used() > max_rx_fifo_depth) begin
+      max_rx_fifo_depth = rx_fifo.used();
     end
     
-    if (tx_fifo.size() > 10) begin
-      `uvm_info("REG_CHECKER", $sformatf("High TX FIFO usage: %0d transactions", tx_fifo.size()), UVM_MEDIUM)
+    if (tx_fifo.used() > 10) begin
+      `uvm_info("REG_CHECKER", $sformatf("High TX FIFO usage: %0d transactions", tx_fifo.used()), UVM_MEDIUM)
     end
     
-    if (rx_fifo.size() > 10) begin
-      `uvm_info("REG_CHECKER", $sformatf("High RX FIFO usage: %0d transactions", rx_fifo.size()), UVM_MEDIUM)
+    if (rx_fifo.used() > 10) begin
+      `uvm_info("REG_CHECKER", $sformatf("High RX FIFO usage: %0d transactions", rx_fifo.used()), UVM_MEDIUM)
     end
   end
 endtask
@@ -1133,11 +1133,11 @@ endfunction
  *-----------------------------------------------------------------------------*/
 
 function int ucie_sb_reg_access_checker::get_tx_fifo_depth();
-  return tx_fifo.size();
+  return tx_fifo.used();
 endfunction
 
 function int ucie_sb_reg_access_checker::get_rx_fifo_depth();
-  return rx_fifo.size();
+  return rx_fifo.used();
 endfunction
 
 function void ucie_sb_reg_access_checker::flush_fifos();
