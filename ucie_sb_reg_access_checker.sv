@@ -113,8 +113,8 @@ class ucie_sb_reg_access_checker extends uvm_component;
    * Single outstanding request tracking with blocking validation
    *---------------------------------------------------------------------------*/
   
-  bit tx_has_outstanding_request = 0;
-  bit rx_has_outstanding_request = 0;
+  bit tx_processor_has_outstanding_request = 0;
+  bit rx_processor_has_outstanding_request = 0;
   outstanding_req_t tx_single_outstanding_request;
   outstanding_req_t rx_single_outstanding_request;
   
@@ -225,8 +225,8 @@ function ucie_sb_reg_access_checker::new(string name = "ucie_sb_reg_access_check
     rx_tag_in_use[i] = 0;
   end
   
-  tx_has_outstanding_request = 0;
-  rx_has_outstanding_request = 0;
+  tx_processor_has_outstanding_request = 0;
+  rx_processor_has_outstanding_request = 0;
 endfunction
 
 /*-----------------------------------------------------------------------------
@@ -516,7 +516,7 @@ function void ucie_sb_reg_access_checker::process_tx_request(ucie_sb_transaction
     `uvm_info("REG_CHECKER", $sformatf("Stored TX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
                                        tag, trans.srcid, trans.dstid, trans.addr, tx_outstanding_requests[tag].is_read), UVM_MEDIUM)
   end else begin
-    if (tx_has_outstanding_request) begin
+    if (tx_processor_has_outstanding_request) begin
       `uvm_error("REG_CHECKER", $sformatf("TX blocking violation: New TX request while outstanding request exists"))
       tx_blocking_violations++;
       return;
@@ -530,7 +530,7 @@ function void ucie_sb_reg_access_checker::process_tx_request(ucie_sb_transaction
     tx_single_outstanding_request.is_read = is_read_request(trans);
     tx_single_outstanding_request.is_64bit = trans.is_64bit;
     tx_single_outstanding_request.is_tx_initiated = 1;
-    tx_has_outstanding_request = 1;
+    tx_processor_has_outstanding_request = 1;
     
     tx_requests_sent++;
     
@@ -589,7 +589,7 @@ function void ucie_sb_reg_access_checker::process_rx_request(ucie_sb_transaction
     `uvm_info("REG_CHECKER", $sformatf("Stored RX request: tag=%0d, srcid=%0d→dstid=%0d, addr=0x%06h, read=%0b", 
                                        tag, trans.srcid, trans.dstid, trans.addr, rx_outstanding_requests[tag].is_read), UVM_MEDIUM)
   end else begin
-    if (rx_has_outstanding_request) begin
+    if (rx_processor_has_outstanding_request) begin
       `uvm_error("REG_CHECKER", $sformatf("RX blocking violation: New RX request while outstanding request exists"))
       rx_blocking_violations++;
       return;
@@ -603,7 +603,7 @@ function void ucie_sb_reg_access_checker::process_rx_request(ucie_sb_transaction
     rx_single_outstanding_request.is_read = is_read_request(trans);
     rx_single_outstanding_request.is_64bit = trans.is_64bit;
     rx_single_outstanding_request.is_tx_initiated = 0;
-    rx_has_outstanding_request = 1;
+    rx_processor_has_outstanding_request = 1;
     
     rx_requests_sent++;
     
@@ -663,7 +663,7 @@ function void ucie_sb_reg_access_checker::process_rx_completion(ucie_sb_transact
             `uvm_info("REG_CHECKER", $sformatf("Matched RX→TX completion: tag=%0d, response_time=%.1fns", 
                                          tag, response_time/1ns), UVM_MEDIUM)
     end else begin
-     if (!tx_has_outstanding_request) begin
+     if (!tx_processor_has_outstanding_request) begin
        `uvm_error("REG_CHECKER", $sformatf("TX completion with no outstanding TX request in non-TAG mode!"))
        protocol_errors++;
        return;
@@ -677,7 +677,7 @@ function void ucie_sb_reg_access_checker::process_rx_completion(ucie_sb_transact
      response_time = $realtime - tx_single_outstanding_request.req_time;
      update_rx_timing_statistics(response_time);
      
-     tx_has_outstanding_request = 0;
+     tx_processor_has_outstanding_request = 0;
      rx_completions_received++;
      rx_matched_transactions++;
      
@@ -737,7 +737,7 @@ function void ucie_sb_reg_access_checker::process_tx_completion(ucie_sb_transact
             `uvm_info("REG_CHECKER", $sformatf("Matched TX→RX completion: tag=%0d, response_time=%.1fns", 
                                          tag, response_time/1ns), UVM_MEDIUM)
     end else begin
-     if (!rx_has_outstanding_request) begin
+     if (!rx_processor_has_outstanding_request) begin
        `uvm_error("REG_CHECKER", $sformatf("RX completion with no outstanding RX request in non-TAG mode!"))
        protocol_errors++;
        return;
@@ -751,7 +751,7 @@ function void ucie_sb_reg_access_checker::process_tx_completion(ucie_sb_transact
      response_time = $realtime - rx_single_outstanding_request.req_time;
      update_tx_timing_statistics(response_time);
      
-     rx_has_outstanding_request = 0;
+     rx_processor_has_outstanding_request = 0;
      tx_completions_received++;
      tx_matched_transactions++;
      
@@ -870,12 +870,12 @@ task ucie_sb_reg_access_checker::timeout_monitor();
         end
       end
     end else begin
-      if (tx_has_outstanding_request) begin
+      if (tx_processor_has_outstanding_request) begin
         if ((current_time - tx_single_outstanding_request.req_time) > (timeout_ns * 1ns)) begin
           `uvm_error("REG_CHECKER", $sformatf("Single TX request timeout: elapsed=%.1fns", 
                                               (current_time - tx_single_outstanding_request.req_time)/1ns))
           tx_timeout_errors++;
-          tx_has_outstanding_request = 0;
+          tx_processor_has_outstanding_request = 0;
         end
       end
     end
@@ -893,12 +893,12 @@ task ucie_sb_reg_access_checker::timeout_monitor();
         end
       end
     end else begin
-      if (rx_has_outstanding_request) begin
+      if (rx_processor_has_outstanding_request) begin
         if ((current_time - rx_single_outstanding_request.req_time) > (timeout_ns * 1ns)) begin
           `uvm_error("REG_CHECKER", $sformatf("Single RX request timeout: elapsed=%.1fns", 
                                               (current_time - rx_single_outstanding_request.req_time)/1ns))
           rx_timeout_errors++;
-          rx_has_outstanding_request = 0;
+          rx_processor_has_outstanding_request = 0;
         end
       end
     end
@@ -1021,7 +1021,7 @@ function void ucie_sb_reg_access_checker::check_outstanding_requests();
       end
     end
   end else begin
-    if (tx_has_outstanding_request) begin
+    if (tx_processor_has_outstanding_request) begin
       tx_outstanding_count++;
       `uvm_warning("REG_CHECKER", $sformatf("Outstanding single TX request at end of test: addr=0x%06h", 
                                             tx_single_outstanding_request.addr))
@@ -1037,7 +1037,7 @@ function void ucie_sb_reg_access_checker::check_outstanding_requests();
       end
     end
   end else begin
-    if (rx_has_outstanding_request) begin
+    if (rx_processor_has_outstanding_request) begin
       rx_outstanding_count++;
       `uvm_warning("REG_CHECKER", $sformatf("Outstanding single RX request at end of test: addr=0x%06h", 
                                             rx_single_outstanding_request.addr))
@@ -1121,8 +1121,8 @@ function void ucie_sb_reg_access_checker::reset_statistics();
   max_tx_fifo_depth = 0;
   max_rx_fifo_depth = 0;
   
-  tx_has_outstanding_request = 0;
-  rx_has_outstanding_request = 0;
+  tx_processor_has_outstanding_request = 0;
+  rx_processor_has_outstanding_request = 0;
   
   `uvm_info("REG_CHECKER", "Bidirectional statistics reset", UVM_LOW)
 endfunction
