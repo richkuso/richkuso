@@ -1,12 +1,11 @@
-# Makefile for Sideband UVM Agent Testbench
-# Supports multiple simulators and test cases
+# Makefile for UCIe Sideband UVM Agent
+# Core component compilation for multiple simulators
 
-# Default simulator and test
+# Default simulator
 SIM ?= vcs
-TEST ?= ucie_sb_memory_test
 
-# Source files
-SOURCES = ucie_sb_inf.sv ucie_sb_pkg.sv ucie_sb_testbench.sv
+# Core source files (no tests)
+SOURCES = ucie_sb_inf.sv ucie_sb_pkg.sv
 
 # Common UVM arguments
 UVM_HOME ?= $(VCS_HOME)/etc/uvm-1.2
@@ -22,214 +21,68 @@ endif
 
 # VCS specific settings
 VCS_ARGS = -sverilog -ntb_opts uvm-1.2 -debug_access+all -kdb -lca $(DEFINE_ARGS)
-VCS_RUN_ARGS = +UVM_TESTNAME=$(TEST) +UVM_VERBOSITY=UVM_MEDIUM
 
 # Questa specific settings
 QUESTA_ARGS = -sv -uvm +incdir+$(UVM_HOME)/src $(DEFINE_ARGS)
-QUESTA_RUN_ARGS = +UVM_TESTNAME=$(TEST) +UVM_VERBOSITY=UVM_MEDIUM
 
 # Xcelium specific settings
 XCELIUM_ARGS = -sv -uvm +incdir+$(UVM_HOME)/src $(DEFINE_ARGS)
-XCELIUM_RUN_ARGS = +UVM_TESTNAME=$(TEST) +UVM_VERBOSITY=UVM_MEDIUM
-
-# Available tests
-TESTS = ucie_sb_memory_test ucie_sb_config_test ucie_sb_mixed_test
 
 # Default target
-all: compile run
+all: compile
 
 # Compilation targets
 compile: compile_$(SIM)
 
 compile_vcs:
-	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -o ucie_sb_simv
+	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -o ucie_sb_agent
 
 compile_questa:
 	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(SOURCES)
-	vopt ucie_sb_testbench -o ucie_sb_testbench_opt
 
 compile_xcelium:
 	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES)
-	xmelab ucie_sb_testbench -access +rwc
 
-# Run targets
-run: run_$(SIM)
+# Syntax check targets
+syntax: syntax_$(SIM)
 
-run_vcs:
-	./ucie_sb_simv $(VCS_RUN_ARGS)
+syntax_vcs:
+	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -check_syntax
 
-run_questa:
-	vsim ucie_sb_testbench_opt -c -do "run -all; quit" $(QUESTA_RUN_ARGS)
+syntax_questa:
+	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(SOURCES) -work work
 
-run_xcelium:
-	xmsim ucie_sb_testbench $(XCELIUM_RUN_ARGS) -exit
-
-# Test-specific targets
-test_memory: 
-	$(MAKE) TEST=ucie_sb_memory_test run
-
-test_config:
-	$(MAKE) TEST=ucie_sb_config_test run
-
-test_mixed:
-	$(MAKE) TEST=ucie_sb_mixed_test run
-
-test_all:
-	@echo "Running all sideband tests..."
-	$(MAKE) TEST=ucie_sb_memory_test run
-	$(MAKE) TEST=ucie_sb_config_test run
-	$(MAKE) TEST=ucie_sb_mixed_test run
-
-# Debug targets (with GUI)
-debug: debug_$(SIM)
-
-debug_vcs:
-	./ucie_sb_simv $(VCS_RUN_ARGS) -gui
-
-debug_questa:
-	vsim ucie_sb_testbench_opt -gui $(QUESTA_RUN_ARGS)
-
-debug_xcelium:
-	xmsim ucie_sb_testbench $(XCELIUM_RUN_ARGS) -gui
-
-# Coverage targets
-coverage: coverage_$(SIM)
-
-coverage_vcs:
-	vcs $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -o ucie_sb_simv_cov -cm line+cond+fsm+tgl+branch
-	./ucie_sb_simv_cov $(VCS_RUN_ARGS) -cm line+cond+fsm+tgl+branch
-	urg -dir simv.vdb -report coverage_report
-
-coverage_questa:
-	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(SOURCES) +cover
-	vopt ucie_sb_testbench -o ucie_sb_testbench_cov +cover
-	vsim ucie_sb_testbench_cov -c -do "coverage save -onexit coverage.ucdb; run -all; quit" $(QUESTA_RUN_ARGS)
-	vcover report coverage.ucdb -html -htmldir coverage_report
-
-coverage_xcelium:
-	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES) -coverage all
-	xmelab ucie_sb_testbench -access +rwc -coverage all
-	xmsim ucie_sb_testbench $(XCELIUM_RUN_ARGS) -coverage all
-	imc -load cov_work/scope/test -execcmd "report -summary"
-
-# Lint targets
-lint: lint_$(SIM)
-
-lint_vcs:
-	vlogan $(VCS_ARGS) $(UVM_ARGS) $(SOURCES) -lint
-
-lint_questa:
-	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(SOURCES) -lint
-
-lint_xcelium:
-	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES) -lint
+syntax_xcelium:
+	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES) -elaborate
 
 # Clean targets
-clean: clean_$(SIM)
-
-clean_vcs:
-	rm -rf ucie_sb_simv* csrc *.daidir *.log *.vpd *.vcd ucli.key vc_hdrs.h
-	rm -rf simv.vdb coverage_report urgReport AN.DB
-
-clean_questa:
-	rm -rf work *.log *.wlf transcript *.vstf coverage.ucdb coverage_report
-
-clean_xcelium:
-	rm -rf xcelium.d *.log *.shm *.trn *.dsn cov_work imc.log
-
-clean_all:
-	$(MAKE) clean_vcs
-	$(MAKE) clean_questa  
-	$(MAKE) clean_xcelium
-	rm -rf *.vcd waves.vcd ucie_sb_waves.vcd
-
-# Regression target
-regress:
-	@echo "Running sideband regression suite..."
-	@echo "======================================="
-	@for test in $(TESTS); do \
-		echo "Running $$test..."; \
-		$(MAKE) TEST=$$test run || exit 1; \
-		echo "$$test PASSED"; \
-		echo ""; \
-	done
-	@echo "All tests PASSED!"
-
-# Synthesis check (if synthesis tools are available)
-synth_check:
-	@echo "Checking synthesizability of interface..."
-	# Add synthesis commands here if needed
+clean:
+	rm -rf simv* csrc* ucli* *.log *.vpd *.fsdb *.shm *.trn work* transcript *.wlf
+	rm -rf DVEfiles inter.vpd *.daidir *.history .vlogansetup.env .vlogansetup.args
+	rm -rf ucie_sb_agent ucie_sb_simv
 
 # Help target
 help:
-	@echo "Sideband UVM Agent Makefile"
-	@echo "==========================="
+	@echo "UCIe Sideband UVM Agent Makefile"
+	@echo "================================="
 	@echo "Available targets:"
-	@echo "  compile         - Compile the testbench"
-	@echo "  run             - Run the simulation"
-	@echo "  all             - Compile and run (default)"
-	@echo "  debug           - Run with GUI"
-	@echo "  coverage        - Run with coverage collection"
-	@echo "  lint            - Run linting checks"
-	@echo "  clean           - Clean generated files"
-	@echo "  clean_all       - Clean all simulator files"
-	@echo "  regress         - Run all tests"
-	@echo "  help            - Show this help"
+	@echo "  compile       - Compile core UVM agent (default: VCS)"
+	@echo "  syntax        - Check syntax only"
+	@echo "  clean         - Clean build artifacts"
+	@echo "  help          - Show this help"
 	@echo ""
-	@echo "Test-specific targets:"
-	@echo "  test_memory     - Run memory access test"
-	@echo "  test_config     - Run configuration test"
-	@echo "  test_mixed      - Run mixed traffic test"
-	@echo "  test_all        - Run all tests sequentially"
-	@echo ""
-	@echo "Supported simulators (set SIM variable):"
-	@echo "  vcs             - Synopsys VCS (default)"
-	@echo "  questa          - Mentor Questa"
-	@echo "  xcelium         - Cadence Xcelium"
-	@echo ""
-	@echo "Available tests (set TEST variable):"
-	@echo "  ucie_sb_memory_test  - Memory read/write operations (default)"
-	@echo "  ucie_sb_config_test  - Configuration register access"
-	@echo "  ucie_sb_mixed_test   - Mixed traffic patterns"
+	@echo "Simulator selection:"
+	@echo "  SIM=vcs       - Use Synopsys VCS (default)"
+	@echo "  SIM=questa    - Use Mentor Questa/ModelSim"
+	@echo "  SIM=xcelium   - Use Cadence Xcelium"
 	@echo ""
 	@echo "Options:"
-	@echo "  ENABLE_ASSERTIONS=1   - Enable protocol assertions (default: 1)"
+	@echo "  ENABLE_ASSERTIONS=1  - Enable sideband assertions (default)"
+	@echo "  ENABLE_ASSERTIONS=0  - Disable sideband assertions"
 	@echo ""
-	@echo "Examples:"
-	@echo "  make SIM=vcs TEST=ucie_sb_memory_test"
-	@echo "  make SIM=questa debug"
-	@echo "  make coverage"
-	@echo "  make regress"
-	@echo "  make source_sync_demo"
-	@echo "  make clock_pattern_demo"
-	@echo "  make clean_all"
+	@echo "Example usage:"
+	@echo "  make compile SIM=vcs"
+	@echo "  make syntax SIM=questa"
+	@echo "  make clean"
 
-# Wave viewing targets
-waves: waves_$(SIM)
-
-waves_vcs:
-	dve -vpd *.vpd &
-
-waves_questa:
-	vsim -view *.wlf &
-
-waves_xcelium:
-	simvision *.shm &
-
-# Source-synchronous example
-source_sync_demo:
-	@echo "Running source-synchronous demonstration..."
-	vcs -sverilog -ntb_opts uvm-1.2 +incdir+$(UVM_HOME)/src ucie_sb_source_sync_example.sv -o source_sync_demo
-	./source_sync_demo +UVM_VERBOSITY=UVM_LOW
-
-# Clock pattern example
-clock_pattern_demo:
-	@echo "Running clock pattern demonstration..."
-	vcs -sverilog -ntb_opts uvm-1.2 +incdir+$(UVM_HOME)/src ucie_sb_clock_pattern_example.sv -o clock_pattern_demo
-	./clock_pattern_demo +UVM_VERBOSITY=UVM_LOW +UVM_TESTNAME=ucie_sb_clock_pattern_test
-
-.PHONY: all compile run clean help debug coverage lint regress test_memory test_config test_mixed test_all waves synth_check source_sync_demo clock_pattern_demo
-.PHONY: compile_vcs compile_questa compile_xcelium run_vcs run_questa run_xcelium
-.PHONY: clean_vcs clean_questa clean_xcelium clean_all debug_vcs debug_questa debug_xcelium
-.PHONY: coverage_vcs coverage_questa coverage_xcelium lint_vcs lint_questa lint_xcelium
-.PHONY: waves_vcs waves_questa waves_xcelium
+.PHONY: all compile syntax clean help compile_vcs compile_questa compile_xcelium syntax_vcs syntax_questa syntax_xcelium

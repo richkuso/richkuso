@@ -16,30 +16,15 @@ ucie_sb_agent.sv
 # Main package file that includes all classes
 ucie_sb_pkg.sv
 
-# Test environment and classes
-ucie_sb_env_loopback.sv
-ucie_sb_base_test.sv
-ucie_sb_clock_pattern_test.sv
-ucie_sb_memory_test.sv
-ucie_sb_config_test.sv
-ucie_sb_sbinit_test.sv
-ucie_sb_mixed_test.sv
-ucie_sb_checker_test.sv
-
-# Test package
-ucie_sb_test_pkg.sv
-
-# Testbench files
-ucie_sb_testbench.sv
+# Checker components
+ucie_sb_reg_access_checker.sv
 
 # Example files (optional)
 ucie_sb_clock_pattern_example.sv
 ucie_sb_source_sync_example.sv
 ucie_sb_transaction_extern_example.sv
 
-# Checker components
-ucie_sb_reg_access_checker.sv
-ucie_sb_reg_checker_example.sv
+
 
 # Compilation example for VCS:
 # vcs -f ucie_sb_files.f +incdir+$UVM_HOME/src $UVM_HOME/src/uvm_pkg.sv -ntb_opts uvm-1.2

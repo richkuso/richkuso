@@ -91,11 +91,8 @@ graph LR
 │   ├── ucie_sb_pkg.sv                      # Package Definition (66 lines)
 │   └── ucie_sb_config.sv                   # Configuration Classes (277 lines)
 │
-├── 🧪 Verification Environment
-│   ├── ucie_sb_testbench.sv                # Complete Testbench (471 lines)
-│   ├── ucie_sb_model.sv                    # Sideband BFM Model (610 lines)
-│   ├── ucie_sb_model_test.sv               # Model Test Suite (394 lines)
-│   └── ucie_sb_reg_access_checker.sv       # Register Access Checker (860 lines)
+├── 🔍 Checker Components
+│   └── ucie_sb_reg_access_checker.sv       # Register Access Checker (1147 lines)
 │
 ├── 📚 Examples & Documentation
 │   ├── ucie_sb_source_sync_example.sv      # Source-sync Demo (155 lines)
@@ -491,35 +488,23 @@ endclass
 ### **⚡ Quick Commands**
 
 ```bash
-# 🚀 Quick start - compile and run
+# 🚀 Quick start - compile core agent
 make
 
-# 🎯 Run specific test
-make TEST=ucie_sb_memory_test
+# 🎯 Compile for specific simulator
+make compile SIM=vcs      # Synopsys VCS
+make compile SIM=questa   # Mentor Questa
+make compile SIM=xcelium  # Cadence Xcelium
 
-# 🔍 Debug with GUI
-make debug
-
-# 📊 Generate coverage
-make coverage
-
-# 🧪 Run all regression tests
-make regress
+# 🔍 Syntax check only
+make syntax
 
 # 🧹 Clean workspace
 make clean
+
+# ❓ Show help
+make help
 ```
-
-### **🎯 Available Tests**
-
-| Test Name | Description | Duration |
-|-----------|-------------|----------|
-| `ucie_sb_memory_test` | Memory read/write operations | ~2 min |
-| `ucie_sb_config_test` | Configuration register access | ~1 min |
-| `ucie_sb_mixed_test` | Mixed traffic patterns | ~3 min |
-| `ucie_sb_clock_pattern_test` | Clock pattern validation | ~30 sec |
-| `ucie_sb_performance_test` | High-throughput testing | ~5 min |
-| `ucie_sb_error_injection_test` | Error handling validation | ~2 min |
 
 ---
 
