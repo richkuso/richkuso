@@ -104,10 +104,7 @@ graph LR
 │   └── ucie_sb_transaction_extern_example.sv # Transaction Demo (292 lines)
 │
 └── 📖 Documentation
-    ├── ucie_sb_README.md                   # This comprehensive guide
-    ├── FINAL_CODE_REVIEW.md                # Complete code review results
-    ├── CLEANUP_SUMMARY.md                  # Code cleanup documentation
-    └── CLOCK_PATTERN_MIGRATION_SUMMARY.md  # Clock pattern migration guide
+    └── ucie_sb_README.md                   # This comprehensive guide
 ```
 
 ---
