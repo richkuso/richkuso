@@ -826,7 +826,7 @@ task ucie_sb_ltsm_model::send_oor_messages();
   
   while (!oor_received) begin
     oor_trans = ucie_sb_transaction::type_id::create("oor_trans");
-    oor_trans.opcode = MSG_VDM;
+    oor_trans.opcode = MESSAGE_NO_DATA;
     oor_trans.srcid = 3'h1;
     oor_trans.dstid = 3'h0;
     oor_trans.msgcode = cfg.sbinit_oor_msgcode;
@@ -858,7 +858,7 @@ task ucie_sb_ltsm_model::monitor_oor_messages();
   forever begin
     sb_agent.monitor.ap.get(received_trans);
     
-    if (received_trans.opcode == MSG_VDM && 
+    if (received_trans.opcode == MESSAGE_NO_DATA && 
         received_trans.msgcode == cfg.sbinit_oor_msgcode &&
         received_trans.msgsubcode == cfg.sbinit_oor_subcode) begin
       oor_received = 1;
@@ -881,7 +881,7 @@ task ucie_sb_ltsm_model::send_done_request();
   wait(oor_sent && oor_received);
   
   done_req_trans = ucie_sb_transaction::type_id::create("done_req_trans");
-  done_req_trans.opcode = MSG_VDM;
+  done_req_trans.opcode = MESSAGE_NO_DATA;
   done_req_trans.srcid = 3'h1;
   done_req_trans.dstid = 3'h2;
   done_req_trans.msgcode = cfg.sbinit_done_req_msgcode;
@@ -907,7 +907,7 @@ task ucie_sb_ltsm_model::monitor_done_request();
   forever begin
     sb_agent.monitor.ap.get(received_trans);
     
-    if (received_trans.opcode == MSG_VDM && 
+    if (received_trans.opcode == MESSAGE_NO_DATA && 
         received_trans.msgcode == cfg.sbinit_done_req_msgcode &&
         received_trans.msgsubcode == cfg.sbinit_done_subcode) begin
       done_req_received = 1;
@@ -930,7 +930,7 @@ task ucie_sb_ltsm_model::send_done_response();
   wait(done_req_received);
   
   done_resp_trans = ucie_sb_transaction::type_id::create("done_resp_trans");
-  done_resp_trans.opcode = MSG_VDM;
+  done_resp_trans.opcode = MESSAGE_NO_DATA;
   done_resp_trans.srcid = 3'h2;
   done_resp_trans.dstid = 3'h1;
   done_resp_trans.msgcode = cfg.sbinit_done_rsp_msgcode;
@@ -956,7 +956,7 @@ task ucie_sb_ltsm_model::monitor_done_response();
   forever begin
     sb_agent.monitor.ap.get(received_trans);
     
-    if (received_trans.opcode == MSG_VDM && 
+    if (received_trans.opcode == MESSAGE_NO_DATA && 
         received_trans.msgcode == cfg.sbinit_done_rsp_msgcode &&
         received_trans.msgsubcode == cfg.sbinit_done_subcode) begin
       done_resp_received = 1;

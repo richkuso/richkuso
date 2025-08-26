@@ -412,21 +412,21 @@ sequenceDiagram
 ```systemverilog
 // Create SBINIT Out of Reset message
 ucie_sb_transaction oor_msg = ucie_sb_transaction::type_id::create("oor_msg");
-oor_msg.opcode = MSG_VDM;
+oor_msg.opcode = MESSAGE_NO_DATA; // VDM messages use MESSAGE_NO_DATA opcode
 oor_msg.msgcode = 8'h91;        // SBINIT Out of Reset
 oor_msg.msgsubcode = 8'h00;     // Standard subcode
 oor_msg.msginfo = 16'h0001;     // Reserved[15:4] + Result[3:0] = success
 
 // Create SBINIT Done Request
 ucie_sb_transaction done_req = ucie_sb_transaction::type_id::create("done_req");
-done_req.opcode = MSG_VDM;
+done_req.opcode = MESSAGE_NO_DATA; // VDM messages use MESSAGE_NO_DATA opcode
 done_req.msgcode = 8'h95;       // SBINIT Done Request
 done_req.msgsubcode = 8'h01;    // Standard subcode
 done_req.msginfo = 16'h0000;    // No additional information
 
 // Create SBINIT Done Response
 ucie_sb_transaction done_resp = ucie_sb_transaction::type_id::create("done_resp");
-done_resp.opcode = MSG_VDM;
+done_resp.opcode = MESSAGE_NO_DATA; // VDM messages use MESSAGE_NO_DATA opcode
 done_resp.msgcode = 8'h9A;      // SBINIT Done Response
 done_resp.msgsubcode = 8'h01;   // Standard subcode
 done_resp.msginfo = 16'h0000;   // No additional information
