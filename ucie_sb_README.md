@@ -733,60 +733,155 @@ make help
 
 ### **🎯 LTSM Overview**
 
-The UCIe Sideband Agent includes a comprehensive **Link Training State Machine (LTSM)** model that implements the complete UCIe link training sequence from RESET state to SBINIT state according to UCIe 1.1 specification.
+The UCIe Sideband Agent includes a **production-grade Link Training State Machine (LTSM)** model that implements the complete UCIe sideband link training sequence with simplified **RESET → SBINIT → TRAINING** flow according to UCIe specification requirements.
 
 ### **🏗️ LTSM Architecture**
 
 ```
-RESET → DETECT → POLLING → CONFIGURATION → SBINIT → ACTIVE
+RESET → SBINIT → TRAINING
 ```
 
-| State | Description | Duration | Key Activities |
-|-------|-------------|----------|----------------|
-| **RESET** | Initial reset state | Until reset deassert | All signals idle |
-| **DETECT** | Clock pattern detection | ~5ms | Send/detect clock patterns |
-| **POLLING** | Bidirectional handshake | ~10ms | Exchange polling patterns |
-| **CONFIG** | Parameter negotiation | ~2ms | Configuration transactions |
-| **SBINIT** | Training completion | ~1ms | SBINIT message exchange |
-| **ACTIVE** | Normal operation | Continuous | Data transactions |
+| State | Description | Trigger | Key Activities |
+|-------|-------------|---------|----------------|
+| **RESET** | Initial reset state | `start_link_training` bit or clock pattern detection | Wait for training initiation |
+| **SBINIT** | Complete training sequence | Automatic from RESET triggers | Clock patterns + SBINIT message exchange |
+| **TRAINING** | Training completion state | SBINIT protocol complete | Ready for normal operation |
 
 ### **🚀 LTSM Features**
 
-- **✅ FSM-Based Design** - Clean state machine architecture
-- **✅ Dual Role Support** - Both initiator and target roles
-- **✅ UCIe 1.1 Compliant** - Full specification adherence
-- **✅ Integrated Agent** - Uses existing sideband UVM agent
-- **✅ Comprehensive Logging** - Detailed state transition tracking
-- **✅ Timeout Protection** - Configurable timeout handling
-- **✅ Statistics Collection** - Performance and error analysis
+- **✅ Simplified FSM Design** - Clean 3-state architecture for efficiency
+- **✅ Trigger-Based Initiation** - External control via `start_link_training` bit
+- **✅ Automatic Clock Detection** - Training starts on incoming clock patterns
+- **✅ UCIe Protocol Compliant** - Full SBINIT message sequence implementation
+- **✅ Integrated Agent** - Uses existing sideband UVM agent for TX/RX
+- **✅ Parallel Processing** - Concurrent TX/RX operations for efficiency
+- **✅ Comprehensive Logging** - Detailed state transition and protocol tracking
+- **✅ Timeout Protection** - Configurable timeout handling with error recovery
+- **✅ Statistics Collection** - Performance analysis and error tracking
 
-### **📋 LTSM Usage Example**
+### **📋 SBINIT Protocol Implementation**
 
+The LTSM model implements the complete SBINIT protocol sequence:
+
+#### **Phase 1: Clock Pattern Exchange**
+- **Continuous Transmission**: Send clock patterns until back-to-back detection
+- **Back-to-Back Detection**: Monitor for consecutive clock patterns from remote
+- **Final Patterns**: Send exactly 4 more patterns after detection, then stop
+
+#### **Phase 2: SBINIT Message Exchange**
+- **Out of Reset Messages**: Exchange OOR messages with `result=1`
+- **Done Request**: Send Done Request when OOR exchange complete
+- **Done Response**: Send/receive Done Response to complete training
+
+#### **Phase 3: Training Completion**
+- **State Transition**: Move to TRAINING state when protocol complete
+- **Statistics Collection**: Comprehensive timing and error analysis
+
+### **📋 LTSM Configuration and Usage**
+
+#### **Configuration Class**
+```systemverilog
+// Create and configure LTSM
+ucie_sb_ltsm_config ltsm_cfg = ucie_sb_ltsm_config::type_id::create("ltsm_cfg");
+ltsm_cfg.set_fast_config();        // Fast simulation mode
+// ltsm_cfg.set_debug_config();    // Debug mode with extended timeouts
+
+// Set configuration parameters
+ltsm_cfg.timeout_ms = 10.0;                  // State timeout
+ltsm_cfg.final_clock_patterns = 4;           // Final patterns after back-to-back
+ltsm_cfg.back_to_back_threshold = 2;         // Consecutive pattern threshold
+ltsm_cfg.sbinit_oor_msgcode = 8'h91;         // SBINIT OOR message code
+ltsm_cfg.sbinit_done_req_msgcode = 8'h95;    // SBINIT Done Request
+ltsm_cfg.sbinit_done_rsp_msgcode = 8'h9A;    // SBINIT Done Response
+```
+
+#### **LTSM Model Usage**
 ```systemverilog
 // Create LTSM model
 ucie_sb_ltsm_model ltsm_model = ucie_sb_ltsm_model::type_id::create("ltsm_model", this);
 
-// Configure as initiator
-ltsm_model.is_initiator = 1;
-ltsm_model.enable_debug = 1;
-ltsm_model.timeout_ms = 10.0;
-
-// Set virtual interface
+// Set configuration and virtual interface
+uvm_config_db#(ucie_sb_ltsm_config)::set(this, "ltsm_model", "cfg", ltsm_cfg);
 uvm_config_db#(virtual ucie_sb_inf)::set(this, "ltsm_model", "vif", sb_vif);
 
-// Training will start automatically in run_phase
-// Monitor completion: wait(ltsm_model.current_state == LTSM_ACTIVE);
+// Trigger training initiation
+ltsm_model.set_start_link_training();
+
+// Monitor training completion
+wait(ltsm_model.current_state == LTSM_TRAINING);
+`uvm_info("TEST", "Link training completed successfully!", UVM_LOW)
 ```
 
-### **🎮 LTSM Demo**
+#### **External Control Interface**
+```systemverilog
+// Manual training control
+ltsm_model.set_start_link_training();    // Start training
+ltsm_model.clear_start_link_training();  // Clear trigger
 
-Run the complete LTSM demonstration:
+// Status monitoring
+if (ltsm_model.current_state == LTSM_TRAINING) begin
+  // Training completed successfully
+end
+```
+
+### **🎮 LTSM Demo and Examples**
+
+The LTSM implementation includes a complete demonstration environment:
+
+#### **LTSM Example Components**
+- **`ucie_sb_ltsm_example.sv`**: Complete UVM test environment
+  - `ucie_sb_ltsm_env`: Dual LTSM model environment (initiator + target)
+  - `ucie_sb_ltsm_test`: UVM test with reset sequence and result reporting
+  - `ucie_sb_ltsm_testbench`: Top-level module with cross-connected interfaces
+
+#### **Running LTSM Demonstration**
 ```bash
 # Compile LTSM example
 make compile_ltsm
 
 # Run LTSM training demo
 make run_ltsm_demo
+
+# View waveforms (generates ucie_sb_ltsm_waves.vcd)
+gtkwave ucie_sb_ltsm_waves.vcd
+```
+
+#### **Expected Demo Output**
+```
+LTSM_MODEL: State transition: RESET → SBINIT (duration: 0.100ms)
+LTSM_MODEL: Back-to-back clock patterns detected - sending 4 final patterns
+LTSM_MODEL: SBINIT OOR exchange complete
+LTSM_MODEL: Sent SBINIT Done Request message
+LTSM_MODEL: Received SBINIT Done Response message
+LTSM_MODEL: State transition: SBINIT → TRAINING (duration: 5.250ms)
+LTSM_TEST: Link training completed successfully!
+```
+
+#### **Integration with Existing Tests**
+The LTSM model can be easily integrated into existing UVM environments:
+
+```systemverilog
+class my_test extends uvm_test;
+  ucie_sb_ltsm_model ltsm;
+  
+  virtual function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    ltsm = ucie_sb_ltsm_model::type_id::create("ltsm", this);
+  endfunction
+  
+  virtual task run_phase(uvm_phase phase);
+    phase.raise_objection(this);
+    
+    // Start training
+    ltsm.set_start_link_training();
+    
+    // Wait for completion
+    wait(ltsm.current_state == LTSM_TRAINING);
+    
+    // Continue with normal test operations
+    phase.drop_objection(this);
+  endtask
+endclass
 ```
 
 ---
