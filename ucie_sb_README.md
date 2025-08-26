@@ -93,13 +93,15 @@ graph LR
 │
 ├── 🧪 Environment & Checker Components
 │   ├── ucie_sb_env_loopback.sv             # Loopback Environment (82 lines)
-│   └── ucie_sb_reg_access_checker.sv       # Register Access Checker (1147 lines)
+│   ├── ucie_sb_reg_access_checker.sv       # Register Access Checker (1147 lines)
+│   └── ucie_sb_ltsm_model.sv               # Link Training State Machine (650+ lines)
 │
 ├── 📚 Examples & Documentation
 │   ├── ucie_sb_source_sync_example.sv      # Source-sync Demo (155 lines)
 │   ├── ucie_sb_clock_pattern_example.sv    # Clock Pattern Demo (243 lines)
 │   ├── ucie_sb_reg_checker_example.sv      # Register Checker Demo (324 lines)
-│   └── ucie_sb_transaction_extern_example.sv # Transaction Demo (292 lines)
+│   ├── ucie_sb_transaction_extern_example.sv # Transaction Demo (292 lines)
+│   └── ucie_sb_ltsm_example.sv             # LTSM Training Demo (280+ lines)
 │
 └── 📖 Documentation
     └── ucie_sb_README.md                   # This comprehensive guide
@@ -505,6 +507,68 @@ make clean
 
 # ❓ Show help
 make help
+```
+
+---
+
+## 🔄 **UCIe Link Training State Machine (LTSM)**
+
+### **🎯 LTSM Overview**
+
+The UCIe Sideband Agent includes a comprehensive **Link Training State Machine (LTSM)** model that implements the complete UCIe link training sequence from RESET state to SBINIT state according to UCIe 1.1 specification.
+
+### **🏗️ LTSM Architecture**
+
+```
+RESET → DETECT → POLLING → CONFIGURATION → SBINIT → ACTIVE
+```
+
+| State | Description | Duration | Key Activities |
+|-------|-------------|----------|----------------|
+| **RESET** | Initial reset state | Until reset deassert | All signals idle |
+| **DETECT** | Clock pattern detection | ~5ms | Send/detect clock patterns |
+| **POLLING** | Bidirectional handshake | ~10ms | Exchange polling patterns |
+| **CONFIG** | Parameter negotiation | ~2ms | Configuration transactions |
+| **SBINIT** | Training completion | ~1ms | SBINIT message exchange |
+| **ACTIVE** | Normal operation | Continuous | Data transactions |
+
+### **🚀 LTSM Features**
+
+- **✅ FSM-Based Design** - Clean state machine architecture
+- **✅ Dual Role Support** - Both initiator and target roles
+- **✅ UCIe 1.1 Compliant** - Full specification adherence
+- **✅ Integrated Agent** - Uses existing sideband UVM agent
+- **✅ Comprehensive Logging** - Detailed state transition tracking
+- **✅ Timeout Protection** - Configurable timeout handling
+- **✅ Statistics Collection** - Performance and error analysis
+
+### **📋 LTSM Usage Example**
+
+```systemverilog
+// Create LTSM model
+ucie_sb_ltsm_model ltsm_model = ucie_sb_ltsm_model::type_id::create("ltsm_model", this);
+
+// Configure as initiator
+ltsm_model.is_initiator = 1;
+ltsm_model.enable_debug = 1;
+ltsm_model.timeout_ms = 10.0;
+
+// Set virtual interface
+uvm_config_db#(virtual ucie_sb_inf)::set(this, "ltsm_model", "vif", sb_vif);
+
+// Training will start automatically in run_phase
+// Monitor completion: wait(ltsm_model.current_state == LTSM_ACTIVE);
+```
+
+### **🎮 LTSM Demo**
+
+Run the complete LTSM demonstration:
+```bash
+# Compile LTSM example
+make compile_ltsm
+
+# Run LTSM training demo
+make run_ltsm_demo
 ```
 
 ---

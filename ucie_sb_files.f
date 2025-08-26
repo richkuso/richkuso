@@ -20,10 +20,14 @@ ucie_sb_pkg.sv
 ucie_sb_env_loopback.sv
 ucie_sb_reg_access_checker.sv
 
+# LTSM (Link Training State Machine) components
+ucie_sb_ltsm_model.sv
+
 # Example files (optional)
 ucie_sb_clock_pattern_example.sv
 ucie_sb_source_sync_example.sv
 ucie_sb_transaction_extern_example.sv
+ucie_sb_ltsm_example.sv
 
 
 

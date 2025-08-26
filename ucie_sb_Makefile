@@ -7,6 +7,9 @@ SIM ?= vcs
 # Core source files (no tests)
 SOURCES = ucie_sb_inf.sv ucie_sb_pkg.sv
 
+# LTSM example files
+LTSM_SOURCES = ucie_sb_inf.sv ucie_sb_pkg.sv ucie_sb_ltsm_model.sv ucie_sb_ltsm_example.sv
+
 # Common UVM arguments
 UVM_HOME ?= $(VCS_HOME)/etc/uvm-1.2
 UVM_ARGS = +incdir+$(UVM_HOME)/src $(UVM_HOME)/src/uvm_pkg.sv
@@ -43,6 +46,30 @@ compile_questa:
 compile_xcelium:
 	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(SOURCES)
 
+# LTSM compilation targets
+compile_ltsm: compile_ltsm_$(SIM)
+
+compile_ltsm_vcs:
+	vcs $(VCS_ARGS) $(UVM_ARGS) $(LTSM_SOURCES) -o ucie_sb_ltsm
+
+compile_ltsm_questa:
+	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(LTSM_SOURCES)
+
+compile_ltsm_xcelium:
+	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(LTSM_SOURCES)
+
+# LTSM demo targets
+run_ltsm_demo: run_ltsm_demo_$(SIM)
+
+run_ltsm_demo_vcs: compile_ltsm_vcs
+	./ucie_sb_ltsm +UVM_TESTNAME=ucie_sb_ltsm_test +UVM_VERBOSITY=UVM_MEDIUM
+
+run_ltsm_demo_questa: compile_ltsm_questa
+	vsim ucie_sb_ltsm_testbench -c -do "run -all; quit" +UVM_TESTNAME=ucie_sb_ltsm_test +UVM_VERBOSITY=UVM_MEDIUM
+
+run_ltsm_demo_xcelium: compile_ltsm_xcelium
+	xmsim ucie_sb_ltsm_testbench +UVM_TESTNAME=ucie_sb_ltsm_test +UVM_VERBOSITY=UVM_MEDIUM -exit
+
 # Syntax check targets
 syntax: syntax_$(SIM)
 
@@ -59,7 +86,7 @@ syntax_xcelium:
 clean:
 	rm -rf simv* csrc* ucli* *.log *.vpd *.fsdb *.shm *.trn work* transcript *.wlf
 	rm -rf DVEfiles inter.vpd *.daidir *.history .vlogansetup.env .vlogansetup.args
-	rm -rf ucie_sb_agent ucie_sb_simv
+	rm -rf ucie_sb_agent ucie_sb_simv ucie_sb_ltsm *.vcd
 
 # Help target
 help:
@@ -67,6 +94,8 @@ help:
 	@echo "================================="
 	@echo "Available targets:"
 	@echo "  compile       - Compile core UVM agent (default: VCS)"
+	@echo "  compile_ltsm  - Compile LTSM example"
+	@echo "  run_ltsm_demo - Run LTSM training demonstration"
 	@echo "  syntax        - Check syntax only"
 	@echo "  clean         - Clean build artifacts"
 	@echo "  help          - Show this help"
@@ -82,6 +111,8 @@ help:
 	@echo ""
 	@echo "Example usage:"
 	@echo "  make compile SIM=vcs"
+	@echo "  make compile_ltsm SIM=vcs"
+	@echo "  make run_ltsm_demo SIM=vcs"
 	@echo "  make syntax SIM=questa"
 	@echo "  make clean"
 
