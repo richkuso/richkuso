@@ -16,7 +16,8 @@ ucie_sb_agent.sv
 # Main package file that includes all classes
 ucie_sb_pkg.sv
 
-# Checker components
+# Environment and checker components
+ucie_sb_env_loopback.sv
 ucie_sb_reg_access_checker.sv
 
 # Example files (optional)

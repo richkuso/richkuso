@@ -91,7 +91,8 @@ graph LR
 │   ├── ucie_sb_pkg.sv                      # Package Definition (66 lines)
 │   └── ucie_sb_config.sv                   # Configuration Classes (277 lines)
 │
-├── 🔍 Checker Components
+├── 🧪 Environment & Checker Components
+│   ├── ucie_sb_env_loopback.sv             # Loopback Environment (82 lines)
 │   └── ucie_sb_reg_access_checker.sv       # Register Access Checker (1147 lines)
 │
 ├── 📚 Examples & Documentation
