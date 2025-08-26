@@ -1,37 +1,31 @@
 /*******************************************************************************
- * UCIe Sideband Transaction Interceptor
+ * UCIe Sideband Transaction Interceptor - FIFO-Based Architecture
  * 
  * OVERVIEW:
- *   Advanced UVM component for UCIe (Universal Chiplet Interconnect Express)
- *   sideband transaction interception and modification. Monitors CFG_READ_32B
- *   transactions and provides intelligent completion handling with configurable
- *   response modification capabilities.
+ *   FIFO-based UVM component for UCIe (Universal Chiplet Interconnect Express)
+ *   sideband transaction interception using analysis ports and TLM FIFOs.
+ *   Provides intelligent COMPLETION_32B interception based on matching CFG_READ
+ *   transactions with sequencer-based output.
  *
- * KEY CAPABILITIES:
- *   • CFG_READ_32B transaction detection and tracking
- *   • COMPLETION_32B transaction interception on RX path  
- *   • Configurable transaction matching criteria (address, tag, srcid)
- *   • Custom completion generation for matched transactions
- *   • Transparent pass-through for non-matching transactions
- *   • Comprehensive transaction logging and statistics
+ * ARCHITECTURE COMPONENTS:
+ *   • SBTX Analysis Port: Receives TX transactions from sideband TX monitor
+ *   • SBRX Analysis Port: Receives RX transactions from sideband RX monitor  
+ *   • TX FIFO: Stores TX transactions for processing
+ *   • RX FIFO: Stores RX transactions for processing
+ *   • SBRX Sequencer: Outputs processed transactions to sideband RX driver
+ *   • Stored Transaction: Latest matching CFG_READ for interception logic
  *
- * INTERCEPTION ARCHITECTURE:
- *   • TX path monitoring for CFG read request detection
- *   • RX path monitoring for completion interception
- *   • Pending transaction tracking with timeout management
- *   • Custom completion generation with configurable responses
- *   • Statistics collection and performance monitoring
+ * MAIN FUNCTIONS:
+ *   1. Collect transactions from TX/RX analysis ports into FIFOs
+ *   2. Process TX FIFO for CFG_READ address matching
+ *   3. Process RX FIFO for COMPLETION_32B interception/bypass
+ *   4. Send processed transactions to sequencer for driving
  *
- * MATCHING CRITERIA:
- *   • Address-based matching with configurable ranges
- *   • Source ID filtering for targeted interception
- *   • Tag-based matching for specific transaction flows
- *   • Combined criteria support for complex scenarios
- *
- * OPERATIONAL MODES:
- *   • Active Mode: Full interception with custom responses
- *   • Pass-through Mode: Transparent forwarding for debugging
- *   • Debug Mode: Enhanced logging and extended timeouts
+ * INTERCEPTION LOGIC:
+ *   • TX CFG_READ matches address → Store transaction, intercept next COMPLETION
+ *   • TX CFG_READ no match → Pass through RX transactions directly
+ *   • RX COMPLETION_32B + stored match → Revise data and update parity
+ *   • All other RX transactions → Pass through to sequencer
  *
  * COMPLIANCE:
  *   • IEEE 1800-2017 SystemVerilog
@@ -39,15 +33,14 @@
  *   • UCIe 1.1 specification
  *
  * AUTHOR: UCIe Sideband UVM Agent
- * VERSION: 1.0 - Production-grade transaction interceptor
+ * VERSION: 2.0 - FIFO-based interceptor architecture
  ******************************************************************************/
 
 /*-----------------------------------------------------------------------------
- * INTERCEPTOR CONFIGURATION CLASS
+ * FIFO-BASED INTERCEPTOR CONFIGURATION CLASS
  * 
- * Comprehensive configuration management for transaction interception behavior.
- * Provides centralized control over matching criteria, response generation,
- * and operational modes with preset configurations.
+ * Configuration management for FIFO-based transaction interception with
+ * address matching criteria and completion revision parameters.
  *-----------------------------------------------------------------------------*/
 
 class ucie_sb_interceptor_config extends uvm_object;
@@ -55,7 +48,7 @@ class ucie_sb_interceptor_config extends uvm_object;
   
   /*---------------------------------------------------------------------------
    * OPERATIONAL MODE CONTROL
-   * Interception behavior and component operation control
+   * Interceptor behavior and component operation control
    *---------------------------------------------------------------------------*/
   
   bit enable_interception = 1;             // Enable transaction interception
@@ -64,42 +57,33 @@ class ucie_sb_interceptor_config extends uvm_object;
   bit pass_through_mode = 0;               // Pass-through mode (no interception)
   
   /*---------------------------------------------------------------------------
-   * MATCHING CRITERIA CONFIGURATION
-   * Configurable parameters for transaction identification and filtering
+   * CFG_READ MATCHING CRITERIA
+   * Address-based matching for CFG_READ transaction identification
    *---------------------------------------------------------------------------*/
   
-  // Address-based matching
-  bit [23:0] match_addr_base = 24'h100000;  // Base address for interception
-  bit [23:0] match_addr_mask = 24'hFFF000;  // Address mask (4KB blocks)
-  bit enable_addr_match = 1;                // Enable address matching
-  
-  // Source ID matching  
-  bit [2:0] match_srcid = 3'h1;            // Source ID to match
-  bit enable_srcid_match = 0;              // Enable source ID matching
-  
-  // Tag-based matching
-  bit [4:0] match_tag_base = 5'h10;        // Base tag for matching
-  bit [4:0] match_tag_mask = 5'h1F;        // Tag mask
-  bit enable_tag_match = 0;                // Enable tag matching
+  bit [23:0] cfg_read_addr_base = 24'h100000;  // Base address for CFG_READ matching
+  bit [23:0] cfg_read_addr_mask = 24'hFFF000;  // Address mask (4KB blocks)
+  bit enable_addr_match = 1;                   // Enable address matching
   
   /*---------------------------------------------------------------------------
-   * COMPLETION GENERATION PARAMETERS
-   * Custom completion response configuration and control
+   * COMPLETION REVISION PARAMETERS
+   * Custom data and parity generation for intercepted completions
    *---------------------------------------------------------------------------*/
   
   bit [31:0] custom_completion_data = 32'hDEADBEEF; // Custom completion data
   bit [2:0] custom_completion_status = 3'b000;      // Success status
   bit generate_error_completion = 0;                // Generate error completions
   bit [2:0] error_status = 3'b001;                 // Error status code
+  bit auto_update_parity = 1;                       // Automatically update parity
   
   /*---------------------------------------------------------------------------
-   * TIMING AND PERFORMANCE PARAMETERS
-   * Timing control and performance optimization settings
+   * FIFO CONFIGURATION PARAMETERS
+   * FIFO sizing and timeout parameters
    *---------------------------------------------------------------------------*/
   
-  int completion_delay_cycles = 10;        // Delay before sending completion
-  int max_pending_transactions = 16;       // Maximum pending transaction tracking
-  real timeout_ns = 1000.0;               // Transaction timeout in nanoseconds
+  int tx_fifo_size = 16;                   // TX FIFO depth
+  int rx_fifo_size = 16;                   // RX FIFO depth
+  real processing_delay_ns = 10.0;         // Processing delay between transactions
   
   /*---------------------------------------------------------------------------
    * CONSTRUCTOR - Initialize configuration with standard defaults
@@ -110,13 +94,12 @@ class ucie_sb_interceptor_config extends uvm_object;
   
   /*---------------------------------------------------------------------------
    * CONFIGURATION METHOD DECLARATIONS
-   * External methods for preset configurations and parameter management
+   * External methods for configuration management
    *---------------------------------------------------------------------------*/
   
-  extern function void set_address_range(bit [23:0] base_addr, bit [23:0] size);
+  extern function void set_cfg_read_address(bit [23:0] addr, bit [23:0] mask);
   extern function void set_custom_data(bit [31:0] data);
-  extern function void set_pass_through_mode();
-  extern function void set_debug_mode();
+  extern function void set_fifo_sizes(int tx_size, int rx_size);
   extern function void print_config();
 
 endclass : ucie_sb_interceptor_config
@@ -163,24 +146,46 @@ class ucie_sb_pending_transaction extends uvm_object;
 endclass : ucie_sb_pending_transaction
 
 /*******************************************************************************
- * MAIN INTERCEPTOR CLASS
+ * FIFO-BASED TRANSACTION INTERCEPTOR
  * 
- * Core UCIe sideband transaction interceptor providing intelligent transaction
- * monitoring, interception, and modification with comprehensive configuration
- * and debugging capabilities for verification environments.
+ * Main interceptor component using FIFO-based architecture for transaction
+ * collection, processing, and sequencer-based output with intelligent
+ * COMPLETION_32B interception based on CFG_READ matching.
  ******************************************************************************/
 
 class ucie_sb_transaction_interceptor extends uvm_component;
   `uvm_component_utils(ucie_sb_transaction_interceptor)
   
   /*---------------------------------------------------------------------------
-   * INTERCEPTOR INFRASTRUCTURE
-   * Core components for agent integration and interface management
+   * ANALYSIS PORT INTERFACES
+   * Input analysis ports for TX and RX transaction collection
    *---------------------------------------------------------------------------*/
   
-  ucie_sb_agent tx_agent;                 // TX path agent (monitor CFG reads)
-  ucie_sb_agent rx_agent;                 // RX path agent (monitor completions)
-  ucie_sb_agent driver_agent;             // Driver agent (send responses)
+  uvm_analysis_imp_sbtx #(ucie_sb_transaction, ucie_sb_transaction_interceptor) sbtx_ap;
+  uvm_analysis_imp_sbrx #(ucie_sb_transaction, ucie_sb_transaction_interceptor) sbrx_ap;
+  
+  /*---------------------------------------------------------------------------
+   * FIFO INFRASTRUCTURE
+   * TLM FIFOs for transaction storage and processing
+   *---------------------------------------------------------------------------*/
+  
+  uvm_tlm_fifo #(ucie_sb_transaction) tx_fifo;     // TX transaction FIFO
+  uvm_tlm_fifo #(ucie_sb_transaction) rx_fifo;     // RX transaction FIFO
+  
+  /*---------------------------------------------------------------------------
+   * SEQUENCER INTERFACE
+   * Output sequencer for processed transaction driving
+   *---------------------------------------------------------------------------*/
+  
+  ucie_sb_sequencer sbrx_sequencer;                // SBRX sequencer for output
+  
+  /*---------------------------------------------------------------------------
+   * STORED TRANSACTION STATE
+   * Latest matching CFG_READ transaction for interception logic
+   *---------------------------------------------------------------------------*/
+  
+  ucie_sb_transaction stored_cfg_read;             // Stored CFG_READ transaction
+  bit cfg_read_stored = 0;                         // Flag indicating stored CFG_READ
   
   /*---------------------------------------------------------------------------
    * CONFIGURATION AND CONNECTIVITY
@@ -189,48 +194,30 @@ class ucie_sb_transaction_interceptor extends uvm_component;
   
   ucie_sb_interceptor_config cfg;
   
-  // Analysis ports for transaction monitoring
-  uvm_analysis_port #(ucie_sb_transaction) tx_monitor_ap;
-  uvm_analysis_port #(ucie_sb_transaction) rx_monitor_ap;
-  uvm_analysis_port #(ucie_sb_transaction) intercepted_ap;
-  
-  /*---------------------------------------------------------------------------
-   * TRANSACTION TRACKING AND MANAGEMENT
-   * Simplified state management for latest CFG_READ matching
-   *---------------------------------------------------------------------------*/
-  
-  // Latest CFG_READ state management
-  ucie_sb_transaction latest_cfg_read;    // Latest matched CFG_READ transaction
-  bit ready_for_completion = 0;           // Flag indicating ready to intercept COMPLETION
-  
-  // Transaction processing synchronization
-  semaphore completion_sem;               // Completion processing semaphore
-  event cfg_read_matched_event;           // CFG read matched and stored
-  event completion_processed_event;       // Completion processed
-  
   /*---------------------------------------------------------------------------
    * STATISTICS AND ANALYSIS INFRASTRUCTURE
    * Performance monitoring and interception statistics collection
    *---------------------------------------------------------------------------*/
   
   // Transaction counters
-  int matched_cfg_reads = 0;              // CFG_READs that matched criteria
-  int ignored_cfg_reads = 0;              // CFG_READs that didn't match criteria
-  int completions_intercepted = 0;        // COMPLETION_32B intercepted and revised
-  int completions_bypassed = 0;           // COMPLETION_32B forwarded unchanged
-  int other_transactions_bypassed = 0;    // All other transaction types bypassed
+  int tx_transactions_received = 0;        // TX transactions received via AP
+  int rx_transactions_received = 0;        // RX transactions received via AP
+  int cfg_reads_matched = 0;               // CFG_READs that matched address
+  int cfg_reads_ignored = 0;               // CFG_READs that didn't match
+  int completions_intercepted = 0;         // COMPLETION_32B intercepted and revised
+  int completions_bypassed = 0;            // COMPLETION_32B forwarded unchanged
+  int other_transactions_bypassed = 0;     // All other transaction types bypassed
   
   // Performance metrics
-  realtime total_intercept_time = 0;      // Total interception processing time
-  realtime max_intercept_time = 0;        // Maximum interception time
-  realtime min_intercept_time = 0;        // Minimum interception time
+  realtime total_processing_time = 0;      // Total processing time
+  realtime max_processing_time = 0;        // Maximum processing time
+  realtime min_processing_time = 0;        // Minimum processing time
   
   /*---------------------------------------------------------------------------
-   * CONSTRUCTOR - Initialize interceptor component
+   * CONSTRUCTOR - Initialize FIFO interceptor component
    *---------------------------------------------------------------------------*/
   function new(string name = "ucie_sb_transaction_interceptor", uvm_component parent = null);
     super.new(name, parent);
-    completion_sem = new(1);
   endfunction
   
   /*---------------------------------------------------------------------------
@@ -240,17 +227,16 @@ class ucie_sb_transaction_interceptor extends uvm_component;
   
   extern virtual function void build_phase(uvm_phase phase);
   extern virtual function void connect_phase(uvm_phase phase);
-  extern virtual function void end_of_elaboration_phase(uvm_phase phase);
   extern virtual task run_phase(uvm_phase phase);
   extern virtual function void report_phase(uvm_phase phase);
-  extern virtual task monitor_tx_transactions();
-  extern virtual task monitor_rx_transactions();
-  extern virtual task process_cfg_read(ucie_sb_transaction trans);
-  extern virtual task process_rx_transaction(ucie_sb_transaction trans);
-  extern virtual function bit matches_criteria(ucie_sb_transaction trans);
-  extern virtual function bit completion_matches_latest_cfg_read(ucie_sb_transaction completion);
-  extern virtual function ucie_sb_transaction generate_revised_completion(ucie_sb_transaction original);
-  extern virtual task send_to_driver(ucie_sb_transaction trans);
+  extern virtual function void write_sbtx(ucie_sb_transaction trans);
+  extern virtual function void write_sbrx(ucie_sb_transaction trans);
+  extern virtual task process_transactions();
+  extern virtual task process_tx_transaction(ucie_sb_transaction tx_trans);
+  extern virtual task process_rx_transaction(ucie_sb_transaction rx_trans);
+  extern virtual function bit cfg_read_matches_address(ucie_sb_transaction trans);
+  extern virtual function ucie_sb_transaction revise_completion(ucie_sb_transaction completion);
+  extern virtual task send_to_sequencer(ucie_sb_transaction trans);
   extern virtual function void set_default_config();
   extern virtual function void print_statistics();
 
@@ -261,74 +247,53 @@ endclass : ucie_sb_transaction_interceptor
  ******************************************************************************/
 
 /*---------------------------------------------------------------------------
- * SET ADDRESS RANGE CONFIGURATION
+ * SET CFG_READ ADDRESS CONFIGURATION
  * 
- * Configures address-based matching with base address and size parameters.
- * Automatically calculates appropriate mask for the specified size.
+ * Configures address-based matching for CFG_READ transactions with
+ * base address and mask parameters.
  *---------------------------------------------------------------------------*/
-function void ucie_sb_interceptor_config::set_address_range(bit [23:0] base_addr, bit [23:0] size);
-  match_addr_base = base_addr;
-  // Calculate mask based on size (power of 2 alignment)
-  match_addr_mask = ~(size - 1);
+function void ucie_sb_interceptor_config::set_cfg_read_address(bit [23:0] addr, bit [23:0] mask);
+  cfg_read_addr_base = addr;
+  cfg_read_addr_mask = mask;
   enable_addr_match = 1;
-  `uvm_info("INTERCEPTOR_CONFIG", $sformatf("Set address range: base=0x%06h, size=0x%06h, mask=0x%06h", 
-            base_addr, size, match_addr_mask), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR_CONFIG", $sformatf("Set CFG_READ address: base=0x%06h, mask=0x%06h", 
+            addr, mask), UVM_LOW)
 endfunction
 
 /*---------------------------------------------------------------------------
  * SET CUSTOM COMPLETION DATA
  * 
  * Configures custom data value for intercepted completion responses.
- * Enables custom completion generation mode.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_interceptor_config::set_custom_data(bit [31:0] data);
   custom_completion_data = data;
-  `uvm_info("INTERCEPTOR_CONFIG", $sformatf("Set custom completion data: 0x%08h", data), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR_CONFIG", $sformatf("Set custom completion data: 0x%08h", data), UVM_LOW)
 endfunction
 
 /*---------------------------------------------------------------------------
- * SET PASS-THROUGH MODE
+ * SET FIFO SIZES
  * 
- * Configures interceptor for pass-through operation where all transactions
- * are forwarded without modification. Useful for debugging and testing.
+ * Configures TX and RX FIFO depths for transaction buffering.
  *---------------------------------------------------------------------------*/
-function void ucie_sb_interceptor_config::set_pass_through_mode();
-  pass_through_mode = 1;
-  enable_interception = 0;
-  `uvm_info("INTERCEPTOR_CONFIG", "Configured for pass-through mode", UVM_LOW)
-endfunction
-
-/*---------------------------------------------------------------------------
- * SET DEBUG MODE
- * 
- * Enables comprehensive debug logging and extended timeout for development
- * and analysis purposes.
- *---------------------------------------------------------------------------*/
-function void ucie_sb_interceptor_config::set_debug_mode();
-  enable_debug = 1;
-  enable_statistics = 1;
-  timeout_ns = 10000.0;  // Extended timeout for debug
-  `uvm_info("INTERCEPTOR_CONFIG", "Configured for debug mode", UVM_LOW)
+function void ucie_sb_interceptor_config::set_fifo_sizes(int tx_size, int rx_size);
+  tx_fifo_size = tx_size;
+  rx_fifo_size = rx_size;
+  `uvm_info("FIFO_INTERCEPTOR_CONFIG", $sformatf("Set FIFO sizes: TX=%0d, RX=%0d", tx_size, rx_size), UVM_LOW)
 endfunction
 
 /*---------------------------------------------------------------------------
  * CONFIGURATION DEBUG REPORTING
  * 
- * Generates comprehensive configuration summary for debugging and analysis.
- * Provides complete visibility into interceptor configuration parameters.
+ * Generates comprehensive configuration summary for debugging.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_interceptor_config::print_config();
-  `uvm_info("INTERCEPTOR_CONFIG", "=== Interceptor Configuration ===", UVM_LOW)
-  `uvm_info("INTERCEPTOR_CONFIG", $sformatf("Interception enabled: %0b", enable_interception), UVM_LOW)
-  `uvm_info("INTERCEPTOR_CONFIG", $sformatf("Pass-through mode: %0b", pass_through_mode), UVM_LOW)
-  `uvm_info("INTERCEPTOR_CONFIG", $sformatf("Debug enabled: %0b", enable_debug), UVM_LOW)
-  `uvm_info("INTERCEPTOR_CONFIG", $sformatf("Address match: base=0x%06h, mask=0x%06h, enabled=%0b", 
-            match_addr_base, match_addr_mask, enable_addr_match), UVM_LOW)
-  `uvm_info("INTERCEPTOR_CONFIG", $sformatf("Source ID match: srcid=%0d, enabled=%0b", 
-            match_srcid, enable_srcid_match), UVM_LOW)
-  `uvm_info("INTERCEPTOR_CONFIG", $sformatf("Custom completion data: 0x%08h", custom_completion_data), UVM_LOW)
-  `uvm_info("INTERCEPTOR_CONFIG", $sformatf("Timeout: %0.1f ns", timeout_ns), UVM_LOW)
-  `uvm_info("INTERCEPTOR_CONFIG", "================================", UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR_CONFIG", "=== FIFO Interceptor Configuration ===", UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR_CONFIG", $sformatf("Interception enabled: %0b", enable_interception), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR_CONFIG", $sformatf("CFG_READ address: base=0x%06h, mask=0x%06h", 
+            cfg_read_addr_base, cfg_read_addr_mask), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR_CONFIG", $sformatf("Custom completion data: 0x%08h", custom_completion_data), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR_CONFIG", $sformatf("FIFO sizes: TX=%0d, RX=%0d", tx_fifo_size, rx_fifo_size), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR_CONFIG", "======================================", UVM_LOW)
 endfunction
 
 /*******************************************************************************
@@ -366,87 +331,59 @@ endfunction
 /*---------------------------------------------------------------------------
  * UVM BUILD PHASE IMPLEMENTATION
  * 
- * Component construction and configuration retrieval. Creates sideband
- * agents for TX/RX monitoring and driver functionality.
+ * Component construction and FIFO creation with configuration retrieval.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_transaction_interceptor::build_phase(uvm_phase phase);
   super.build_phase(phase);
   
-  // Create sideband agents
-  tx_agent = ucie_sb_agent::type_id::create("tx_agent", this);
-  rx_agent = ucie_sb_agent::type_id::create("rx_agent", this);
-  driver_agent = ucie_sb_agent::type_id::create("driver_agent", this);
-  
-  // Create analysis ports
-  tx_monitor_ap = new("tx_monitor_ap", this);
-  rx_monitor_ap = new("rx_monitor_ap", this);
-  intercepted_ap = new("intercepted_ap", this);
+  // Create analysis port implementations
+  sbtx_ap = new("sbtx_ap", this);
+  sbrx_ap = new("sbrx_ap", this);
   
   // Get interceptor configuration or create default
   if (!uvm_config_db#(ucie_sb_interceptor_config)::get(this, "", "cfg", cfg)) begin
     set_default_config();
   end
   
-  `uvm_info("INTERCEPTOR", "Transaction interceptor build phase complete", UVM_LOW)
+  // Create FIFOs with configured sizes
+  tx_fifo = new("tx_fifo", this, cfg.tx_fifo_size);
+  rx_fifo = new("rx_fifo", this, cfg.rx_fifo_size);
+  
+  // Create sequencer
+  sbrx_sequencer = ucie_sb_sequencer::type_id::create("sbrx_sequencer", this);
+  
+  `uvm_info("FIFO_INTERCEPTOR", "FIFO interceptor build phase complete", UVM_LOW)
 endfunction
 
 /*---------------------------------------------------------------------------
  * UVM CONNECT PHASE IMPLEMENTATION
  * 
- * Component connectivity establishment. Connects analysis ports from
- * agent monitors to interceptor processing methods.
+ * Component connectivity establishment. Analysis ports are connected
+ * externally by the testbench environment.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_transaction_interceptor::connect_phase(uvm_phase phase);
   super.connect_phase(phase);
-  
-  // Connect agent monitor analysis ports to interceptor
-  // Note: Actual connections depend on testbench integration
-  
-  `uvm_info("INTERCEPTOR", "Transaction interceptor connect phase complete", UVM_LOW)
-endfunction
-
-/*---------------------------------------------------------------------------
- * UVM END OF ELABORATION PHASE IMPLEMENTATION
- * 
- * Final configuration validation and debug reporting. Prints configuration
- * summary if debug mode is enabled.
- *---------------------------------------------------------------------------*/
-function void ucie_sb_transaction_interceptor::end_of_elaboration_phase(uvm_phase phase);
-  super.end_of_elaboration_phase(phase);
-  
-  if (cfg.enable_debug) begin
-    cfg.print_config();
-  end
-  
-  `uvm_info("INTERCEPTOR", "Transaction interceptor end of elaboration phase complete", UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", "FIFO interceptor connect phase complete", UVM_LOW)
 endfunction
 
 /*---------------------------------------------------------------------------
  * UVM RUN PHASE IMPLEMENTATION
  * 
- * Main interceptor execution phase. Starts parallel monitoring processes
- * for TX and RX paths, plus cleanup task for expired transactions.
+ * Main interceptor execution phase. Starts transaction processing task.
  *---------------------------------------------------------------------------*/
 task ucie_sb_transaction_interceptor::run_phase(uvm_phase phase);
   super.run_phase(phase);
   
-  `uvm_info("INTERCEPTOR", "Starting transaction interceptor run phase", UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", "Starting FIFO interceptor run phase", UVM_LOW)
   
-  // Start parallel monitoring tasks
-  fork
-    monitor_tx_transactions();
-    monitor_rx_transactions();
-  join_none
-  
-  // Wait for simulation completion
-  // Note: In actual implementation, this would wait for specific completion conditions
+  // Start transaction processing
+  process_transactions();
 endtask
 
 /*---------------------------------------------------------------------------
  * UVM REPORT PHASE IMPLEMENTATION
  * 
- * Final statistics and status reporting. Generates comprehensive summary
- * of interception activity and performance metrics.
+ * Final statistics and status reporting.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_transaction_interceptor::report_phase(uvm_phase phase);
   super.report_phase(phase);
@@ -457,205 +394,186 @@ function void ucie_sb_transaction_interceptor::report_phase(uvm_phase phase);
 endfunction
 
 /*---------------------------------------------------------------------------
- * TX TRANSACTION MONITORING IMPLEMENTATION
+ * SBTX ANALYSIS PORT WRITE IMPLEMENTATION
  * 
- * Monitors TX path for CFG_READ_32B transactions only. Stores latest matching
- * CFG_READ for potential COMPLETION interception. All other transactions ignored.
+ * Receives TX transactions from sideband TX monitor and pushes to TX FIFO.
  *---------------------------------------------------------------------------*/
-task ucie_sb_transaction_interceptor::monitor_tx_transactions();
-  ucie_sb_transaction trans;
-  
-  forever begin
-    // Get transaction from TX agent monitor
-    tx_agent.monitor.ap.get(trans);
-    
-    // Forward to analysis port
-    tx_monitor_ap.write(trans);
-    
-    // Only process CFG_READ_32B transactions, ignore all others
-    if (trans.opcode == CFG_READ_32B) begin
-      process_cfg_read(trans);
-    end
-    // All other transaction types are ignored by TX monitor
-  end
-endtask
-
-/*---------------------------------------------------------------------------
- * RX TRANSACTION MONITORING IMPLEMENTATION
- * 
- * Monitors RX path for ALL transactions. Only COMPLETION_32B transactions
- * are checked for interception. All other transactions bypass directly to driver.
- *---------------------------------------------------------------------------*/
-task ucie_sb_transaction_interceptor::monitor_rx_transactions();
-  ucie_sb_transaction trans;
-  
-  forever begin
-    // Get transaction from RX agent monitor
-    rx_agent.monitor.ap.get(trans);
-    
-    // Forward to analysis port
-    rx_monitor_ap.write(trans);
-    
-    // Process all RX transactions
-    process_rx_transaction(trans);
-  end
-endtask
-
-/*---------------------------------------------------------------------------
- * CFG READ PROCESSING IMPLEMENTATION
- * 
- * Processes detected CFG_READ_32B transactions. Checks matching criteria
- * and stores latest matching CFG_READ for COMPLETION interception.
- *---------------------------------------------------------------------------*/
-task ucie_sb_transaction_interceptor::process_cfg_read(ucie_sb_transaction trans);
-  bit matches;
+function void ucie_sb_transaction_interceptor::write_sbtx(ucie_sb_transaction trans);
+  tx_transactions_received++;
   
   if (cfg.enable_debug) begin
-    `uvm_info("INTERCEPTOR", $sformatf("Detected CFG_READ_32B: addr=0x%06h, tag=%0d, srcid=%0d", 
-              trans.addr, trans.tag, trans.srcid), UVM_HIGH)
+    `uvm_info("FIFO_INTERCEPTOR", $sformatf("Received TX transaction: opcode=%0d, addr=0x%06h, tag=%0d", 
+              trans.opcode, trans.addr, trans.tag), UVM_HIGH)
   end
   
-  // Check if transaction matches interception criteria
-  matches = matches_criteria(trans);
+  // Push to TX FIFO
+  if (!tx_fifo.try_put(trans)) begin
+    `uvm_error("FIFO_INTERCEPTOR", "TX FIFO full - dropping transaction")
+  end
+endfunction
+
+/*---------------------------------------------------------------------------
+ * SBRX ANALYSIS PORT WRITE IMPLEMENTATION
+ * 
+ * Receives RX transactions from sideband RX monitor and pushes to RX FIFO.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_transaction_interceptor::write_sbrx(ucie_sb_transaction trans);
+  rx_transactions_received++;
   
-  if (matches && cfg.enable_interception && !cfg.pass_through_mode) begin
-    // Store as latest matched CFG_READ
-    latest_cfg_read = trans.copy();
-    ready_for_completion = 1;
-    matched_cfg_reads++;
+  if (cfg.enable_debug) begin
+    `uvm_info("FIFO_INTERCEPTOR", $sformatf("Received RX transaction: opcode=%0d, tag=%0d, data=0x%08h", 
+              trans.opcode, trans.tag, trans.data[31:0]), UVM_HIGH)
+  end
+  
+  // Push to RX FIFO
+  if (!rx_fifo.try_put(trans)) begin
+    `uvm_error("FIFO_INTERCEPTOR", "RX FIFO full - dropping transaction")
+  end
+endfunction
+
+/*---------------------------------------------------------------------------
+ * MAIN TRANSACTION PROCESSING IMPLEMENTATION
+ * 
+ * Main processing loop that handles TX and RX FIFO processing according
+ * to the interception logic specification.
+ *---------------------------------------------------------------------------*/
+task ucie_sb_transaction_interceptor::process_transactions();
+  ucie_sb_transaction tx_trans, rx_trans;
+  realtime start_time, process_time;
+  
+  forever begin
+    // Get TX transaction from FIFO
+    tx_fifo.get(tx_trans);
+    start_time = $realtime;
     
-    if (cfg.enable_debug) begin
-      `uvm_info("INTERCEPTOR", $sformatf("Stored CFG_READ for interception: tag=%0d, addr=0x%06h", 
-                trans.tag, trans.addr), UVM_MEDIUM)
+    // Process TX transaction
+    process_tx_transaction(tx_trans);
+    
+    // Get RX transaction from FIFO
+    rx_fifo.get(rx_trans);
+    
+    // Process RX transaction based on TX processing result
+    process_rx_transaction(rx_trans);
+    
+    // Update performance metrics
+    process_time = $realtime - start_time;
+    total_processing_time += process_time;
+    if (process_time > max_processing_time) max_processing_time = process_time;
+    if (min_processing_time == 0 || process_time < min_processing_time) min_processing_time = process_time;
+    
+    // Processing delay
+    #(cfg.processing_delay_ns * 1ns);
+  end
+endtask
+
+/*---------------------------------------------------------------------------
+ * TX TRANSACTION PROCESSING IMPLEMENTATION
+ * 
+ * Processes TX transactions for CFG_READ address matching and storage.
+ *---------------------------------------------------------------------------*/
+task ucie_sb_transaction_interceptor::process_tx_transaction(ucie_sb_transaction tx_trans);
+  if (tx_trans.opcode == CFG_READ_32B) begin
+    if (cfg_read_matches_address(tx_trans)) begin
+      // Store matching CFG_READ transaction
+      stored_cfg_read = tx_trans.copy();
+      cfg_read_stored = 1;
+      cfg_reads_matched++;
+      
+      if (cfg.enable_debug) begin
+        `uvm_info("FIFO_INTERCEPTOR", $sformatf("Stored CFG_READ: addr=0x%06h, tag=%0d", 
+                  tx_trans.addr, tx_trans.tag), UVM_MEDIUM)
+      end
+    end else begin
+      // Clear stored transaction for non-matching CFG_READ
+      cfg_read_stored = 0;
+      stored_cfg_read = null;
+      cfg_reads_ignored++;
+      
+      if (cfg.enable_debug) begin
+        `uvm_info("FIFO_INTERCEPTOR", $sformatf("Ignored CFG_READ: addr=0x%06h (no address match)", 
+                  tx_trans.addr), UVM_HIGH)
+      end
     end
-    
-    -> cfg_read_matched_event;
   end else begin
-    ignored_cfg_reads++;
-    
-    if (cfg.enable_debug) begin
-      `uvm_info("INTERCEPTOR", $sformatf("Ignored CFG_READ: tag=%0d (no match or disabled)", trans.tag), UVM_HIGH)
-    end
+    // For non-CFG_READ transactions, clear stored state
+    cfg_read_stored = 0;
+    stored_cfg_read = null;
   end
 endtask
 
 /*---------------------------------------------------------------------------
  * RX TRANSACTION PROCESSING IMPLEMENTATION
  * 
- * Processes ALL transactions from RX path. Only COMPLETION_32B transactions
- * are checked for interception. All other transactions bypass to driver.
+ * Processes RX transactions with interception/bypass logic based on
+ * stored CFG_READ state and transaction type.
  *---------------------------------------------------------------------------*/
-task ucie_sb_transaction_interceptor::process_rx_transaction(ucie_sb_transaction trans);
-  realtime start_time, process_time;
+task ucie_sb_transaction_interceptor::process_rx_transaction(ucie_sb_transaction rx_trans);
+  ucie_sb_transaction processed_trans;
   
-  start_time = $realtime;
-  
-  if (trans.opcode == COMPLETION_32B) begin
-    // Check if this completion matches our latest CFG_READ
-    if (ready_for_completion && completion_matches_latest_cfg_read(trans)) begin
-      // INTERCEPT - Generate revised completion
-      ucie_sb_transaction revised_completion = generate_revised_completion(trans);
-      send_to_driver(revised_completion);
+  if (cfg_read_stored && rx_trans.opcode == COMPLETION_32B) begin
+    // Check if COMPLETION matches stored CFG_READ
+    if (rx_trans.tag == stored_cfg_read.tag && 
+        rx_trans.srcid == stored_cfg_read.dstid) begin
+      
+      // INTERCEPT - Revise completion data and update parity
+      processed_trans = revise_completion(rx_trans);
+      send_to_sequencer(processed_trans);
       completions_intercepted++;
       
-      // Reset state for next interception
-      ready_for_completion = 0;
-      latest_cfg_read = null;
-      
-      // Write to intercepted analysis port
-      intercepted_ap.write(revised_completion);
-      
       if (cfg.enable_debug) begin
-        `uvm_info("INTERCEPTOR", $sformatf("Intercepted COMPLETION_32B: tag=%0d, revised with custom data", 
-                  trans.tag), UVM_MEDIUM)
+        `uvm_info("FIFO_INTERCEPTOR", $sformatf("Intercepted COMPLETION_32B: tag=%0d, revised data=0x%08h", 
+                  rx_trans.tag, processed_trans.data[31:0]), UVM_MEDIUM)
       end
       
+      // Clear stored CFG_READ after successful interception
+      cfg_read_stored = 0;
+      stored_cfg_read = null;
+      
     end else begin
-      // Forward original completion
-      send_to_driver(trans);
+      // COMPLETION doesn't match - bypass
+      send_to_sequencer(rx_trans);
       completions_bypassed++;
       
       if (cfg.enable_debug) begin
-        `uvm_info("INTERCEPTOR", $sformatf("Bypassed COMPLETION_32B: tag=%0d (no match or not ready)", 
-                  trans.tag), UVM_HIGH)
+        `uvm_info("FIFO_INTERCEPTOR", $sformatf("Bypassed COMPLETION_32B: tag=%0d (no match)", rx_trans.tag), UVM_HIGH)
       end
     end
   end else begin
-    // BYPASS all non-COMPLETION transactions directly
-    send_to_driver(trans);
-    other_transactions_bypassed++;
+    // No stored CFG_READ or non-COMPLETION - bypass directly
+    send_to_sequencer(rx_trans);
+    
+    if (rx_trans.opcode == COMPLETION_32B) begin
+      completions_bypassed++;
+    end else begin
+      other_transactions_bypassed++;
+    end
     
     if (cfg.enable_debug) begin
-      `uvm_info("INTERCEPTOR", $sformatf("Bypassed transaction: opcode=%0d", trans.opcode), UVM_HIGH)
+      `uvm_info("FIFO_INTERCEPTOR", $sformatf("Bypassed transaction: opcode=%0d", rx_trans.opcode), UVM_HIGH)
     end
   end
-  
-  // Update performance metrics
-  process_time = $realtime - start_time;
-  total_intercept_time += process_time;
-  if (process_time > max_intercept_time) max_intercept_time = process_time;
-  if (min_intercept_time == 0 || process_time < min_intercept_time) min_intercept_time = process_time;
-  
-  -> completion_processed_event;
 endtask
 
 /*---------------------------------------------------------------------------
- * COMPLETION MATCHING IMPLEMENTATION
+ * CFG_READ ADDRESS MATCHING IMPLEMENTATION
  * 
- * Checks if a COMPLETION_32B transaction matches the latest stored CFG_READ
- * transaction based on tag and source/destination ID correspondence.
+ * Checks if CFG_READ transaction matches the configured address criteria.
  *---------------------------------------------------------------------------*/
-function bit ucie_sb_transaction_interceptor::completion_matches_latest_cfg_read(ucie_sb_transaction completion);
-  if (latest_cfg_read == null) return 0;
+function bit ucie_sb_transaction_interceptor::cfg_read_matches_address(ucie_sb_transaction trans);
+  if (!cfg.enable_addr_match) return 1;
   
-  // Check tag match
-  if (completion.tag != latest_cfg_read.tag) return 0;
-  
-  // Check source ID correspondence (completion srcid should match CFG_READ dstid)
-  if (completion.srcid != latest_cfg_read.dstid) return 0;
-  
-  return 1;
+  return ((trans.addr & cfg.cfg_read_addr_mask) == (cfg.cfg_read_addr_base & cfg.cfg_read_addr_mask));
 endfunction
 
 /*---------------------------------------------------------------------------
- * TRANSACTION MATCHING CRITERIA IMPLEMENTATION
+ * COMPLETION REVISION IMPLEMENTATION
  * 
- * Evaluates whether a CFG_READ_32B transaction matches the configured
- * interception criteria (address, source ID, tag).
+ * Revises COMPLETION_32B transaction with custom data and updates parity.
  *---------------------------------------------------------------------------*/
-function bit ucie_sb_transaction_interceptor::matches_criteria(ucie_sb_transaction trans);
-  bit addr_match = 1;
-  bit srcid_match = 1;
-  bit tag_match = 1;
-  
-  // Address matching
-  if (cfg.enable_addr_match) begin
-    addr_match = ((trans.addr & cfg.match_addr_mask) == (cfg.match_addr_base & cfg.match_addr_mask));
-  end
-  
-  // Source ID matching
-  if (cfg.enable_srcid_match) begin
-    srcid_match = (trans.srcid == cfg.match_srcid);
-  end
-  
-  // Tag matching
-  if (cfg.enable_tag_match) begin
-    tag_match = ((trans.tag & cfg.match_tag_mask) == (cfg.match_tag_base & cfg.match_tag_mask));
-  end
-  
-  return (addr_match && srcid_match && tag_match);
-endfunction
-
-/*---------------------------------------------------------------------------
- * REVISED COMPLETION GENERATION IMPLEMENTATION
- * 
- * Generates revised COMPLETION_32B transaction based on original completion
- * and latest CFG_READ transaction with configured custom response parameters.
- *---------------------------------------------------------------------------*/
-function ucie_sb_transaction ucie_sb_transaction_interceptor::generate_revised_completion(ucie_sb_transaction original);
+function ucie_sb_transaction ucie_sb_transaction_interceptor::revise_completion(ucie_sb_transaction completion);
   ucie_sb_transaction revised;
   
-  revised = original.copy();  // Start with original completion
+  revised = completion.copy();  // Start with original completion
   
   // Apply custom modifications
   if (cfg.generate_error_completion) begin
@@ -666,38 +584,25 @@ function ucie_sb_transaction ucie_sb_transaction_interceptor::generate_revised_c
     revised.data[31:0] = cfg.custom_completion_data;  // Custom data payload
   end
   
-  // Preserve UCIe protocol fields from original
-  revised.opcode = COMPLETION_32B;
-  revised.tag = original.tag;              // Keep original tag
-  revised.srcid = original.srcid;          // Keep original source ID
-  revised.dstid = original.dstid;          // Keep original destination ID
-  revised.be = latest_cfg_read.be;         // Use CFG_READ byte enables
-  revised.ep = 0;                          // No error poison
-  revised.cr = 0;                          // No credit return
-  
-  // Update packet metadata
-  revised.update_packet_info();
+  // Update parity if enabled
+  if (cfg.auto_update_parity) begin
+    revised.update_packet_info();             // Recalculate parity and packet fields
+  end
   
   return revised;
 endfunction
 
 /*---------------------------------------------------------------------------
- * TRANSACTION TRANSMISSION IMPLEMENTATION
+ * SEQUENCER TRANSMISSION IMPLEMENTATION
  * 
- * Sends any transaction via driver agent with configurable delay.
- * Handles both intercepted/revised and bypassed transactions.
+ * Sends processed transaction to SBRX sequencer for driving.
  *---------------------------------------------------------------------------*/
-task ucie_sb_transaction_interceptor::send_to_driver(ucie_sb_transaction trans);
-  // Add configurable delay for completions
-  if (trans.opcode == COMPLETION_32B && cfg.completion_delay_cycles > 0) begin
-    repeat(cfg.completion_delay_cycles) @(posedge driver_agent.vif.clk);
-  end
-  
-  // Send via driver agent
-  driver_agent.driver.send_transaction(trans);
+task ucie_sb_transaction_interceptor::send_to_sequencer(ucie_sb_transaction trans);
+  // Send transaction to sequencer
+  sbrx_sequencer.send_request(trans);
   
   if (cfg.enable_debug) begin
-    `uvm_info("INTERCEPTOR", $sformatf("Sent to driver: opcode=%0d, tag=%0d, data=0x%08h", 
+    `uvm_info("FIFO_INTERCEPTOR", $sformatf("Sent to sequencer: opcode=%0d, tag=%0d, data=0x%08h", 
               trans.opcode, trans.tag, trans.data[31:0]), UVM_HIGH)
   end
 endtask
@@ -707,40 +612,42 @@ endtask
 /*---------------------------------------------------------------------------
  * DEFAULT CONFIGURATION SETUP IMPLEMENTATION
  * 
- * Creates default interceptor configuration when none provided via config DB.
- * Establishes standard operational parameters for typical usage scenarios.
+ * Creates default interceptor configuration when none provided.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_transaction_interceptor::set_default_config();
   cfg = ucie_sb_interceptor_config::type_id::create("cfg");
-  cfg.set_address_range(24'h100000, 24'h1000);  // 4KB range at 1MB
+  cfg.set_cfg_read_address(24'h100000, 24'hFFF000);  // 4KB range at 1MB
   cfg.set_custom_data(32'hCAFEBABE);
-  `uvm_info("INTERCEPTOR", "Using default interceptor configuration", UVM_LOW)
+  cfg.set_fifo_sizes(16, 16);
+  `uvm_info("FIFO_INTERCEPTOR", "Using default FIFO interceptor configuration", UVM_LOW)
 endfunction
 
 /*---------------------------------------------------------------------------
  * STATISTICS REPORTING IMPLEMENTATION
  * 
- * Generates comprehensive statistics report including transaction counts,
- * performance metrics, and operational analysis.
+ * Generates comprehensive statistics report including transaction counts
+ * and performance metrics.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_transaction_interceptor::print_statistics();
-  real avg_intercept_time;
+  real avg_processing_time;
   
-  if (completions_intercepted > 0) begin
-    avg_intercept_time = total_intercept_time / completions_intercepted / 1ns;
+  if ((cfg_reads_matched + cfg_reads_ignored + other_transactions_bypassed) > 0) begin
+    avg_processing_time = total_processing_time / (cfg_reads_matched + cfg_reads_ignored + other_transactions_bypassed) / 1ns;
   end else begin
-    avg_intercept_time = 0.0;
+    avg_processing_time = 0.0;
   end
   
-  `uvm_info("INTERCEPTOR", "=== Transaction Interceptor Statistics ===", UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Matched CFG_READs: %0d", matched_cfg_reads), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Ignored CFG_READs: %0d", ignored_cfg_reads), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Completions intercepted: %0d", completions_intercepted), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Completions bypassed: %0d", completions_bypassed), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Other transactions bypassed: %0d", other_transactions_bypassed), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Ready for completion: %0b", ready_for_completion), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Average intercept time: %0.3f ns", avg_intercept_time), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Min/Max intercept time: %0.3f/%0.3f ns", 
-            min_intercept_time/1ns, max_intercept_time/1ns), UVM_LOW)
-  `uvm_info("INTERCEPTOR", "=========================================", UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", "=== FIFO Interceptor Statistics ===", UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("TX transactions received: %0d", tx_transactions_received), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("RX transactions received: %0d", rx_transactions_received), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("CFG_READs matched: %0d", cfg_reads_matched), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("CFG_READs ignored: %0d", cfg_reads_ignored), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("Completions intercepted: %0d", completions_intercepted), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("Completions bypassed: %0d", completions_bypassed), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("Other transactions bypassed: %0d", other_transactions_bypassed), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("CFG_READ currently stored: %0b", cfg_read_stored), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("Average processing time: %0.3f ns", avg_processing_time), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", $sformatf("Min/Max processing time: %0.3f/%0.3f ns", 
+            min_processing_time/1ns, max_processing_time/1ns), UVM_LOW)
+  `uvm_info("FIFO_INTERCEPTOR", "===================================", UVM_LOW)
 endfunction
