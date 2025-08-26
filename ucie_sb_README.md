@@ -355,6 +355,83 @@ Phase 3 (Optional - Data High):
 - **Alignment**: 32-bit operations require 4-byte alignment, 64-bit require 8-byte alignment
 - **Reserved Fields**: Must be driven to zero and ignored on receive
 
+### **📨 SBINIT Message Specifications**
+
+The following table defines the specific SBINIT message formats used during UCIe link training sequence. All SBINIT messages use the Message without Data format (Figure 7-3).
+
+| **Message Type** | **MsgInfo[15:0]** | **MsgCode[7:0]** | **MsgSubcode[7:0]** | **Description** |
+|------------------|-------------------|------------------|---------------------|-----------------|
+| **SBINIT Out of Reset** | `[15:4]`: Reserved (0x000)<br>`[3:0]`: Result (0x0-0xF) | `0x91` | `0x00` | Link training completion status |
+| **SBINIT Done Request** | `0x0000` | `0x95` | `0x01` | Request training completion |
+| **SBINIT Done Response** | `0x0000` | `0x9A` | `0x01` | Acknowledge training completion |
+
+#### **🎯 SBINIT Out of Reset Message Details**
+
+The SBINIT Out of Reset message carries a result field in the lower 4 bits of MsgInfo:
+
+```
+MsgInfo[15:0] Format:
+┌─────────────────────────────────────┐
+│15:4        │3:0                     │
+│Reserved    │Result                  │
+│(0x000)     │(0x0-0xF)              │
+└─────────────────────────────────────┘
+```
+
+**Result Field Values:**
+- `0x0`: Training failed
+- `0x1`: Training successful (standard completion)
+- `0x2-0xF`: Reserved for future use or vendor-specific status
+
+#### **🔄 SBINIT Message Sequence**
+
+The SBINIT protocol follows this message exchange pattern:
+
+```mermaid
+sequenceDiagram
+    participant I as Initiator
+    participant T as Target
+    
+    Note over I,T: Clock Pattern Exchange Phase
+    I->>T: Clock Patterns (continuous)
+    T->>I: Clock Patterns (back-to-back detection)
+    
+    Note over I,T: SBINIT Message Exchange Phase
+    I->>T: SBINIT Out of Reset (result=1)
+    T->>I: SBINIT Out of Reset (result=1)
+    
+    Note over I,T: Training Completion Phase
+    I->>T: SBINIT Done Request
+    T->>I: SBINIT Done Response
+    
+    Note over I,T: Training Complete
+```
+
+#### **💻 Example Usage**
+
+```systemverilog
+// Create SBINIT Out of Reset message
+ucie_sb_transaction oor_msg = ucie_sb_transaction::type_id::create("oor_msg");
+oor_msg.opcode = MSG_VDM;
+oor_msg.msgcode = 8'h91;        // SBINIT Out of Reset
+oor_msg.msgsubcode = 8'h00;     // Standard subcode
+oor_msg.msginfo = 16'h0001;     // Reserved[15:4] + Result[3:0] = success
+
+// Create SBINIT Done Request
+ucie_sb_transaction done_req = ucie_sb_transaction::type_id::create("done_req");
+done_req.opcode = MSG_VDM;
+done_req.msgcode = 8'h95;       // SBINIT Done Request
+done_req.msgsubcode = 8'h01;    // Standard subcode
+done_req.msginfo = 16'h0000;    // No additional information
+
+// Create SBINIT Done Response
+ucie_sb_transaction done_resp = ucie_sb_transaction::type_id::create("done_resp");
+done_resp.opcode = MSG_VDM;
+done_resp.msgcode = 8'h9A;      // SBINIT Done Response
+done_resp.msgsubcode = 8'h01;   // Standard subcode
+done_resp.msginfo = 16'h0000;   // No additional information
+```
+
 ---
 
 ## 🚗 **Driver Implementation**

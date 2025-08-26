@@ -114,9 +114,11 @@ class ucie_sb_ltsm_config extends uvm_object;
    * SBINIT protocol message parameters and result codes
    *---------------------------------------------------------------------------*/
   
-  bit [7:0] sbinit_oor_msgcode = 8'h10;    // SBINIT Out of Reset message code
-  bit [7:0] sbinit_done_req_msgcode = 8'h11; // SBINIT Done Request message code
-  bit [7:0] sbinit_done_rsp_msgcode = 8'h12; // SBINIT Done Response message code
+  bit [7:0] sbinit_oor_msgcode = 8'h91;    // SBINIT Out of Reset message code
+  bit [7:0] sbinit_done_req_msgcode = 8'h95; // SBINIT Done Request message code
+  bit [7:0] sbinit_done_rsp_msgcode = 8'h9A; // SBINIT Done Response message code
+  bit [7:0] sbinit_oor_subcode = 8'h00;      // SBINIT OOR subcode
+  bit [7:0] sbinit_done_subcode = 8'h01;     // SBINIT Done subcode
   bit [4:0] sbinit_tag = 5'h11;            // SBINIT message tag
   bit [31:0] oor_result = 32'h1;           // SBINIT OOR result value (=1)
   
@@ -828,8 +830,10 @@ task ucie_sb_ltsm_model::send_oor_messages();
     oor_trans.srcid = 3'h1;
     oor_trans.dstid = 3'h0;
     oor_trans.msgcode = cfg.sbinit_oor_msgcode;
+    oor_trans.msgsubcode = cfg.sbinit_oor_subcode;
     oor_trans.tag = cfg.sbinit_tag;
-    oor_trans.data[31:0] = cfg.oor_result; // result = 1
+    oor_trans.msginfo[15:4] = 12'h000;     // Reserved bits
+    oor_trans.msginfo[3:0] = cfg.oor_result[3:0]; // Result field
     
     sb_agent.driver.send_transaction(oor_trans);
     oor_sent = 1;
@@ -855,7 +859,8 @@ task ucie_sb_ltsm_model::monitor_oor_messages();
     sb_agent.monitor.ap.get(received_trans);
     
     if (received_trans.opcode == MSG_VDM && 
-        received_trans.msgcode == cfg.sbinit_oor_msgcode) begin
+        received_trans.msgcode == cfg.sbinit_oor_msgcode &&
+        received_trans.msgsubcode == cfg.sbinit_oor_subcode) begin
       oor_received = 1;
       `uvm_info("LTSM_MODEL", "Received SBINIT Out of Reset message", UVM_HIGH)
       break;
@@ -880,7 +885,9 @@ task ucie_sb_ltsm_model::send_done_request();
   done_req_trans.srcid = 3'h1;
   done_req_trans.dstid = 3'h2;
   done_req_trans.msgcode = cfg.sbinit_done_req_msgcode;
+  done_req_trans.msgsubcode = cfg.sbinit_done_subcode;
   done_req_trans.tag = cfg.sbinit_tag;
+  done_req_trans.msginfo = 16'h0000;      // No additional information
   
   sb_agent.driver.send_transaction(done_req_trans);
   done_req_sent = 1;
@@ -901,7 +908,8 @@ task ucie_sb_ltsm_model::monitor_done_request();
     sb_agent.monitor.ap.get(received_trans);
     
     if (received_trans.opcode == MSG_VDM && 
-        received_trans.msgcode == cfg.sbinit_done_req_msgcode) begin
+        received_trans.msgcode == cfg.sbinit_done_req_msgcode &&
+        received_trans.msgsubcode == cfg.sbinit_done_subcode) begin
       done_req_received = 1;
       `uvm_info("LTSM_MODEL", "Received SBINIT Done Request message", UVM_MEDIUM)
       break;
@@ -926,7 +934,9 @@ task ucie_sb_ltsm_model::send_done_response();
   done_resp_trans.srcid = 3'h2;
   done_resp_trans.dstid = 3'h1;
   done_resp_trans.msgcode = cfg.sbinit_done_rsp_msgcode;
+  done_resp_trans.msgsubcode = cfg.sbinit_done_subcode;
   done_resp_trans.tag = cfg.sbinit_tag;
+  done_resp_trans.msginfo = 16'h0000;     // No additional information
   
   sb_agent.driver.send_transaction(done_resp_trans);
   done_resp_sent = 1;
@@ -947,7 +957,8 @@ task ucie_sb_ltsm_model::monitor_done_response();
     sb_agent.monitor.ap.get(received_trans);
     
     if (received_trans.opcode == MSG_VDM && 
-        received_trans.msgcode == cfg.sbinit_done_rsp_msgcode) begin
+        received_trans.msgcode == cfg.sbinit_done_rsp_msgcode &&
+        received_trans.msgsubcode == cfg.sbinit_done_subcode) begin
       done_resp_received = 1;
       `uvm_info("LTSM_MODEL", "Received SBINIT Done Response message", UVM_MEDIUM)
       break;
