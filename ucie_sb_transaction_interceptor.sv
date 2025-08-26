@@ -2,37 +2,36 @@
  * UCIe Sideband Transaction Interceptor
  * 
  * OVERVIEW:
- *   Advanced UVM component for UCIe sideband transaction interception and
- *   modification. Monitors CFG_READ_32B transactions and provides intelligent
- *   completion handling with configurable response modification capabilities.
+ *   Advanced UVM component for UCIe (Universal Chiplet Interconnect Express)
+ *   sideband transaction interception and modification. Monitors CFG_READ_32B
+ *   transactions and provides intelligent completion handling with configurable
+ *   response modification capabilities.
  *
  * KEY CAPABILITIES:
  *   • CFG_READ_32B transaction detection and tracking
- *   • COMPLETION_32B transaction interception on RX path
+ *   • COMPLETION_32B transaction interception on RX path  
  *   • Configurable transaction matching criteria (address, tag, srcid)
  *   • Custom completion generation for matched transactions
  *   • Transparent pass-through for non-matching transactions
  *   • Comprehensive transaction logging and statistics
  *
- * INTERCEPTION FLOW:
- *   1. Monitor TX path for CFG_READ_32B transactions
- *   2. Store transaction details for completion matching
- *   3. Monitor RX path for corresponding COMPLETION_32B
- *   4. Check if completion matches stored request criteria
- *   5. If matched: Generate custom completion via driver
- *   6. If not matched: Forward original completion via driver
+ * INTERCEPTION ARCHITECTURE:
+ *   • TX path monitoring for CFG read request detection
+ *   • RX path monitoring for completion interception
+ *   • Pending transaction tracking with timeout management
+ *   • Custom completion generation with configurable responses
+ *   • Statistics collection and performance monitoring
  *
- * CONFIGURATION:
- *   • Configurable address ranges for interception
- *   • Custom completion data generation
- *   • Enable/disable interception modes
- *   • Debug and statistics collection controls
+ * MATCHING CRITERIA:
+ *   • Address-based matching with configurable ranges
+ *   • Source ID filtering for targeted interception
+ *   • Tag-based matching for specific transaction flows
+ *   • Combined criteria support for complex scenarios
  *
- * INTEGRATION:
- *   • Uses existing sideband UVM agent for monitoring/driving
- *   • TLM-based communication with analysis ports
- *   • UVM configuration database integration
- *   • Factory registration for polymorphic usage
+ * OPERATIONAL MODES:
+ *   • Active Mode: Full interception with custom responses
+ *   • Pass-through Mode: Transparent forwarding for debugging
+ *   • Debug Mode: Enhanced logging and extended timeouts
  *
  * COMPLIANCE:
  *   • IEEE 1800-2017 SystemVerilog
@@ -43,20 +42,20 @@
  * VERSION: 1.0 - Production-grade transaction interceptor
  ******************************************************************************/
 
-/*******************************************************************************
+/*-----------------------------------------------------------------------------
  * INTERCEPTOR CONFIGURATION CLASS
  * 
  * Comprehensive configuration management for transaction interception behavior.
  * Provides centralized control over matching criteria, response generation,
  * and operational modes with preset configurations.
- ******************************************************************************/
+ *-----------------------------------------------------------------------------*/
 
 class ucie_sb_interceptor_config extends uvm_object;
   `uvm_object_utils(ucie_sb_interceptor_config)
   
   /*---------------------------------------------------------------------------
-   * INTERCEPTION CONTROL PARAMETERS
-   * Enable/disable controls and operational mode settings
+   * OPERATIONAL MODE CONTROL
+   * Interception behavior and component operation control
    *---------------------------------------------------------------------------*/
   
   bit enable_interception = 1;             // Enable transaction interception
@@ -65,8 +64,8 @@ class ucie_sb_interceptor_config extends uvm_object;
   bit pass_through_mode = 0;               // Pass-through mode (no interception)
   
   /*---------------------------------------------------------------------------
-   * TRANSACTION MATCHING CRITERIA
-   * Configurable parameters for transaction identification
+   * MATCHING CRITERIA CONFIGURATION
+   * Configurable parameters for transaction identification and filtering
    *---------------------------------------------------------------------------*/
   
   // Address-based matching
@@ -74,7 +73,7 @@ class ucie_sb_interceptor_config extends uvm_object;
   bit [23:0] match_addr_mask = 24'hFFF000;  // Address mask (4KB blocks)
   bit enable_addr_match = 1;                // Enable address matching
   
-  // Source ID matching
+  // Source ID matching  
   bit [2:0] match_srcid = 3'h1;            // Source ID to match
   bit enable_srcid_match = 0;              // Enable source ID matching
   
@@ -84,8 +83,8 @@ class ucie_sb_interceptor_config extends uvm_object;
   bit enable_tag_match = 0;                // Enable tag matching
   
   /*---------------------------------------------------------------------------
-   * CUSTOM COMPLETION GENERATION
-   * Parameters for generating custom completion responses
+   * COMPLETION GENERATION PARAMETERS
+   * Custom completion response configuration and control
    *---------------------------------------------------------------------------*/
   
   bit [31:0] custom_completion_data = 32'hDEADBEEF; // Custom completion data
@@ -122,12 +121,12 @@ class ucie_sb_interceptor_config extends uvm_object;
 
 endclass : ucie_sb_interceptor_config
 
-/*******************************************************************************
+/*-----------------------------------------------------------------------------
  * PENDING TRANSACTION TRACKING CLASS
  * 
  * Tracks pending CFG_READ_32B transactions for completion matching.
  * Maintains transaction details needed for intelligent completion handling.
- ******************************************************************************/
+ *-----------------------------------------------------------------------------*/
 
 class ucie_sb_pending_transaction extends uvm_object;
   `uvm_object_utils(ucie_sb_pending_transaction)
@@ -154,8 +153,8 @@ class ucie_sb_pending_transaction extends uvm_object;
   endfunction
   
   /*---------------------------------------------------------------------------
-   * UTILITY METHODS
-   * Helper methods for transaction management
+   * UTILITY METHOD DECLARATIONS
+   * Helper methods for transaction management and debugging
    *---------------------------------------------------------------------------*/
   
   extern function bit is_expired(real timeout_ns);
@@ -164,19 +163,19 @@ class ucie_sb_pending_transaction extends uvm_object;
 endclass : ucie_sb_pending_transaction
 
 /*******************************************************************************
- * UCIe SIDEBAND TRANSACTION INTERCEPTOR
+ * MAIN INTERCEPTOR CLASS
  * 
- * Production-grade transaction interceptor for UCIe sideband protocol.
- * Provides intelligent transaction monitoring, interception, and modification
- * with comprehensive configuration and debugging capabilities.
+ * Core UCIe sideband transaction interceptor providing intelligent transaction
+ * monitoring, interception, and modification with comprehensive configuration
+ * and debugging capabilities for verification environments.
  ******************************************************************************/
 
 class ucie_sb_transaction_interceptor extends uvm_component;
   `uvm_component_utils(ucie_sb_transaction_interceptor)
   
   /*---------------------------------------------------------------------------
-   * AGENT INTEGRATION AND INTERFACES
-   * Sideband agent components for monitoring and driving
+   * INTERCEPTOR INFRASTRUCTURE
+   * Core components for agent integration and interface management
    *---------------------------------------------------------------------------*/
   
   ucie_sb_agent tx_agent;                 // TX path agent (monitor CFG reads)
@@ -197,7 +196,7 @@ class ucie_sb_transaction_interceptor extends uvm_component;
   
   /*---------------------------------------------------------------------------
    * TRANSACTION TRACKING AND MANAGEMENT
-   * Pending transaction tracking and completion matching
+   * Pending transaction storage and completion matching infrastructure
    *---------------------------------------------------------------------------*/
   
   // Pending transaction storage
@@ -211,7 +210,7 @@ class ucie_sb_transaction_interceptor extends uvm_component;
   
   /*---------------------------------------------------------------------------
    * STATISTICS AND ANALYSIS INFRASTRUCTURE
-   * Performance monitoring and interception statistics
+   * Performance monitoring and interception statistics collection
    *---------------------------------------------------------------------------*/
   
   // Transaction counters
@@ -239,26 +238,19 @@ class ucie_sb_transaction_interceptor extends uvm_component;
    * All implementation methods declared as extern for clean interface
    *---------------------------------------------------------------------------*/
   
-  // UVM phase methods
   extern virtual function void build_phase(uvm_phase phase);
   extern virtual function void connect_phase(uvm_phase phase);
   extern virtual function void end_of_elaboration_phase(uvm_phase phase);
   extern virtual task run_phase(uvm_phase phase);
   extern virtual function void report_phase(uvm_phase phase);
-  
-  // Transaction monitoring methods
   extern virtual task monitor_tx_transactions();
   extern virtual task monitor_rx_transactions();
   extern virtual task process_cfg_read(ucie_sb_transaction trans);
   extern virtual task process_completion(ucie_sb_transaction trans);
-  
-  // Transaction matching and generation methods
   extern virtual function bit matches_criteria(ucie_sb_transaction trans);
   extern virtual function ucie_sb_pending_transaction find_pending_transaction(bit [4:0] tag, bit [2:0] srcid);
   extern virtual function ucie_sb_transaction generate_custom_completion(ucie_sb_pending_transaction pending);
   extern virtual task send_completion(ucie_sb_transaction completion);
-  
-  // Utility and management methods
   extern virtual task cleanup_expired_transactions();
   extern virtual function void set_default_config();
   extern virtual function void print_statistics();
@@ -266,7 +258,7 @@ class ucie_sb_transaction_interceptor extends uvm_component;
 endclass : ucie_sb_transaction_interceptor
 
 /*******************************************************************************
- * INTERCEPTOR CONFIGURATION CLASS IMPLEMENTATION
+ * CONFIGURATION CLASS IMPLEMENTATION
  ******************************************************************************/
 
 /*---------------------------------------------------------------------------
@@ -341,7 +333,7 @@ function void ucie_sb_interceptor_config::print_config();
 endfunction
 
 /*******************************************************************************
- * PENDING TRANSACTION CLASS IMPLEMENTATION
+ * PENDING TRANSACTION IMPLEMENTATION
  ******************************************************************************/
 
 /*---------------------------------------------------------------------------
@@ -369,7 +361,7 @@ function string ucie_sb_pending_transaction::to_string();
 endfunction
 
 /*******************************************************************************
- * TRANSACTION INTERCEPTOR IMPLEMENTATION
+ * MAIN INTERCEPTOR IMPLEMENTATION
  ******************************************************************************/
 
 /*---------------------------------------------------------------------------

@@ -94,14 +94,16 @@ graph LR
 ├── 🧪 Environment & Checker Components
 │   ├── ucie_sb_env_loopback.sv             # Loopback Environment (82 lines)
 │   ├── ucie_sb_reg_access_checker.sv       # Register Access Checker (1147 lines)
-│   └── ucie_sb_ltsm_model.sv               # Link Training State Machine (650+ lines)
+│   ├── ucie_sb_ltsm_model.sv               # Link Training State Machine (650+ lines)
+│   └── ucie_sb_transaction_interceptor.sv  # Transaction Interceptor (1000+ lines)
 │
 ├── 📚 Examples & Documentation
 │   ├── ucie_sb_source_sync_example.sv      # Source-sync Demo (155 lines)
 │   ├── ucie_sb_clock_pattern_example.sv    # Clock Pattern Demo (243 lines)
 │   ├── ucie_sb_reg_checker_example.sv      # Register Checker Demo (324 lines)
 │   ├── ucie_sb_transaction_extern_example.sv # Transaction Demo (292 lines)
-│   └── ucie_sb_ltsm_example.sv             # LTSM Training Demo (280+ lines)
+│   ├── ucie_sb_ltsm_example.sv             # LTSM Training Demo (280+ lines)
+│   └── ucie_sb_interceptor_example.sv      # Interceptor Demo (500+ lines)
 │
 └── 📖 Documentation
     └── ucie_sb_README.md                   # This comprehensive guide
@@ -882,6 +884,82 @@ class my_test extends uvm_test;
     phase.drop_objection(this);
   endtask
 endclass
+```
+
+---
+
+## 🔀 **UCIe Sideband Transaction Interceptor**
+
+### **🎯 Interceptor Overview**
+
+The UCIe Sideband Agent includes a **production-grade Transaction Interceptor** component that provides intelligent transaction monitoring, interception, and modification capabilities. This advanced component enables sophisticated verification scenarios where specific transactions need to be captured, modified, or replaced with custom responses.
+
+### **🏗️ Interceptor Architecture**
+
+The transaction interceptor follows a **three-agent architecture**:
+- **TX Agent**: Monitors outgoing CFG_READ_32B transactions
+- **RX Agent**: Monitors incoming COMPLETION_32B transactions  
+- **Driver Agent**: Sends custom completion responses
+
+### **🔧 Key Capabilities**
+
+- **Smart Transaction Matching**: Address, source ID, and tag-based filtering
+- **Custom Completion Generation**: Configurable response data and status
+- **Pass-through Mode**: Transparent forwarding for debugging
+- **Timeout Management**: Automatic cleanup of stale pending transactions
+- **Performance Statistics**: Comprehensive monitoring and reporting
+
+### **⚙️ Configuration Options**
+
+```systemverilog
+// Create and configure interceptor
+ucie_sb_interceptor_config cfg;
+cfg = ucie_sb_interceptor_config::type_id::create("cfg");
+
+// Configure address-based interception
+cfg.set_address_range(24'h100000, 24'h1000);  // 4KB range at 1MB
+cfg.set_custom_data(32'hDEADBEEF);            // Custom completion data
+cfg.set_debug_mode();                         // Enable detailed logging
+
+// Enable specific matching criteria
+cfg.enable_addr_match = 1;                    // Address-based matching
+cfg.enable_srcid_match = 1;                   // Source ID filtering
+cfg.match_srcid = 3'h2;                       // Target specific source
+```
+
+### **🚀 Usage Example**
+
+```systemverilog
+class interceptor_test extends uvm_test;
+  ucie_sb_interceptor_env env;
+  
+  virtual task run_phase(uvm_phase phase);
+    // Send CFG reads to intercepted range
+    for (int i = 0; i < 10; i++) begin
+      send_cfg_read(24'h100000 + (i*4), i[4:0]);
+      #1us;
+    end
+    
+    // Interceptor automatically generates custom completions
+    // for matching addresses, passes through others
+  endtask
+endclass
+```
+
+### **📊 Interceptor Demo**
+
+```bash
+# Compile interceptor example
+make compile_interceptor
+
+# Run interceptor demonstration
+make run_interceptor_demo
+
+# Expected output shows:
+# - CFG read detection and matching
+# - Custom completion generation
+# - Pass-through for non-matching transactions
+# - Comprehensive statistics reporting
 ```
 
 ---

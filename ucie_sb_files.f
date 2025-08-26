@@ -23,11 +23,15 @@ ucie_sb_reg_access_checker.sv
 # LTSM (Link Training State Machine) components
 ucie_sb_ltsm_model.sv
 
+# Transaction interceptor components
+ucie_sb_transaction_interceptor.sv
+
 # Example files (optional)
 ucie_sb_clock_pattern_example.sv
 ucie_sb_source_sync_example.sv
 ucie_sb_transaction_extern_example.sv
 ucie_sb_ltsm_example.sv
+ucie_sb_interceptor_example.sv
 
 
 

@@ -3,8 +3,9 @@
  * 
  * OVERVIEW:
  *   Complete UVM test environment demonstrating the integration and usage of
- *   the UCIe sideband transaction interceptor. Shows how to configure, connect,
- *   and operate the interceptor in a practical verification scenario.
+ *   the UCIe (Universal Chiplet Interconnect Express) sideband transaction
+ *   interceptor. Shows how to configure, connect, and operate the interceptor
+ *   in a practical verification scenario.
  *
  * EXAMPLE CAPABILITIES:
  *   • Complete UVM test environment with interceptor integration
@@ -14,16 +15,21 @@
  *   • Comprehensive logging and statistics reporting
  *
  * TEST SCENARIOS:
- *   1. Address-based interception with custom data responses
- *   2. Pass-through mode for non-matching transactions
- *   3. Error completion generation testing
- *   4. Performance and statistics analysis
+ *   • Address-based interception with custom data responses
+ *   • Pass-through mode for non-matching transactions
+ *   • Error completion generation testing
+ *   • Performance and statistics analysis
  *
  * INTEGRATION ARCHITECTURE:
  *   • DUT with separate TX/RX sideband interfaces
  *   • Interceptor positioned between RX monitor and response driver
  *   • Analysis port connections for transaction visibility
  *   • Configuration database integration for parameter control
+ *
+ * COMPLIANCE:
+ *   • IEEE 1800-2017 SystemVerilog
+ *   • UVM 1.2 methodology
+ *   • UCIe 1.1 specification
  *
  * AUTHOR: UCIe Sideband UVM Agent
  * VERSION: 1.0 - Complete interceptor demonstration environment
@@ -40,7 +46,7 @@ class ucie_sb_interceptor_env extends uvm_env;
   `uvm_component_utils(ucie_sb_interceptor_env)
   
   /*---------------------------------------------------------------------------
-   * ENVIRONMENT COMPONENTS
+   * ENVIRONMENT COMPONENT HIERARCHY
    * Core components for interceptor testing environment
    *---------------------------------------------------------------------------*/
   
