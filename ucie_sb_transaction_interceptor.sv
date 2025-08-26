@@ -196,16 +196,16 @@ class ucie_sb_transaction_interceptor extends uvm_component;
   
   /*---------------------------------------------------------------------------
    * TRANSACTION TRACKING AND MANAGEMENT
-   * Pending transaction storage and completion matching infrastructure
+   * Simplified state management for latest CFG_READ matching
    *---------------------------------------------------------------------------*/
   
-  // Pending transaction storage
-  ucie_sb_pending_transaction pending_transactions[$];
-  ucie_sb_pending_transaction pending_queue[bit [4:0]]; // Tag-indexed queue
+  // Latest CFG_READ state management
+  ucie_sb_transaction latest_cfg_read;    // Latest matched CFG_READ transaction
+  bit ready_for_completion = 0;           // Flag indicating ready to intercept COMPLETION
   
-  // Transaction matching and processing
+  // Transaction processing synchronization
   semaphore completion_sem;               // Completion processing semaphore
-  event new_cfg_read_event;               // New CFG read detected
+  event cfg_read_matched_event;           // CFG read matched and stored
   event completion_processed_event;       // Completion processed
   
   /*---------------------------------------------------------------------------
@@ -214,11 +214,11 @@ class ucie_sb_transaction_interceptor extends uvm_component;
    *---------------------------------------------------------------------------*/
   
   // Transaction counters
-  int cfg_reads_detected = 0;             // CFG read transactions detected
-  int completions_intercepted = 0;        // Completions intercepted
-  int completions_modified = 0;           // Completions modified
-  int completions_passed_through = 0;     // Completions passed through
-  int transactions_timed_out = 0;         // Timed out transactions
+  int matched_cfg_reads = 0;              // CFG_READs that matched criteria
+  int ignored_cfg_reads = 0;              // CFG_READs that didn't match criteria
+  int completions_intercepted = 0;        // COMPLETION_32B intercepted and revised
+  int completions_bypassed = 0;           // COMPLETION_32B forwarded unchanged
+  int other_transactions_bypassed = 0;    // All other transaction types bypassed
   
   // Performance metrics
   realtime total_intercept_time = 0;      // Total interception processing time
@@ -246,12 +246,11 @@ class ucie_sb_transaction_interceptor extends uvm_component;
   extern virtual task monitor_tx_transactions();
   extern virtual task monitor_rx_transactions();
   extern virtual task process_cfg_read(ucie_sb_transaction trans);
-  extern virtual task process_completion(ucie_sb_transaction trans);
+  extern virtual task process_rx_transaction(ucie_sb_transaction trans);
   extern virtual function bit matches_criteria(ucie_sb_transaction trans);
-  extern virtual function ucie_sb_pending_transaction find_pending_transaction(bit [4:0] tag, bit [2:0] srcid);
-  extern virtual function ucie_sb_transaction generate_custom_completion(ucie_sb_pending_transaction pending);
-  extern virtual task send_completion(ucie_sb_transaction completion);
-  extern virtual task cleanup_expired_transactions();
+  extern virtual function bit completion_matches_latest_cfg_read(ucie_sb_transaction completion);
+  extern virtual function ucie_sb_transaction generate_revised_completion(ucie_sb_transaction original);
+  extern virtual task send_to_driver(ucie_sb_transaction trans);
   extern virtual function void set_default_config();
   extern virtual function void print_statistics();
 
@@ -433,11 +432,10 @@ task ucie_sb_transaction_interceptor::run_phase(uvm_phase phase);
   
   `uvm_info("INTERCEPTOR", "Starting transaction interceptor run phase", UVM_LOW)
   
-  // Start parallel monitoring and processing tasks
+  // Start parallel monitoring tasks
   fork
     monitor_tx_transactions();
     monitor_rx_transactions();
-    cleanup_expired_transactions();
   join_none
   
   // Wait for simulation completion
@@ -461,8 +459,8 @@ endfunction
 /*---------------------------------------------------------------------------
  * TX TRANSACTION MONITORING IMPLEMENTATION
  * 
- * Monitors TX path for CFG_READ_32B transactions. Stores matching
- * transactions in pending queue for later completion processing.
+ * Monitors TX path for CFG_READ_32B transactions only. Stores latest matching
+ * CFG_READ for potential COMPLETION interception. All other transactions ignored.
  *---------------------------------------------------------------------------*/
 task ucie_sb_transaction_interceptor::monitor_tx_transactions();
   ucie_sb_transaction trans;
@@ -474,18 +472,19 @@ task ucie_sb_transaction_interceptor::monitor_tx_transactions();
     // Forward to analysis port
     tx_monitor_ap.write(trans);
     
-    // Process CFG read transactions
+    // Only process CFG_READ_32B transactions, ignore all others
     if (trans.opcode == CFG_READ_32B) begin
       process_cfg_read(trans);
     end
+    // All other transaction types are ignored by TX monitor
   end
 endtask
 
 /*---------------------------------------------------------------------------
  * RX TRANSACTION MONITORING IMPLEMENTATION
  * 
- * Monitors RX path for COMPLETION_32B transactions. Checks for matches
- * with pending CFG reads and handles interception/pass-through logic.
+ * Monitors RX path for ALL transactions. Only COMPLETION_32B transactions
+ * are checked for interception. All other transactions bypass directly to driver.
  *---------------------------------------------------------------------------*/
 task ucie_sb_transaction_interceptor::monitor_rx_transactions();
   ucie_sb_transaction trans;
@@ -497,13 +496,8 @@ task ucie_sb_transaction_interceptor::monitor_rx_transactions();
     // Forward to analysis port
     rx_monitor_ap.write(trans);
     
-    // Process completion transactions
-    if (trans.opcode == COMPLETION_32B) begin
-      process_completion(trans);
-    end else begin
-      // Forward non-completion transactions directly
-      send_completion(trans);
-    end
+    // Process all RX transactions
+    process_rx_transaction(trans);
   end
 endtask
 
@@ -511,13 +505,10 @@ endtask
  * CFG READ PROCESSING IMPLEMENTATION
  * 
  * Processes detected CFG_READ_32B transactions. Checks matching criteria
- * and stores qualifying transactions in pending queue.
+ * and stores latest matching CFG_READ for COMPLETION interception.
  *---------------------------------------------------------------------------*/
 task ucie_sb_transaction_interceptor::process_cfg_read(ucie_sb_transaction trans);
-  ucie_sb_pending_transaction pending;
   bit matches;
-  
-  cfg_reads_detected++;
   
   if (cfg.enable_debug) begin
     `uvm_info("INTERCEPTOR", $sformatf("Detected CFG_READ_32B: addr=0x%06h, tag=%0d, srcid=%0d", 
@@ -528,98 +519,103 @@ task ucie_sb_transaction_interceptor::process_cfg_read(ucie_sb_transaction trans
   matches = matches_criteria(trans);
   
   if (matches && cfg.enable_interception && !cfg.pass_through_mode) begin
-    // Create pending transaction entry
-    pending = ucie_sb_pending_transaction::type_id::create("pending");
-    pending.tag = trans.tag;
-    pending.srcid = trans.srcid;
-    pending.dstid = trans.dstid;
-    pending.addr = trans.addr;
-    pending.be = trans.be;
-    pending.matched = 1;
-    
-    // Store in pending queue
-    pending_queue[trans.tag] = pending;
-    pending_transactions.push_back(pending);
+    // Store as latest matched CFG_READ
+    latest_cfg_read = trans.copy();
+    ready_for_completion = 1;
+    matched_cfg_reads++;
     
     if (cfg.enable_debug) begin
-      `uvm_info("INTERCEPTOR", $sformatf("Stored pending transaction: %s", pending.to_string()), UVM_HIGH)
+      `uvm_info("INTERCEPTOR", $sformatf("Stored CFG_READ for interception: tag=%0d, addr=0x%06h", 
+                trans.tag, trans.addr), UVM_MEDIUM)
     end
     
-    -> new_cfg_read_event;
+    -> cfg_read_matched_event;
+  end else begin
+    ignored_cfg_reads++;
+    
+    if (cfg.enable_debug) begin
+      `uvm_info("INTERCEPTOR", $sformatf("Ignored CFG_READ: tag=%0d (no match or disabled)", trans.tag), UVM_HIGH)
+    end
   end
 endtask
 
 /*---------------------------------------------------------------------------
- * COMPLETION PROCESSING IMPLEMENTATION
+ * RX TRANSACTION PROCESSING IMPLEMENTATION
  * 
- * Processes COMPLETION_32B transactions from RX path. Matches with pending
- * CFG reads and generates custom completions or forwards originals.
+ * Processes ALL transactions from RX path. Only COMPLETION_32B transactions
+ * are checked for interception. All other transactions bypass to driver.
  *---------------------------------------------------------------------------*/
-task ucie_sb_transaction_interceptor::process_completion(ucie_sb_transaction trans);
-  ucie_sb_pending_transaction pending;
-  ucie_sb_transaction custom_completion;
+task ucie_sb_transaction_interceptor::process_rx_transaction(ucie_sb_transaction trans);
   realtime start_time, process_time;
   
   start_time = $realtime;
-  completion_sem.get(1);
   
-  try begin
-    completions_intercepted++;
-    
-    if (cfg.enable_debug) begin
-      `uvm_info("INTERCEPTOR", $sformatf("Processing COMPLETION_32B: tag=%0d, srcid=%0d", 
-                trans.tag, trans.srcid), UVM_HIGH)
-    end
-    
-    // Find matching pending transaction
-    pending = find_pending_transaction(trans.tag, trans.srcid);
-    
-    if (pending != null && pending.matched) begin
-      // Generate custom completion for matched transaction
-      custom_completion = generate_custom_completion(pending);
-      send_completion(custom_completion);
-      completions_modified++;
+  if (trans.opcode == COMPLETION_32B) begin
+    // Check if this completion matches our latest CFG_READ
+    if (ready_for_completion && completion_matches_latest_cfg_read(trans)) begin
+      // INTERCEPT - Generate revised completion
+      ucie_sb_transaction revised_completion = generate_revised_completion(trans);
+      send_to_driver(revised_completion);
+      completions_intercepted++;
       
-      // Remove from pending queue
-      pending_queue.delete(trans.tag);
-      
-      // Remove from pending list
-      for (int i = 0; i < pending_transactions.size(); i++) begin
-        if (pending_transactions[i] == pending) begin
-          pending_transactions.delete(i);
-          break;
-        end
-      end
-      
-      if (cfg.enable_debug) begin
-        `uvm_info("INTERCEPTOR", $sformatf("Generated custom completion for tag=%0d", trans.tag), UVM_MEDIUM)
-      end
+      // Reset state for next interception
+      ready_for_completion = 0;
+      latest_cfg_read = null;
       
       // Write to intercepted analysis port
-      intercepted_ap.write(custom_completion);
+      intercepted_ap.write(revised_completion);
+      
+      if (cfg.enable_debug) begin
+        `uvm_info("INTERCEPTOR", $sformatf("Intercepted COMPLETION_32B: tag=%0d, revised with custom data", 
+                  trans.tag), UVM_MEDIUM)
+      end
       
     end else begin
       // Forward original completion
-      send_completion(trans);
-      completions_passed_through++;
+      send_to_driver(trans);
+      completions_bypassed++;
       
       if (cfg.enable_debug) begin
-        `uvm_info("INTERCEPTOR", $sformatf("Forwarded original completion for tag=%0d", trans.tag), UVM_HIGH)
+        `uvm_info("INTERCEPTOR", $sformatf("Bypassed COMPLETION_32B: tag=%0d (no match or not ready)", 
+                  trans.tag), UVM_HIGH)
       end
     end
+  end else begin
+    // BYPASS all non-COMPLETION transactions directly
+    send_to_driver(trans);
+    other_transactions_bypassed++;
     
-  end finally begin
-    completion_sem.put(1);
-    
-    // Update performance metrics
-    process_time = $realtime - start_time;
-    total_intercept_time += process_time;
-    if (process_time > max_intercept_time) max_intercept_time = process_time;
-    if (min_intercept_time == 0 || process_time < min_intercept_time) min_intercept_time = process_time;
-    
-    -> completion_processed_event;
+    if (cfg.enable_debug) begin
+      `uvm_info("INTERCEPTOR", $sformatf("Bypassed transaction: opcode=%0d", trans.opcode), UVM_HIGH)
+    end
   end
+  
+  // Update performance metrics
+  process_time = $realtime - start_time;
+  total_intercept_time += process_time;
+  if (process_time > max_intercept_time) max_intercept_time = process_time;
+  if (min_intercept_time == 0 || process_time < min_intercept_time) min_intercept_time = process_time;
+  
+  -> completion_processed_event;
 endtask
+
+/*---------------------------------------------------------------------------
+ * COMPLETION MATCHING IMPLEMENTATION
+ * 
+ * Checks if a COMPLETION_32B transaction matches the latest stored CFG_READ
+ * transaction based on tag and source/destination ID correspondence.
+ *---------------------------------------------------------------------------*/
+function bit ucie_sb_transaction_interceptor::completion_matches_latest_cfg_read(ucie_sb_transaction completion);
+  if (latest_cfg_read == null) return 0;
+  
+  // Check tag match
+  if (completion.tag != latest_cfg_read.tag) return 0;
+  
+  // Check source ID correspondence (completion srcid should match CFG_READ dstid)
+  if (completion.srcid != latest_cfg_read.dstid) return 0;
+  
+  return 1;
+endfunction
 
 /*---------------------------------------------------------------------------
  * TRANSACTION MATCHING CRITERIA IMPLEMENTATION
@@ -651,109 +647,62 @@ function bit ucie_sb_transaction_interceptor::matches_criteria(ucie_sb_transacti
 endfunction
 
 /*---------------------------------------------------------------------------
- * PENDING TRANSACTION LOOKUP IMPLEMENTATION
+ * REVISED COMPLETION GENERATION IMPLEMENTATION
  * 
- * Finds pending transaction entry matching the specified tag and source ID.
- * Returns null if no matching pending transaction is found.
+ * Generates revised COMPLETION_32B transaction based on original completion
+ * and latest CFG_READ transaction with configured custom response parameters.
  *---------------------------------------------------------------------------*/
-function ucie_sb_pending_transaction ucie_sb_transaction_interceptor::find_pending_transaction(bit [4:0] tag, bit [2:0] srcid);
-  if (pending_queue.exists(tag)) begin
-    ucie_sb_pending_transaction pending = pending_queue[tag];
-    // Verify source ID matches (completion's srcid should match request's dstid)
-    if (pending.dstid == srcid) begin
-      return pending;
-    end
-  end
-  return null;
-endfunction
-
-/*---------------------------------------------------------------------------
- * CUSTOM COMPLETION GENERATION IMPLEMENTATION
- * 
- * Generates custom COMPLETION_32B transaction based on pending request
- * and configured response parameters.
- *---------------------------------------------------------------------------*/
-function ucie_sb_transaction ucie_sb_transaction_interceptor::generate_custom_completion(ucie_sb_pending_transaction pending);
-  ucie_sb_transaction completion;
+function ucie_sb_transaction ucie_sb_transaction_interceptor::generate_revised_completion(ucie_sb_transaction original);
+  ucie_sb_transaction revised;
   
-  completion = ucie_sb_transaction::type_id::create("custom_completion");
+  revised = original.copy();  // Start with original completion
   
-  // Set completion fields based on original request
-  completion.opcode = COMPLETION_32B;
-  completion.srcid = pending.dstid;        // Original destination becomes source
-  completion.dstid = pending.srcid;        // Original source becomes destination
-  completion.tag = pending.tag;            // Match original tag
-  completion.be = pending.be;              // Match original byte enables
-  completion.ep = 0;                       // No error poison
-  completion.cr = 0;                       // No credit return
-  
-  // Set completion status and data
+  // Apply custom modifications
   if (cfg.generate_error_completion) begin
-    completion.status[2:0] = cfg.error_status;
-    completion.data = 32'h0;               // No data for error completions
+    revised.status[2:0] = cfg.error_status;
+    revised.data = 32'h0;                    // No data for error completions
   end else begin
-    completion.status[2:0] = cfg.custom_completion_status;
-    completion.data[31:0] = cfg.custom_completion_data;
+    revised.status[2:0] = cfg.custom_completion_status;
+    revised.data[31:0] = cfg.custom_completion_data;  // Custom data payload
   end
+  
+  // Preserve UCIe protocol fields from original
+  revised.opcode = COMPLETION_32B;
+  revised.tag = original.tag;              // Keep original tag
+  revised.srcid = original.srcid;          // Keep original source ID
+  revised.dstid = original.dstid;          // Keep original destination ID
+  revised.be = latest_cfg_read.be;         // Use CFG_READ byte enables
+  revised.ep = 0;                          // No error poison
+  revised.cr = 0;                          // No credit return
   
   // Update packet metadata
-  completion.update_packet_info();
+  revised.update_packet_info();
   
-  return completion;
+  return revised;
 endfunction
 
 /*---------------------------------------------------------------------------
- * COMPLETION TRANSMISSION IMPLEMENTATION
+ * TRANSACTION TRANSMISSION IMPLEMENTATION
  * 
- * Sends completion transaction via driver agent with configurable delay.
- * Handles both custom and pass-through completions.
+ * Sends any transaction via driver agent with configurable delay.
+ * Handles both intercepted/revised and bypassed transactions.
  *---------------------------------------------------------------------------*/
-task ucie_sb_transaction_interceptor::send_completion(ucie_sb_transaction completion);
-  // Add configurable delay
-  if (cfg.completion_delay_cycles > 0) begin
+task ucie_sb_transaction_interceptor::send_to_driver(ucie_sb_transaction trans);
+  // Add configurable delay for completions
+  if (trans.opcode == COMPLETION_32B && cfg.completion_delay_cycles > 0) begin
     repeat(cfg.completion_delay_cycles) @(posedge driver_agent.vif.clk);
   end
   
   // Send via driver agent
-  driver_agent.driver.send_transaction(completion);
+  driver_agent.driver.send_transaction(trans);
   
   if (cfg.enable_debug) begin
-    `uvm_info("INTERCEPTOR", $sformatf("Sent completion: tag=%0d, data=0x%08h", 
-              completion.tag, completion.data[31:0]), UVM_HIGH)
+    `uvm_info("INTERCEPTOR", $sformatf("Sent to driver: opcode=%0d, tag=%0d, data=0x%08h", 
+              trans.opcode, trans.tag, trans.data[31:0]), UVM_HIGH)
   end
 endtask
 
-/*---------------------------------------------------------------------------
- * EXPIRED TRANSACTION CLEANUP IMPLEMENTATION
- * 
- * Periodically removes expired pending transactions to prevent memory leaks
- * and maintain optimal performance.
- *---------------------------------------------------------------------------*/
-task ucie_sb_transaction_interceptor::cleanup_expired_transactions();
-  forever begin
-    #(cfg.timeout_ns * 1ns);
-    
-    // Clean up expired transactions
-    for (int i = pending_transactions.size() - 1; i >= 0; i--) begin
-      if (pending_transactions[i].is_expired(cfg.timeout_ns)) begin
-        ucie_sb_pending_transaction expired = pending_transactions[i];
-        
-        // Remove from tag-indexed queue
-        if (pending_queue.exists(expired.tag)) begin
-          pending_queue.delete(expired.tag);
-        end
-        
-        // Remove from pending list
-        pending_transactions.delete(i);
-        transactions_timed_out++;
-        
-        if (cfg.enable_debug) begin
-          `uvm_info("INTERCEPTOR", $sformatf("Cleaned up expired transaction: %s", expired.to_string()), UVM_MEDIUM)
-        end
-      end
-    end
-  end
-endtask
+
 
 /*---------------------------------------------------------------------------
  * DEFAULT CONFIGURATION SETUP IMPLEMENTATION
@@ -784,12 +733,12 @@ function void ucie_sb_transaction_interceptor::print_statistics();
   end
   
   `uvm_info("INTERCEPTOR", "=== Transaction Interceptor Statistics ===", UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("CFG reads detected: %0d", cfg_reads_detected), UVM_LOW)
+  `uvm_info("INTERCEPTOR", $sformatf("Matched CFG_READs: %0d", matched_cfg_reads), UVM_LOW)
+  `uvm_info("INTERCEPTOR", $sformatf("Ignored CFG_READs: %0d", ignored_cfg_reads), UVM_LOW)
   `uvm_info("INTERCEPTOR", $sformatf("Completions intercepted: %0d", completions_intercepted), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Completions modified: %0d", completions_modified), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Completions passed through: %0d", completions_passed_through), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Transactions timed out: %0d", transactions_timed_out), UVM_LOW)
-  `uvm_info("INTERCEPTOR", $sformatf("Pending transactions: %0d", pending_transactions.size()), UVM_LOW)
+  `uvm_info("INTERCEPTOR", $sformatf("Completions bypassed: %0d", completions_bypassed), UVM_LOW)
+  `uvm_info("INTERCEPTOR", $sformatf("Other transactions bypassed: %0d", other_transactions_bypassed), UVM_LOW)
+  `uvm_info("INTERCEPTOR", $sformatf("Ready for completion: %0b", ready_for_completion), UVM_LOW)
   `uvm_info("INTERCEPTOR", $sformatf("Average intercept time: %0.3f ns", avg_intercept_time), UVM_LOW)
   `uvm_info("INTERCEPTOR", $sformatf("Min/Max intercept time: %0.3f/%0.3f ns", 
             min_intercept_time/1ns, max_intercept_time/1ns), UVM_LOW)
