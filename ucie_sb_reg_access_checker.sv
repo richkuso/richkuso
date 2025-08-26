@@ -962,8 +962,8 @@ function void ucie_sb_reg_access_checker::print_statistics();
   `uvm_info("REG_CHECKER", $sformatf("  RX transactions queued: %0d", rx_transactions_queued), UVM_LOW)
   `uvm_info("REG_CHECKER", $sformatf("  Max TX FIFO depth: %0d", max_tx_fifo_depth), UVM_LOW)
   `uvm_info("REG_CHECKER", $sformatf("  Max RX FIFO depth: %0d", max_rx_fifo_depth), UVM_LOW)
-  `uvm_info("REG_CHECKER", $sformatf("  Current TX FIFO depth: %0d", tx_fifo.size()), UVM_LOW)
-  `uvm_info("REG_CHECKER", $sformatf("  Current RX FIFO depth: %0d", rx_fifo.size()), UVM_LOW)
+  `uvm_info("REG_CHECKER", $sformatf("  Current TX FIFO depth: %0d", tx_fifo.used()), UVM_LOW)
+  `uvm_info("REG_CHECKER", $sformatf("  Current RX FIFO depth: %0d", rx_fifo.used()), UVM_LOW)
   
   `uvm_info("REG_CHECKER", "TX→RX Flow Statistics:", UVM_LOW)
   `uvm_info("REG_CHECKER", $sformatf("  TX requests sent: %0d", tx_requests_sent), UVM_LOW)
