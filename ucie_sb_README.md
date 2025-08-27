@@ -901,46 +901,107 @@ The UCIe Sideband Agent includes a **production-grade Transaction Interceptor** 
 
 ### **📋 Model Overview**
 
-The UCIe Sideband Compare Result Model provides sophisticated **mainband data verification** support through intelligent sideband RX transaction processing. This advanced model acts as a **gatekeeper and rewriter** for sideband responses, providing configurable compare results based on a 2D array lookup mechanism.
+The UCIe Sideband Compare Result Model provides sophisticated **mainband data verification** support through intelligent sideband transaction processing. This advanced model acts as a **gatekeeper and rewriter** for sideband responses, implementing a **three-address group system** with linear array indexing for precise compare result delivery.
 
-### **🎯 Functional Context**
+### **🎯 DUT Behavior & Functional Context**
 
 **Mainband Operation:**
 - DUT transmits actual data to remote DUT through mainband
 - Remote DUT performs data comparison to determine correctness
 
 **Sideband Operation:**
-- After mainband transfer completes, DUT issues sideband TX (request) to retrieve compare result
-- Remote DUT responds with sideband RX (response) containing compare result
-- DUT uses RX result to decide whether transfer was successful
+After mainband transfer completes, the DUT issues **three sequential read requests**:
+- `CFG_READ_32B @ 0x013140`
+- `CFG_READ_32B @ 0x013144`
+- `CFG_READ_32B @ 0x013148`
+
+Each TX corresponds to one RX with `opcode = COMPLETION_32B`. RX.data values are used by the DUT to determine whether the mainband transfer was correct.
+
+**Three-Address Group Rule:**
+- These three addresses belong to **one compare result group**
+- All three RX responses in the group use the **same array index**
+- Only after the DUT completes all three reads does the model increment the array index by +1
 
 ### **🏗️ Model Architecture**
 
+**FIFO-Based Receiver:**
+- **TX FIFO**: Collects TX requests from DUT monitor
+- **RX FIFO**: Collects RX responses from remote DUT monitor (before modification)
+- **Blocking Processing**: Model blocks on FIFO get() to process transactions in-order
+
 **Core Responsibilities:**
-- **🚪 Gatekeeper**: All sideband RX transactions must pass through the model
-- **✏️ Rewriter**: Only data field of RX is rewritten, parity recalculated
-- **🔄 Pass-through**: Non-matching RX passes unchanged to sequencer → driver → DUT
-- **🎛️ Enable Control**: Can be disabled to simulate timeout/failure scenarios
-- **📊 Logger**: Comprehensive logging of all operations and array accesses
+- **🚪 Gatekeeper**: All RX transactions from RX FIFO must pass through model before reaching DUT
+- **✏️ Rewriter**: Only data field of RX is rewritten, parity recalculated, other fields unchanged
+- **🔄 Pass-through**: Non-target RX transactions pass unchanged to sequencer → driver → DUT
+- **🎛️ Enable Control**: When disabled, TX requests enter FIFO but no RX forwarded (timeout/failure simulation)
+- **📊 Logger**: Comprehensive logging whenever rewriting occurs
+
+### **🎯 Target Address System**
+
+**Rewrite Conditions:**
+```systemverilog
+// TX transaction must match:
+TX.opcode = CFG_READ_32B
+TX.addr ∈ {0x013140, 0x013144, 0x013148}
+
+// Corresponding RX transaction must be:
+RX.opcode = COMPLETION_32B
+
+// Then: RX.data ← array[current_index], parity recalculated
+```
+
+**Target Address Constants:**
+```systemverilog
+parameter bit [23:0] TARGET_ADDR_0 = 24'h013140;  // First target address
+parameter bit [23:0] TARGET_ADDR_1 = 24'h013144;  // Second target address  
+parameter bit [23:0] TARGET_ADDR_2 = 24'h013148;  // Third target address
+```
 
 ### **📊 Compare Result Array Structure**
 
 **Array Specifications:**
-- **Structure**: Fixed size 64 rows (Y) × 63 columns (X)
-- **Element Width**: 32-bit values
-- **Values**: `32'hFFFF_FFFF` (PASS) or `32'h0000_0000` (FAIL)
+- **Structure**: Fixed size 64 rows (Y) × 63 columns (X) = 4032 entries
+- **Element Width**: 32-bit values (`32'hFFFF_FFFF` or `32'h0000_0000`)
+- **Linear Index Mapping**: `index = y * 63 + x` (row-major, X first)
+
+**Index Mapping Examples:**
+```systemverilog
+index=0   → (x=0, y=0)     // First element
+index=1   → (x=1, y=0)     // Second element in row 0
+index=62  → (x=62, y=0)    // Last element in row 0
+index=63  → (x=0, y=1)     // First element in row 1
+index=4031 → (x=62, y=63)  // Last element in array
+```
 
 **Array Initialization (Fill Rule):**
 ```systemverilog
-// Controlled by four parameters:
-int exp_volt_min, exp_volt_max     // Y-axis range
+// Controlled by expected range parameters:
+int exp_volt_min, exp_volt_max         // Y-axis range
 int exp_clk_phase_min, exp_clk_phase_max  // X-axis range
 
 // Fill logic:
-if (y ∈ [exp_volt_min, exp_volt_max] && x ∈ [exp_clk_phase_min, exp_clk_phase_max])
+if (y ∈ [exp_volt_min..exp_volt_max] && x ∈ [exp_clk_phase_min..exp_clk_phase_max])
     element = 32'hFFFF_FFFF  // PASS
 else
     element = 32'h0000_0000  // FAIL
+```
+
+### **🔢 Initial Index Selection**
+
+**Testbench-Defined Parameters:**
+```systemverilog
+int volt_min, volt_max, clk_phase  // Defined by testbench/environment, not DUT TX
+
+// Y range calculation: [volt_max .. volt_min]
+// X range calculation: [31 - clk_phase .. 31 + clk_phase]
+```
+
+**Valid Indices Generation:**
+Indices expand in **X-major then Y order**:
+```systemverilog
+// Example: volt_max=10, volt_min=11, clk_phase=1
+// Y ∈ {10, 11}, X ∈ {30, 31, 32}
+// Valid indices: (30,10)→660, (31,10)→661, (32,10)→662, (30,11)→723, (31,11)→724, (32,11)→725
 ```
 
 ### **📡 TX Request Processing**
