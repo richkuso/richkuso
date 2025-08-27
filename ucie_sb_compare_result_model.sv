@@ -162,8 +162,8 @@ class ucie_sb_compare_result_sequence extends uvm_sequence #(ucie_sb_transaction
     start_item(tx_item);
     finish_item(tx_item);
     
-    `uvm_info("COMPARE_RESULT_SEQ", $sformatf("Sent transaction: opcode=%0d, data=0x%08h", 
-              tx_item.opcode, tx_item.data[31:0]), UVM_HIGH)
+    `uvm_info("COMPARE_RESULT_SEQ", $sformatf("Sent transaction: %s", 
+              tx_item.convert2string()), UVM_HIGH)
   endtask
   
   /*---------------------------------------------------------------------------
@@ -287,6 +287,7 @@ class ucie_sb_compare_result_model extends uvm_component;
   extern virtual function void advance_group_state();
   extern virtual function void log_initialization();
   extern virtual function void log_tx_request(bit [4:0] opcode, bit [23:0] addr);
+  extern virtual function void log_tx_request_transaction(ucie_sb_transaction tx_trans);
   extern virtual function void log_rx_processing(ucie_sb_transaction original, ucie_sb_transaction processed, int index, int x, int y);
   extern virtual function void log_message(string message, uvm_verbosity verbosity = UVM_LOW);
   extern virtual function void set_default_config();
@@ -540,8 +541,8 @@ task ucie_sb_compare_result_model::process_transactions();
     start_time = $realtime;
     
     if (cfg.enable_debug) begin
-      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received TX transaction: opcode=%0d, addr=0x%06h", 
-                tx_trans.opcode, tx_trans.addr), UVM_HIGH)
+      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received TX transaction: %s", 
+                tx_trans.convert2string()), UVM_HIGH)
     end
     
     // Process TX transaction - check if it's a target address
@@ -552,8 +553,8 @@ task ucie_sb_compare_result_model::process_transactions();
     rx_transactions_received++;
     
     if (cfg.enable_debug) begin
-      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received RX transaction: opcode=%0d, data=0x%08h", 
-                rx_trans.opcode, rx_trans.data[31:0]), UVM_HIGH)
+      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received RX transaction: %s", 
+                rx_trans.convert2string()), UVM_HIGH)
     end
     
     // Process RX transaction based on model configuration
@@ -612,13 +613,13 @@ task ucie_sb_compare_result_model::process_tx_transaction(ucie_sb_transaction tx
   tx_requests_processed++;
   
   if (cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("TX processed: opcode=%0d, addr=0x%06h", 
-              tx_trans.opcode, tx_trans.addr), UVM_MEDIUM)
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("TX processed: %s", 
+              tx_trans.convert2string()), UVM_MEDIUM)
   end
   
   // Log TX request
   if (cfg.enable_logging) begin
-    log_tx_request(tx_trans.opcode, tx_trans.addr);
+    log_tx_request_transaction(tx_trans);
   end
 endtask
 
@@ -716,8 +717,10 @@ function ucie_sb_transaction ucie_sb_compare_result_model::process_rx_transactio
   end
   
   if (cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("RX rewritten: index=%0d, array[%0d][%0d]=0x%08h, data: 0x%08h→0x%08h, parity: %0b→%0b", 
-              current_index, access_y, access_x, new_data, original_data, new_data, original_parity, new_parity), UVM_MEDIUM)
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("RX rewritten: index=%0d, array[%0d][%0d]=0x%08h", 
+              current_index, access_y, access_x, new_data), UVM_MEDIUM)
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Original RX: %s", rx_trans.convert2string()), UVM_MEDIUM)
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Processed RX: %s", processed_trans.convert2string()), UVM_MEDIUM)
   end
   
   return processed_trans;
@@ -798,6 +801,31 @@ function void ucie_sb_compare_result_model::log_tx_request(bit [4:0] opcode, bit
 endfunction
 
 /*---------------------------------------------------------------------------
+ * TX REQUEST TRANSACTION LOGGING IMPLEMENTATION
+ * 
+ * Logs TX request using convert2string() for complete transaction info.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::log_tx_request_transaction(ucie_sb_transaction tx_trans);
+  string msg;
+  
+  msg = $sformatf("=== TX REQUEST ===");
+  log_message(msg, UVM_MEDIUM);
+  
+  msg = $sformatf("TX Transaction: %s", tx_trans.convert2string());
+  log_message(msg, UVM_MEDIUM);
+  
+  if (cfg.is_target_address(tx_trans.addr)) begin
+    msg = $sformatf("Target address: YES (will trigger rewriting)");
+  end else begin
+    msg = $sformatf("Target address: NO (will pass-through)");
+  end
+  log_message(msg, UVM_MEDIUM);
+  
+  msg = $sformatf("==================");
+  log_message(msg, UVM_MEDIUM);
+endfunction
+
+/*---------------------------------------------------------------------------
  * RX PROCESSING LOGGING IMPLEMENTATION
  * 
  * Logger: Whenever rewriting occurs, logs:
@@ -811,10 +839,10 @@ function void ucie_sb_compare_result_model::log_rx_processing(ucie_sb_transactio
   msg = $sformatf("RX_REWRITE: array index=%0d, coordinates(%0d,%0d) used for substitution", index, x, y);
   log_message(msg, UVM_MEDIUM);
   
-  msg = $sformatf("  Original RX data/parity: 0x%08h / %0b", original.data[31:0], original.dp);
+  msg = $sformatf("  Original RX: %s", original.convert2string());
   log_message(msg, UVM_MEDIUM);
   
-  msg = $sformatf("  Rewritten RX data/parity: 0x%08h / %0b", processed.data[31:0], processed.dp);
+  msg = $sformatf("  Rewritten RX: %s", processed.convert2string());
   log_message(msg, UVM_MEDIUM);
 endfunction
 
@@ -1050,7 +1078,7 @@ task ucie_sb_compare_result_model::send_transaction_via_sequence(ucie_sb_transac
   seq.start(rx_sequencer);
   
   if (cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Sent transaction via sequence: opcode=%0d, data=0x%08h", 
-              trans.opcode, trans.data[31:0]), UVM_HIGH)
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Sent transaction via sequence: %s", 
+              trans.convert2string()), UVM_HIGH)
   end
 endtask
