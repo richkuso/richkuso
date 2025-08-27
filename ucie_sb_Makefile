@@ -13,6 +13,9 @@ LTSM_SOURCES = ucie_sb_inf.sv ucie_sb_pkg.sv ucie_sb_ltsm_model.sv ucie_sb_ltsm_
 # Transaction interceptor files
 INTERCEPTOR_SOURCES = ucie_sb_inf.sv ucie_sb_pkg.sv ucie_sb_transaction_interceptor.sv ucie_sb_interceptor_example.sv
 
+# Compare result model files
+COMPARE_MODEL_SOURCES = ucie_sb_inf.sv ucie_sb_pkg.sv ucie_sb_compare_result_model.sv ucie_sb_compare_result_example.sv
+
 # Common UVM arguments
 UVM_HOME ?= $(VCS_HOME)/etc/uvm-1.2
 UVM_ARGS = +incdir+$(UVM_HOME)/src $(UVM_HOME)/src/uvm_pkg.sv
@@ -97,6 +100,32 @@ run_interceptor_demo_questa: compile_interceptor_questa
 run_interceptor_demo_xcelium: compile_interceptor_xcelium
 	xmsim ucie_sb_interceptor_testbench +UVM_TESTNAME=ucie_sb_interceptor_test +UVM_VERBOSITY=UVM_MEDIUM -exit
 
+# Compare result model targets
+compile_compare_model: compile_compare_model_$(SIM)
+
+compile_compare_model_vcs:
+	vcs $(VCS_ARGS) $(UVM_ARGS) $(COMPARE_MODEL_SOURCES) -o ucie_sb_compare_model
+
+compile_compare_model_questa:
+	vlog $(QUESTA_ARGS) $(UVM_ARGS) $(COMPARE_MODEL_SOURCES) -work work
+	vsim -c -do "run -all; exit" work.ucie_sb_compare_result_testbench
+
+compile_compare_model_xcelium:
+	xmvlog $(XCELIUM_ARGS) $(UVM_ARGS) $(COMPARE_MODEL_SOURCES)
+	xmelab ucie_sb_compare_result_testbench
+
+# Compare result model demo targets
+run_compare_model_demo: run_compare_model_demo_$(SIM)
+
+run_compare_model_demo_vcs: compile_compare_model_vcs
+	./ucie_sb_compare_model +UVM_TESTNAME=ucie_sb_compare_result_test +UVM_VERBOSITY=UVM_MEDIUM
+
+run_compare_model_demo_questa: compile_compare_model_questa
+	vsim -c -do "run -all; exit" work.ucie_sb_compare_result_testbench +UVM_TESTNAME=ucie_sb_compare_result_test +UVM_VERBOSITY=UVM_MEDIUM
+
+run_compare_model_demo_xcelium: compile_compare_model_xcelium
+	xmsim ucie_sb_compare_result_testbench +UVM_TESTNAME=ucie_sb_compare_result_test +UVM_VERBOSITY=UVM_MEDIUM -exit
+
 # Syntax check targets
 syntax: syntax_$(SIM)
 
@@ -113,7 +142,8 @@ syntax_xcelium:
 clean:
 	rm -rf simv* csrc* ucli* *.log *.vpd *.fsdb *.shm *.trn work* transcript *.wlf
 	rm -rf DVEfiles inter.vpd *.daidir *.history .vlogansetup.env .vlogansetup.args
-	rm -rf ucie_sb_agent ucie_sb_simv ucie_sb_ltsm ucie_sb_interceptor *.vcd
+	rm -rf ucie_sb_agent ucie_sb_simv ucie_sb_ltsm ucie_sb_interceptor ucie_sb_compare_model *.vcd
+	rm -rf compare_result_*.log
 
 # Help target
 help:
@@ -123,8 +153,10 @@ help:
 	@echo "  compile               - Compile core UVM agent (default: VCS)"
 	@echo "  compile_ltsm          - Compile LTSM example"
 	@echo "  compile_interceptor   - Compile transaction interceptor example"
+	@echo "  compile_compare_model - Compile compare result model example"
 	@echo "  run_ltsm_demo         - Run LTSM training demonstration"
 	@echo "  run_interceptor_demo  - Run transaction interceptor demonstration"
+	@echo "  run_compare_model_demo- Run compare result model demonstration"
 	@echo "  syntax                - Check syntax only"
 	@echo "  clean                 - Clean build artifacts"
 	@echo "  help                  - Show this help"
@@ -142,8 +174,10 @@ help:
 	@echo "  make compile SIM=vcs"
 	@echo "  make compile_ltsm SIM=vcs"
 	@echo "  make compile_interceptor SIM=vcs"
+	@echo "  make compile_compare_model SIM=vcs"
 	@echo "  make run_ltsm_demo SIM=vcs"
 	@echo "  make run_interceptor_demo SIM=vcs"
+	@echo "  make run_compare_model_demo SIM=vcs"
 	@echo "  make syntax SIM=questa"
 	@echo "  make clean"
 

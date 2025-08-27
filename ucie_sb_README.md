@@ -95,7 +95,10 @@ graph LR
 │   ├── ucie_sb_env_loopback.sv             # Loopback Environment (82 lines)
 │   ├── ucie_sb_reg_access_checker.sv       # Register Access Checker (1147 lines)
 │   ├── ucie_sb_ltsm_model.sv               # Link Training State Machine (650+ lines)
-│   └── ucie_sb_transaction_interceptor.sv  # Transaction Interceptor (1000+ lines)
+│   ├── ucie_sb_transaction_interceptor.sv  # Transaction Interceptor (1000+ lines)
+│   ├── ucie_sb_interceptor_example.sv     # Interceptor Example (500+ lines)
+│   ├── ucie_sb_compare_result_model.sv    # Compare Result Model (800+ lines)
+│   └── ucie_sb_compare_result_example.sv  # Compare Model Example (400+ lines)
 │
 ├── 📚 Examples & Documentation
 │   ├── ucie_sb_source_sync_example.sv      # Source-sync Demo (155 lines)
@@ -893,6 +896,162 @@ endclass
 ### **🎯 Interceptor Overview**
 
 The UCIe Sideband Agent includes a **production-grade Transaction Interceptor** component that provides intelligent transaction monitoring, interception, and modification capabilities. This advanced component enables sophisticated verification scenarios where specific transactions need to be captured, modified, or replaced with custom responses.
+
+## 🎯 **UCIe Sideband Compare Result Model**
+
+### **📋 Model Overview**
+
+The UCIe Sideband Compare Result Model provides sophisticated **mainband data verification** support through intelligent sideband RX transaction processing. This advanced model acts as a **gatekeeper and rewriter** for sideband responses, providing configurable compare results based on a 2D array lookup mechanism.
+
+### **🎯 Functional Context**
+
+**Mainband Operation:**
+- DUT transmits actual data to remote DUT through mainband
+- Remote DUT performs data comparison to determine correctness
+
+**Sideband Operation:**
+- After mainband transfer completes, DUT issues sideband TX (request) to retrieve compare result
+- Remote DUT responds with sideband RX (response) containing compare result
+- DUT uses RX result to decide whether transfer was successful
+
+### **🏗️ Model Architecture**
+
+**Core Responsibilities:**
+- **🚪 Gatekeeper**: All sideband RX transactions must pass through the model
+- **✏️ Rewriter**: Only data field of RX is rewritten, parity recalculated
+- **🔄 Pass-through**: Non-matching RX passes unchanged to sequencer → driver → DUT
+- **🎛️ Enable Control**: Can be disabled to simulate timeout/failure scenarios
+- **📊 Logger**: Comprehensive logging of all operations and array accesses
+
+### **📊 Compare Result Array Structure**
+
+**Array Specifications:**
+- **Structure**: Fixed size 64 rows (Y) × 63 columns (X)
+- **Element Width**: 32-bit values
+- **Values**: `32'hFFFF_FFFF` (PASS) or `32'h0000_0000` (FAIL)
+
+**Array Initialization (Fill Rule):**
+```systemverilog
+// Controlled by four parameters:
+int exp_volt_min, exp_volt_max     // Y-axis range
+int exp_clk_phase_min, exp_clk_phase_max  // X-axis range
+
+// Fill logic:
+if (y ∈ [exp_volt_min, exp_volt_max] && x ∈ [exp_clk_phase_min, exp_clk_phase_max])
+    element = 32'hFFFF_FFFF  // PASS
+else
+    element = 32'h0000_0000  // FAIL
+```
+
+### **📡 TX Request Processing**
+
+**Request Parameters:**
+- `volt_min`, `volt_max` → Y-axis range for array access
+- `clk_phase` → defines X-axis range around center 31: [31 - clk_phase, 31 + clk_phase]
+
+**Access Region Calculation:**
+```systemverilog
+// Y range directly from voltage parameters
+access_y_min = volt_min;
+access_y_max = volt_max;
+
+// X range based on clk_phase around center 31
+access_x_min = 31 - clk_phase;
+access_x_max = 31 + clk_phase;
+```
+
+### **🔄 Operational Flow**
+
+1. **Mainband Transfer**: DUT transmits data over mainband
+2. **Remote Comparison**: Remote DUT performs comparison
+3. **Sideband TX Request**: DUT sends TX request (volt_min, volt_max, clk_phase)
+4. **Model Interception**: Model intercepts RX and determines array region
+5. **Sequential Access**: Model sequentially consumes array values within region
+6. **Data Rewriting**: RX.data overwritten with array value, parity recalculated
+7. **Logging**: Before/after values and coordinates logged
+8. **Transaction Forward**: Processed RX → sequencer → driver → DUT
+9. **Handshake Complete**: DUT receives result, completes handshake
+
+### **📊 Configuration Options**
+
+```systemverilog
+class ucie_sb_compare_result_config extends uvm_object;
+  // Operational control
+  bit enable_model = 1;                    // Enable/disable model
+  bit enable_debug = 1;                    // Debug messages
+  bit pass_through_mode = 0;               // Pass-through mode
+  
+  // Array initialization parameters
+  int exp_volt_min = 10;                   // Expected voltage minimum
+  int exp_volt_max = 20;                   // Expected voltage maximum  
+  int exp_clk_phase_min = 29;              // Expected clock phase minimum
+  int exp_clk_phase_max = 33;              // Expected clock phase maximum
+  
+  // Logging control
+  bit log_to_file = 0;                     // Enable file logging
+  string log_file_name = "compare_result_model.log";
+endclass
+```
+
+### **📈 Example Scenario**
+
+**Array Initialization:**
+```systemverilog
+// Parameters: exp_volt_min=10, exp_volt_max=20, exp_clk_phase_min=29, exp_clk_phase_max=33
+// Result: (Y=10..20, X=29..33) → PASS (0xFFFF_FFFF), elsewhere → FAIL (0x0000_0000)
+```
+
+**DUT TX Request:**
+```systemverilog
+// Parameters: volt_min=12, volt_max=14, clk_phase=30
+// Interpreted as: Y range = 12..14, X range = [1..61] (31-30 to 31+30)
+```
+
+**Expected Results:**
+- **Y=12..14, X=29..33**: PASS values (inside expected region)
+- **Y=12..14, X=1..28,34..61**: FAIL values (outside expected region)
+
+### **🎮 Usage Example**
+
+```systemverilog
+class my_testbench extends uvm_test;
+  ucie_sb_compare_result_model compare_model;
+  ucie_sb_compare_result_config model_cfg;
+  
+  function void build_phase(uvm_phase phase);
+    // Create and configure model
+    model_cfg = ucie_sb_compare_result_config::type_id::create("model_cfg");
+    model_cfg.set_expected_range(10, 20, 29, 33);
+    model_cfg.set_logging_options(1, 1, "my_test.log");
+    model_cfg.set_operational_mode(1, 1, 0);  // enabled, debug, not pass-through
+    
+    // Set configuration and create model
+    uvm_config_db#(ucie_sb_compare_result_config)::set(this, "compare_model", "cfg", model_cfg);
+    compare_model = ucie_sb_compare_result_model::type_id::create("compare_model", this);
+  endfunction
+  
+  task run_phase(uvm_phase phase);
+    // Set up TX request parameters
+    compare_model.process_tx_request(12, 14, 30);
+    
+    // RX transactions will now be processed with compare results
+    // from array region Y[12:14], X[1:61]
+  endtask
+endclass
+```
+
+### **📋 Key Features**
+
+✅ **Configurable Array**: 64×63 compare result array with flexible initialization  
+✅ **Intelligent Gatekeeper**: All RX transactions processed through model  
+✅ **Data Rewriting**: Only data field modified, other fields preserved  
+✅ **Parity Updates**: Automatic parity recalculation after data modification  
+✅ **Sequential Access**: Row-major order array traversal with wraparound  
+✅ **Enable Control**: Model can be disabled to simulate timeout/failure  
+✅ **Pass-through Mode**: Transparent operation for debugging  
+✅ **Comprehensive Logging**: Detailed operation logs with file output support  
+✅ **Statistics Collection**: Transaction counts and performance metrics  
+✅ **UVM Integration**: Full UVM component with standard phase support
 
 ### **🏗️ Interceptor Architecture**
 
