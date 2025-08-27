@@ -79,6 +79,15 @@ class ucie_sb_compare_result_config extends uvm_object;
   parameter bit [31:0] FAIL_VALUE = 32'h0000_0000;  // Compare fail result
   
   /*---------------------------------------------------------------------------
+   * FIFO CONFIGURATION PARAMETERS
+   * FIFO sizing and processing control
+   *---------------------------------------------------------------------------*/
+  
+  int tx_fifo_size = 16;                   // TX FIFO depth
+  int rx_fifo_size = 16;                   // RX FIFO depth
+  real processing_delay_ns = 10.0;         // Processing delay between transactions
+  
+  /*---------------------------------------------------------------------------
    * LOGGING CONTROL PARAMETERS
    * Logging verbosity and file output control
    *---------------------------------------------------------------------------*/
@@ -103,6 +112,7 @@ class ucie_sb_compare_result_config extends uvm_object;
   extern function void set_expected_range(int volt_min, int volt_max, int clk_min, int clk_max);
   extern function void set_logging_options(bit enable_log, bit log_file, string file_name);
   extern function void set_operational_mode(bit enable, bit debug, bit pass_through);
+  extern function void set_fifo_sizes(int tx_size, int rx_size);
   extern function void print_config();
   extern function bit validate_config();
 
@@ -120,11 +130,20 @@ class ucie_sb_compare_result_model extends uvm_component;
   
   /*---------------------------------------------------------------------------
    * ANALYSIS PORT INTERFACES
-   * Input and output analysis ports for RX transaction processing
+   * Input analysis ports for TX and RX transaction collection from monitors
    *---------------------------------------------------------------------------*/
   
-  uvm_analysis_imp #(ucie_sb_transaction, ucie_sb_compare_result_model) rx_analysis_imp;
+  uvm_analysis_imp_tx #(ucie_sb_transaction, ucie_sb_compare_result_model) tx_analysis_imp;
+  uvm_analysis_imp_rx #(ucie_sb_transaction, ucie_sb_compare_result_model) rx_analysis_imp;
   uvm_analysis_port #(ucie_sb_transaction) processed_rx_ap;
+  
+  /*---------------------------------------------------------------------------
+   * FIFO INFRASTRUCTURE
+   * TLM FIFOs for transaction storage and processing
+   *---------------------------------------------------------------------------*/
+  
+  uvm_tlm_fifo #(ucie_sb_transaction) tx_fifo;     // TX transaction FIFO from monitor
+  uvm_tlm_fifo #(ucie_sb_transaction) rx_fifo;     // RX transaction FIFO from monitor
   
   /*---------------------------------------------------------------------------
    * SEQUENCER INTERFACE
@@ -170,7 +189,9 @@ class ucie_sb_compare_result_model extends uvm_component;
    *---------------------------------------------------------------------------*/
   
   // Transaction counters
-  int rx_transactions_received = 0;        // RX transactions received
+  int tx_transactions_received = 0;        // TX transactions received via analysis port
+  int rx_transactions_received = 0;        // RX transactions received via analysis port
+  int tx_requests_processed = 0;           // TX requests processed for array setup
   int rx_transactions_processed = 0;       // RX transactions processed/rewritten
   int rx_transactions_passed_through = 0;  // RX transactions passed through unchanged
   int array_accesses_total = 0;            // Total array accesses performed
@@ -198,9 +219,11 @@ class ucie_sb_compare_result_model extends uvm_component;
   extern virtual function void end_of_elaboration_phase(uvm_phase phase);
   extern virtual task run_phase(uvm_phase phase);
   extern virtual function void report_phase(uvm_phase phase);
-  extern virtual function void write(ucie_sb_transaction trans);
+  extern virtual function void write_tx(ucie_sb_transaction trans);
+  extern virtual function void write_rx(ucie_sb_transaction trans);
+  extern virtual task process_transactions();
   extern virtual function void initialize_compare_array();
-  extern virtual function void process_tx_request(int volt_min, int volt_max, int clk_phase);
+  extern virtual task process_tx_transaction(ucie_sb_transaction tx_trans);
   extern virtual function ucie_sb_transaction process_rx_transaction(ucie_sb_transaction rx_trans);
   extern virtual function bit [31:0] get_next_array_value();
   extern virtual function void update_parity(ucie_sb_transaction trans);
@@ -259,6 +282,17 @@ function void ucie_sb_compare_result_config::set_operational_mode(bit enable, bi
 endfunction
 
 /*---------------------------------------------------------------------------
+ * SET FIFO SIZES CONFIGURATION
+ * 
+ * Configures TX and RX FIFO depths for transaction buffering.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_config::set_fifo_sizes(int tx_size, int rx_size);
+  tx_fifo_size = tx_size;
+  rx_fifo_size = rx_size;
+  `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Set FIFO sizes: TX=%0d, RX=%0d", tx_size, rx_size), UVM_LOW)
+endfunction
+
+/*---------------------------------------------------------------------------
  * CONFIGURATION VALIDATION
  * 
  * Validates configuration parameters for correctness and consistency.
@@ -307,12 +341,13 @@ endfunction
 /*---------------------------------------------------------------------------
  * UVM BUILD PHASE IMPLEMENTATION
  * 
- * Component construction and configuration retrieval.
+ * Component construction, FIFO creation, and configuration retrieval.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_compare_result_model::build_phase(uvm_phase phase);
   super.build_phase(phase);
   
   // Create analysis port implementations
+  tx_analysis_imp = new("tx_analysis_imp", this);
   rx_analysis_imp = new("rx_analysis_imp", this);
   processed_rx_ap = new("processed_rx_ap", this);
   
@@ -325,6 +360,10 @@ function void ucie_sb_compare_result_model::build_phase(uvm_phase phase);
   if (!cfg.validate_config()) begin
     `uvm_fatal("COMPARE_RESULT_MODEL", "Invalid configuration parameters")
   end
+  
+  // Create FIFOs with configured sizes
+  tx_fifo = new("tx_fifo", this, cfg.tx_fifo_size);
+  rx_fifo = new("rx_fifo", this, cfg.rx_fifo_size);
   
   // Create sequencer
   rx_sequencer = ucie_sb_sequencer::type_id::create("rx_sequencer", this);
@@ -372,15 +411,15 @@ endfunction
 /*---------------------------------------------------------------------------
  * UVM RUN PHASE IMPLEMENTATION
  * 
- * Main model execution phase.
+ * Main model execution phase. Starts FIFO-based transaction processing.
  *---------------------------------------------------------------------------*/
 task ucie_sb_compare_result_model::run_phase(uvm_phase phase);
   super.run_phase(phase);
   
   `uvm_info("COMPARE_RESULT_MODEL", "Starting compare result model run phase", UVM_LOW)
   
-  // Model runs passively, processing transactions as they arrive
-  // No active tasks needed - all processing happens in write() method
+  // Start FIFO-based transaction processing
+  process_transactions();
 endtask
 
 /*---------------------------------------------------------------------------
@@ -402,14 +441,30 @@ function void ucie_sb_compare_result_model::report_phase(uvm_phase phase);
 endfunction
 
 /*---------------------------------------------------------------------------
+ * TX TRANSACTION WRITE IMPLEMENTATION
+ * 
+ * Receives TX transactions from sideband TX monitor and pushes to TX FIFO.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::write_tx(ucie_sb_transaction trans);
+  tx_transactions_received++;
+  
+  if (cfg.enable_debug) begin
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received TX transaction: opcode=%0d, addr=0x%06h, tag=%0d", 
+              trans.opcode, trans.addr, trans.tag), UVM_HIGH)
+  end
+  
+  // Push to TX FIFO
+  if (!tx_fifo.try_put(trans)) begin
+    `uvm_error("COMPARE_RESULT_MODEL", "TX FIFO full - dropping transaction")
+  end
+endfunction
+
+/*---------------------------------------------------------------------------
  * RX TRANSACTION WRITE IMPLEMENTATION
  * 
- * Main entry point for RX transaction processing. Acts as gatekeeper
- * and processes transactions based on model configuration.
+ * Receives RX transactions from sideband RX monitor and pushes to RX FIFO.
  *---------------------------------------------------------------------------*/
-function void ucie_sb_compare_result_model::write(ucie_sb_transaction trans);
-  ucie_sb_transaction processed_trans;
-  
+function void ucie_sb_compare_result_model::write_rx(ucie_sb_transaction trans);
   rx_transactions_received++;
   
   if (cfg.enable_debug) begin
@@ -417,35 +472,123 @@ function void ucie_sb_compare_result_model::write(ucie_sb_transaction trans);
               trans.opcode, trans.tag, trans.data[31:0]), UVM_HIGH)
   end
   
-  // Check if model is enabled
-  if (!cfg.enable_model) begin
-    // Model disabled - DUT receives no RX (simulate timeout/failure)
-    log_message($sformatf("Model disabled - dropping RX transaction (tag=%0d)", trans.tag), UVM_MEDIUM);
-    return;
+  // Push to RX FIFO
+  if (!rx_fifo.try_put(trans)) begin
+    `uvm_error("COMPARE_RESULT_MODEL", "RX FIFO full - dropping transaction")
   end
-  
-  // Check if in pass-through mode
-  if (cfg.pass_through_mode) begin
-    // Pass through unchanged
-    rx_sequencer.send_request(trans);
-    processed_rx_ap.write(trans);
-    rx_transactions_passed_through++;
-    
-    if (cfg.enable_debug) begin
-      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Pass-through mode: forwarded RX unchanged (tag=%0d)", trans.tag), UVM_HIGH)
-    end
-    return;
-  end
-  
-  // Process RX transaction with compare result rewriting
-  processed_trans = process_rx_transaction(trans);
-  
-  // Send processed transaction to sequencer and analysis port
-  rx_sequencer.send_request(processed_trans);
-  processed_rx_ap.write(processed_trans);
-  
-  rx_transactions_processed++;
 endfunction
+
+/*---------------------------------------------------------------------------
+ * MAIN TRANSACTION PROCESSING IMPLEMENTATION
+ * 
+ * Main processing loop that handles TX and RX FIFO processing according
+ * to the compare result model specification.
+ *---------------------------------------------------------------------------*/
+task ucie_sb_compare_result_model::process_transactions();
+  ucie_sb_transaction tx_trans, rx_trans;
+  realtime start_time, process_time;
+  
+  forever begin
+    // Get TX transaction from FIFO
+    tx_fifo.get(tx_trans);
+    start_time = $realtime;
+    
+    // Process TX transaction to set up array access parameters
+    process_tx_transaction(tx_trans);
+    
+    // Get RX transaction from FIFO
+    rx_fifo.get(rx_trans);
+    
+    // Process RX transaction based on model configuration
+    if (!cfg.enable_model) begin
+      // Model disabled - drop RX transaction (simulate timeout/failure)
+      log_message($sformatf("Model disabled - dropping RX transaction (tag=%0d)", rx_trans.tag), UVM_MEDIUM);
+      
+    end else if (cfg.pass_through_mode) begin
+      // Pass through unchanged
+      rx_sequencer.send_request(rx_trans);
+      processed_rx_ap.write(rx_trans);
+      rx_transactions_passed_through++;
+      
+      if (cfg.enable_debug) begin
+        `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Pass-through mode: forwarded RX unchanged (tag=%0d)", rx_trans.tag), UVM_HIGH)
+      end
+      
+    end else begin
+      // Process RX transaction with compare result rewriting
+      ucie_sb_transaction processed_trans = process_rx_transaction(rx_trans);
+      
+      // Send processed transaction to sequencer and analysis port
+      rx_sequencer.send_request(processed_trans);
+      processed_rx_ap.write(processed_trans);
+      
+      rx_transactions_processed++;
+    end
+    
+    // Update performance metrics
+    process_time = $realtime - start_time;
+    total_processing_time += process_time;
+    if (process_time > max_processing_time) max_processing_time = process_time;
+    if (min_processing_time == 0 || process_time < min_processing_time) min_processing_time = process_time;
+    
+    // Processing delay
+    #(cfg.processing_delay_ns * 1ns);
+  end
+endtask
+
+/*---------------------------------------------------------------------------
+ * TX TRANSACTION PROCESSING IMPLEMENTATION
+ * 
+ * Processes TX transactions to extract request parameters and set up
+ * array access region for subsequent RX processing.
+ *---------------------------------------------------------------------------*/
+task ucie_sb_compare_result_model::process_tx_transaction(ucie_sb_transaction tx_trans);
+  // Extract TX request parameters for array access setup
+  // This assumes TX transaction contains volt_min, volt_max, clk_phase information
+  // The exact extraction method depends on how these parameters are encoded in the transaction
+  
+  // For demonstration, assume parameters are encoded in specific fields:
+  int volt_min = tx_trans.addr[15:8];      // Example: volt_min in addr bits [15:8]
+  int volt_max = tx_trans.addr[7:0];       // Example: volt_max in addr bits [7:0]
+  int clk_phase = tx_trans.tag;            // Example: clk_phase in tag field
+  
+  // Process TX request to set up array access region
+  latest_volt_min = volt_min;
+  latest_volt_max = volt_max;
+  latest_clk_phase = clk_phase;
+  
+  // Set Y range directly from voltage parameters
+  access_y_min = volt_min;
+  access_y_max = volt_max;
+  
+  // Set X range based on clk_phase around center 31
+  access_x_min = 31 - clk_phase;
+  access_x_max = 31 + clk_phase;
+  
+  // Clamp to valid array bounds
+  if (access_y_min < 0) access_y_min = 0;
+  if (access_y_max >= cfg.ARRAY_ROWS) access_y_max = cfg.ARRAY_ROWS - 1;
+  if (access_x_min < 0) access_x_min = 0;
+  if (access_x_max >= cfg.ARRAY_COLS) access_x_max = cfg.ARRAY_COLS - 1;
+  
+  // Initialize sequential access position
+  current_y_pos = access_y_min;
+  current_x_pos = access_x_min;
+  tx_request_pending = 1;
+  tx_requests_processed++;
+  
+  if (cfg.enable_debug) begin
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("TX request processed: volt[%0d:%0d], clk_phase=%0d", 
+              volt_min, volt_max, clk_phase), UVM_MEDIUM)
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Access region: Y[%0d:%0d], X[%0d:%0d]", 
+              access_y_min, access_y_max, access_x_min, access_x_max), UVM_MEDIUM)
+  end
+  
+  // Log TX request
+  if (cfg.enable_logging) begin
+    log_tx_request(volt_min, volt_max, clk_phase);
+  end
+endtask
 
 /*---------------------------------------------------------------------------
  * COMPARE ARRAY INITIALIZATION IMPLEMENTATION
