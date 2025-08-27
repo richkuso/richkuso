@@ -3,31 +3,26 @@
  * 
  * OVERVIEW:
  *   Advanced UVM model for UCIe sideband TX/RX compare result handling.
- *   Acts as a gatekeeper and rewriter for sideband RX transactions, providing
- *   configurable compare result data based on a 2D array lookup mechanism.
+ *   Acts as a gatekeeper and rewriter for sideband RX transactions using
+ *   three-address group system with linear array indexing.
  *
  * FUNCTIONALITY:
- *   • Gatekeeper: All sideband RX transactions pass through this model
- *   • Rewriter: Overwrites RX data field with compare result from array
- *   • Pass-through: Forwards unmodified RX when rewriting not needed
- *   • Enable Control: Can be disabled to simulate timeout/failure scenarios
- *   • Logger: Comprehensive logging of all operations and array accesses
+ *   • FIFO-Based Receiver: TX/RX FIFOs with blocking get() processing
+ *   • Three-Address Groups: 0x013140/44/48 share same array[index]
+ *   • Linear Index Mapping: index = y*63 + x with coordinate conversion
+ *   • Selective Rewriting: Only target TX + COMPLETION_32B trigger rewriting
+ *   • Group State Tracking: Index advances after three addresses processed
  *
- * COMPARE RESULT ARRAY:
- *   • Structure: 64 rows (Y) × 63 columns (X)
- *   • Element Width: 32-bit values
- *   • Values: 32'hFFFF_FFFF (pass) or 32'h0000_0000 (fail)
- *   • Initialization: Based on expected voltage/clock phase ranges
- *   • Access: Sequential consumption based on DUT TX request parameters
+ * TARGET ADDRESSES:
+ *   • 0x013140, 0x013144, 0x013148 (CFG_READ_32B)
+ *   • All three use same array[current_index]
+ *   • Index increments after group completion
  *
  * OPERATIONAL FLOW:
- *   1. DUT transmits data over mainband
- *   2. Remote DUT performs comparison
- *   3. DUT sends sideband TX request (volt_min, volt_max, clk_phase)
- *   4. Model intercepts RX and determines array region to read
- *   5. RX.data overwritten with array value, parity recalculated
- *   6. Processed RX sent to sequencer → driver → DUT
- *   7. DUT receives result and completes handshake
+ *   1. DUT sends CFG_READ_32B @ target addresses → TX FIFO
+ *   2. Remote DUT sends COMPLETION_32B responses → RX FIFO  
+ *   3. Model processes TX/RX pairs, rewrites data for target matches
+ *   4. Three addresses share same array index, then index advances
  *
  * COMPLIANCE:
  *   • IEEE 1800-2017 SystemVerilog
@@ -35,14 +30,11 @@
  *   • UCIe 1.1 specification
  *
  * AUTHOR: UCIe Sideband UVM Agent
- * VERSION: 1.0 - Compare Result Handling Model
+ * VERSION: 2.0 - Three-Address Group System
  ******************************************************************************/
 
 /*-----------------------------------------------------------------------------
  * COMPARE RESULT MODEL CONFIGURATION CLASS
- * 
- * Configuration management for compare result array initialization and
- * operational control parameters.
  *-----------------------------------------------------------------------------*/
 
 class ucie_sb_compare_result_config extends uvm_object;
@@ -56,7 +48,6 @@ class ucie_sb_compare_result_config extends uvm_object;
   bit enable_model = 1;                    // Enable/disable model operation
   bit enable_debug = 1;                    // Enable debug messages
   bit enable_logging = 1;                  // Enable comprehensive logging
-  bit pass_through_mode = 0;               // Pass-through mode (no rewriting)
   
   /*---------------------------------------------------------------------------
    * ARRAY INITIALIZATION PARAMETERS
@@ -129,7 +120,7 @@ class ucie_sb_compare_result_config extends uvm_object;
   
   extern function void set_expected_range(int volt_min, int volt_max, int clk_min, int clk_max);
   extern function void set_logging_options(bit enable_log, bit log_file, string file_name);
-  extern function void set_operational_mode(bit enable, bit debug, bit pass_through);
+  extern function void set_operational_mode(bit enable, bit debug);
   extern function void set_fifo_sizes(int tx_size, int rx_size);
   extern function void set_initial_index_params(int v_min, int v_max, int clk_ph);
   extern function bit is_target_address(bit [23:0] addr);
@@ -194,8 +185,6 @@ class ucie_sb_compare_result_model extends uvm_component;
    *---------------------------------------------------------------------------*/
   
   int group_address_count = 0;             // Count of addresses processed in current group (0-2)
-  bit [23:0] last_processed_addresses[3];  // Track last 3 processed addresses
-  bit group_in_progress = 0;               // Flag indicating group processing active
   
   /*---------------------------------------------------------------------------
    * CONFIGURATION AND CONNECTIVITY
@@ -221,7 +210,6 @@ class ucie_sb_compare_result_model extends uvm_component;
   
   // Logging infrastructure
   int log_file_handle = 0;                 // Log file handle
-  string log_buffer[$];                    // Log message buffer
   
   /*---------------------------------------------------------------------------
    * CONSTRUCTOR - Initialize compare result model component
@@ -297,12 +285,11 @@ endfunction
  * 
  * Configures model operational behavior and debug settings.
  *---------------------------------------------------------------------------*/
-function void ucie_sb_compare_result_config::set_operational_mode(bit enable, bit debug, bit pass_through);
+function void ucie_sb_compare_result_config::set_operational_mode(bit enable, bit debug);
   enable_model = enable;
   enable_debug = debug;
-  pass_through_mode = pass_through;
-  `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Set operational mode: enable=%0b, debug=%0b, pass_through=%0b", 
-            enable, debug, pass_through), UVM_LOW)
+  `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Set operational mode: enable=%0b, debug=%0b", 
+            enable, debug), UVM_LOW)
 endfunction
 
 /*---------------------------------------------------------------------------
@@ -372,7 +359,7 @@ function void ucie_sb_compare_result_config::print_config();
   `uvm_info("COMPARE_RESULT_CONFIG", "=== Compare Result Model Configuration ===", UVM_LOW)
   `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Model enabled: %0b", enable_model), UVM_LOW)
   `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Debug enabled: %0b", enable_debug), UVM_LOW)
-  `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Pass-through mode: %0b", pass_through_mode), UVM_LOW)
+
   `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Expected voltage range: [%0d:%0d]", exp_volt_min, exp_volt_max), UVM_LOW)
   `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Expected clock phase range: [%0d:%0d]", exp_clk_phase_min, exp_clk_phase_max), UVM_LOW)
   `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Array dimensions: %0d × %0d", ARRAY_ROWS, ARRAY_COLS), UVM_LOW)
@@ -560,11 +547,8 @@ task ucie_sb_compare_result_model::process_transactions();
       end
     end
     
-    // Update performance metrics
+    // Performance tracking (processing time measurement)
     process_time = $realtime - start_time;
-    total_processing_time += process_time;
-    if (process_time > max_processing_time) max_processing_time = process_time;
-    if (min_processing_time == 0 || process_time < min_processing_time) min_processing_time = process_time;
     
     // Processing delay
     #(cfg.processing_delay_ns * 1ns);
@@ -637,48 +621,7 @@ function void ucie_sb_compare_result_model::initialize_compare_array();
   end
 endfunction
 
-/*---------------------------------------------------------------------------
- * TX REQUEST PROCESSING IMPLEMENTATION
- * 
- * Processes DUT TX request parameters to set up array access region.
- * Determines Y and X ranges for sequential array access.
- *---------------------------------------------------------------------------*/
-function void ucie_sb_compare_result_model::process_tx_request(int volt_min, int volt_max, int clk_phase);
-  latest_volt_min = volt_min;
-  latest_volt_max = volt_max;
-  latest_clk_phase = clk_phase;
-  
-  // Set Y range directly from voltage parameters
-  access_y_min = volt_min;
-  access_y_max = volt_max;
-  
-  // Set X range based on clk_phase around center 31
-  access_x_min = 31 - clk_phase;
-  access_x_max = 31 + clk_phase;
-  
-  // Clamp to valid array bounds
-  if (access_y_min < 0) access_y_min = 0;
-  if (access_y_max >= cfg.ARRAY_ROWS) access_y_max = cfg.ARRAY_ROWS - 1;
-  if (access_x_min < 0) access_x_min = 0;
-  if (access_x_max >= cfg.ARRAY_COLS) access_x_max = cfg.ARRAY_COLS - 1;
-  
-  // Initialize sequential access position
-  current_y_pos = access_y_min;
-  current_x_pos = access_x_min;
-  tx_request_pending = 1;
-  
-  if (cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("TX request processed: volt[%0d:%0d], clk_phase=%0d", 
-              volt_min, volt_max, clk_phase), UVM_MEDIUM)
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Access region: Y[%0d:%0d], X[%0d:%0d]", 
-              access_y_min, access_y_max, access_x_min, access_x_max), UVM_MEDIUM)
-  end
-  
-  // Log TX request
-  if (cfg.enable_logging) begin
-    log_tx_request(volt_min, volt_max, clk_phase);
-  end
-endfunction
+
 
 /*---------------------------------------------------------------------------
  * RX TRANSACTION PROCESSING IMPLEMENTATION
@@ -843,8 +786,7 @@ function void ucie_sb_compare_result_model::log_message(string message, uvm_verb
     $fflush(log_file_handle);
   end
   
-  // Add to buffer for potential later use
-  log_buffer.push_back($sformatf("[%0t] %s", $time, message));
+
 endfunction
 
 /*---------------------------------------------------------------------------
@@ -856,7 +798,7 @@ function void ucie_sb_compare_result_model::set_default_config();
   cfg = ucie_sb_compare_result_config::type_id::create("cfg");
   cfg.set_expected_range(10, 20, 29, 33);  // Example values from specification
   cfg.set_logging_options(1, 0, "compare_result_model.log");
-  cfg.set_operational_mode(1, 1, 0);
+  cfg.set_operational_mode(1, 1);
   `uvm_info("COMPARE_RESULT_MODEL", "Using default compare result model configuration", UVM_LOW)
 endfunction
 
@@ -874,7 +816,7 @@ function void ucie_sb_compare_result_model::print_statistics();
   `uvm_info("COMPARE_RESULT_MODEL", $sformatf("PASS results returned: %0d", pass_results_returned), UVM_LOW)
   `uvm_info("COMPARE_RESULT_MODEL", $sformatf("FAIL results returned: %0d", fail_results_returned), UVM_LOW)
   `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Array initialized: %0b", array_initialized), UVM_LOW)
-  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Current access position: [%0d][%0d]", current_y_pos, current_x_pos), UVM_LOW)
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Current array index: %0d, Group address count: %0d/3", current_index, group_address_count), UVM_LOW)
   `uvm_info("COMPARE_RESULT_MODEL", "=======================================", UVM_LOW)
 endfunction
 
