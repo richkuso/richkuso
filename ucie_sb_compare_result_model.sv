@@ -130,6 +130,52 @@ class ucie_sb_compare_result_config extends uvm_object;
 endclass : ucie_sb_compare_result_config
 
 /*******************************************************************************
+ * COMPARE RESULT MODEL SEQUENCE CLASS
+ * 
+ * UVM sequence for sending processed RX transactions to the sequencer.
+ * This sequence encapsulates a single transaction and sends it via start().
+ ******************************************************************************/
+
+class ucie_sb_compare_result_sequence extends uvm_sequence #(ucie_sb_transaction);
+  `uvm_object_utils(ucie_sb_compare_result_sequence)
+  
+  // Transaction to be sent
+  ucie_sb_transaction tx_item;
+  
+  /*---------------------------------------------------------------------------
+   * CONSTRUCTOR
+   *---------------------------------------------------------------------------*/
+  function new(string name = "ucie_sb_compare_result_sequence");
+    super.new(name);
+  endfunction
+  
+  /*---------------------------------------------------------------------------
+   * SEQUENCE BODY - Sends the transaction
+   *---------------------------------------------------------------------------*/
+  virtual task body();
+    if (tx_item == null) begin
+      `uvm_error("COMPARE_RESULT_SEQ", "Transaction item is null")
+      return;
+    end
+    
+    // Start the transaction
+    start_item(tx_item);
+    finish_item(tx_item);
+    
+    `uvm_info("COMPARE_RESULT_SEQ", $sformatf("Sent transaction: opcode=%0d, data=0x%08h", 
+              tx_item.opcode, tx_item.data[31:0]), UVM_HIGH)
+  endtask
+  
+  /*---------------------------------------------------------------------------
+   * SET TRANSACTION - Sets the transaction to be sent
+   *---------------------------------------------------------------------------*/
+  function void set_transaction(ucie_sb_transaction trans);
+    tx_item = trans;
+  endfunction
+
+endclass : ucie_sb_compare_result_sequence
+
+/*******************************************************************************
  * COMPARE RESULT MODEL MAIN CLASS
  * 
  * Main model component implementing gatekeeper, rewriter, and logging
@@ -246,6 +292,7 @@ class ucie_sb_compare_result_model extends uvm_component;
   extern virtual function void set_default_config();
   extern virtual function void print_statistics();
   extern virtual function void print_array_contents();
+  extern virtual task send_transaction_via_sequence(ucie_sb_transaction trans);
 
 endclass : ucie_sb_compare_result_model
 
@@ -512,7 +559,7 @@ task ucie_sb_compare_result_model::process_transactions();
     // Process RX transaction based on model configuration
     if (!cfg.enable_model) begin
       // Model disabled - RX transactions pass-through directly
-      rx_sequencer.send_request(rx_trans);
+      send_transaction_via_sequence(rx_trans);
       processed_rx_ap.write(rx_trans);
       rx_transactions_passed_through++;
       
@@ -527,7 +574,7 @@ task ucie_sb_compare_result_model::process_transactions();
         ucie_sb_transaction processed_trans = process_rx_transaction(rx_trans);
         
         // Send processed transaction to sequencer → driver → DUT
-        rx_sequencer.send_request(processed_trans);
+        send_transaction_via_sequence(processed_trans);
         processed_rx_ap.write(processed_trans);
         
         rx_transactions_processed++;
@@ -537,7 +584,7 @@ task ucie_sb_compare_result_model::process_transactions();
         
       end else begin
         // Pass-through: RX transaction passes unchanged
-        rx_sequencer.send_request(rx_trans);
+        send_transaction_via_sequence(rx_trans);
         processed_rx_ap.write(rx_trans);
         rx_transactions_passed_through++;
         
@@ -983,3 +1030,27 @@ function void ucie_sb_compare_result_model::advance_group_state();
               group_address_count, current_index), UVM_HIGH)
   end
 endfunction
+
+/*---------------------------------------------------------------------------
+ * SEND TRANSACTION VIA SEQUENCE IMPLEMENTATION
+ * 
+ * Creates a UVM sequence, sets the transaction, and starts it on the sequencer.
+ * This replaces the direct rx_sequencer.send_request() calls.
+ *---------------------------------------------------------------------------*/
+task ucie_sb_compare_result_model::send_transaction_via_sequence(ucie_sb_transaction trans);
+  ucie_sb_compare_result_sequence seq;
+  
+  // Create the sequence
+  seq = ucie_sb_compare_result_sequence::type_id::create("compare_result_seq");
+  
+  // Set the transaction to be sent
+  seq.set_transaction(trans);
+  
+  // Start the sequence on the RX sequencer
+  seq.start(rx_sequencer);
+  
+  if (cfg.enable_debug) begin
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Sent transaction via sequence: opcode=%0d, data=0x%08h", 
+              trans.opcode, trans.data[31:0]), UVM_HIGH)
+  end
+endtask
