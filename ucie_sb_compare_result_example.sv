@@ -109,7 +109,9 @@ class ucie_sb_compare_result_test_sequence extends uvm_sequence #(ucie_sb_transa
   extern virtual task test_edge_cases();
   extern virtual task test_enable_disable();
   extern virtual task test_pass_through_mode();
+  extern virtual function ucie_sb_transaction create_tx_transaction(int volt_min, int volt_max, int clk_phase);
   extern virtual function ucie_sb_transaction create_rx_transaction(int tag, bit [31:0] data);
+  extern virtual task send_tx_transaction(ucie_sb_transaction trans);
   extern virtual task send_rx_transaction(ucie_sb_transaction trans);
 
 endclass : ucie_sb_compare_result_test_sequence
@@ -188,13 +190,16 @@ endfunction
 /*---------------------------------------------------------------------------
  * ENVIRONMENT CONNECT PHASE IMPLEMENTATION
  * 
- * Connects all environment components.
+ * Connects monitor analysis ports to model's TLM analysis FIFOs.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_compare_result_env::connect_phase(uvm_phase phase);
   super.connect_phase(phase);
   
-  // Connect RX agent monitor to compare model
-  rx_agent.monitor.ap.connect(compare_model.rx_analysis_imp);
+  // Connect TX agent monitor to compare model TX FIFO
+  // tx_agent.monitor.ap.connect(compare_model.tx_fifo.analysis_export);
+  
+  // Connect RX agent monitor to compare model RX FIFO
+  rx_agent.monitor.ap.connect(compare_model.rx_fifo.analysis_export);
   
   // Connect compare model output to analysis port
   compare_model.processed_rx_ap.connect(processed_rx_ap);
@@ -243,18 +248,21 @@ endtask
  * Tests basic model operation with simple parameters.
  *---------------------------------------------------------------------------*/
 task ucie_sb_compare_result_test_sequence::test_basic_functionality();
-  ucie_sb_transaction rx_trans;
+  ucie_sb_transaction tx_trans, rx_trans;
   
   `uvm_info("COMPARE_RESULT_SEQUENCE", "Testing basic functionality...", UVM_MEDIUM)
   
-  // Set up TX request parameters (simple case)
-  target_model.process_tx_request(12, 14, 2);  // volt_min=12, volt_max=14, clk_phase=2
-  
-  // Send several RX transactions
+  // Send several TX/RX transaction pairs
   for (int i = 0; i < 5; i++) begin
+    // Create and send TX transaction (volt_min=12, volt_max=14, clk_phase=2)
+    tx_trans = create_tx_transaction(12, 14, 2);
+    send_tx_transaction(tx_trans);
+    
+    // Create and send corresponding RX transaction
     rx_trans = create_rx_transaction(i, 32'h12345678 + i);
     send_rx_transaction(rx_trans);
-    #10ns;  // Small delay between transactions
+    
+    #20ns;  // Allow processing time
   end
   
   `uvm_info("COMPARE_RESULT_SEQUENCE", "Basic functionality test complete", UVM_MEDIUM)
@@ -266,7 +274,7 @@ endtask
  * Implements the exact example from the specification document.
  *---------------------------------------------------------------------------*/
 task ucie_sb_compare_result_test_sequence::test_specification_example();
-  ucie_sb_transaction rx_trans;
+  ucie_sb_transaction tx_trans, rx_trans;
   
   `uvm_info("COMPARE_RESULT_SEQUENCE", "Testing specification example scenario...", UVM_MEDIUM)
   
@@ -276,17 +284,21 @@ task ucie_sb_compare_result_test_sequence::test_specification_example();
   // Expected access region: Y[12:14], X[1:61] (31-30 to 31+30)
   // Expected results: PASS for positions within (12:14, 29:33), FAIL elsewhere
   
-  target_model.process_tx_request(12, 14, 30);
-  
   `uvm_info("COMPARE_RESULT_SEQUENCE", "TX request: volt[12:14], clk_phase=30", UVM_MEDIUM)
   `uvm_info("COMPARE_RESULT_SEQUENCE", "Expected access region: Y[12:14], X[1:61]", UVM_MEDIUM)
   `uvm_info("COMPARE_RESULT_SEQUENCE", "Expected PASS region: Y[12:14], X[29:33]", UVM_MEDIUM)
   
-  // Send RX transactions to exercise the access region
+  // Send TX/RX transaction pairs to exercise the access region
   for (int i = 0; i < 15; i++) begin
+    // Create and send TX transaction with specification parameters
+    tx_trans = create_tx_transaction(12, 14, 30);
+    send_tx_transaction(tx_trans);
+    
+    // Create and send corresponding RX transaction
     rx_trans = create_rx_transaction(100 + i, 32'hABCDEF00 + i);
     send_rx_transaction(rx_trans);
-    #5ns;
+    
+    #10ns;  // Allow processing time
   end
   
   `uvm_info("COMPARE_RESULT_SEQUENCE", "Specification example test complete", UVM_MEDIUM)
@@ -397,6 +409,30 @@ task ucie_sb_compare_result_test_sequence::test_pass_through_mode();
 endtask
 
 /*---------------------------------------------------------------------------
+ * TX TRANSACTION CREATION IMPLEMENTATION
+ * 
+ * Creates TX transaction with volt_min, volt_max, clk_phase parameters.
+ *---------------------------------------------------------------------------*/
+function ucie_sb_transaction ucie_sb_compare_result_test_sequence::create_tx_transaction(int volt_min, int volt_max, int clk_phase);
+  ucie_sb_transaction trans;
+  
+  trans = ucie_sb_transaction::type_id::create("tx_trans");
+  
+  // Set transaction parameters
+  trans.opcode = CFG_READ_32B;    // TX request opcode
+  trans.tag = clk_phase;          // Encode clk_phase in tag field
+  trans.addr[15:8] = volt_min;    // Encode volt_min in addr bits [15:8]
+  trans.addr[7:0] = volt_max;     // Encode volt_max in addr bits [7:0]
+  trans.srcid = 3'h1;
+  trans.dstid = 3'h2;
+  
+  // Update packet info to ensure consistency
+  trans.update_packet_info();
+  
+  return trans;
+endfunction
+
+/*---------------------------------------------------------------------------
  * RX TRANSACTION CREATION IMPLEMENTATION
  * 
  * Creates RX transaction with specified parameters.
@@ -407,7 +443,7 @@ function ucie_sb_transaction ucie_sb_compare_result_test_sequence::create_rx_tra
   trans = ucie_sb_transaction::type_id::create("rx_trans");
   
   // Set transaction parameters
-  trans.opcode = COMPLETION_32B;  // Assuming this is the RX completion opcode
+  trans.opcode = COMPLETION_32B;  // RX completion opcode
   trans.tag = tag;
   trans.data[31:0] = data;
   trans.srcid = 3'h2;
@@ -421,16 +457,31 @@ function ucie_sb_transaction ucie_sb_compare_result_test_sequence::create_rx_tra
 endfunction
 
 /*---------------------------------------------------------------------------
- * RX TRANSACTION TRANSMISSION IMPLEMENTATION
+ * TX TRANSACTION TRANSMISSION IMPLEMENTATION
  * 
- * Sends RX transaction to model for processing.
+ * Sends TX transaction to model's TX FIFO for processing.
  *---------------------------------------------------------------------------*/
-task ucie_sb_compare_result_test_sequence::send_rx_transaction(ucie_sb_transaction trans);
-  // Send transaction directly to model's write method
-  target_model.write(trans);
+task ucie_sb_compare_result_test_sequence::send_tx_transaction(ucie_sb_transaction trans);
+  // Send transaction directly to model's TX FIFO
+  target_model.tx_fifo.write(trans);
   
   if (target_model.cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_SEQUENCE", $sformatf("Sent RX: tag=%0d, data=0x%08h", 
+    `uvm_info("COMPARE_RESULT_SEQUENCE", $sformatf("Sent TX to FIFO: addr=0x%06h, tag=%0d", 
+              trans.addr, trans.tag), UVM_HIGH)
+  end
+endtask
+
+/*---------------------------------------------------------------------------
+ * RX TRANSACTION TRANSMISSION IMPLEMENTATION
+ * 
+ * Sends RX transaction to model's RX FIFO for processing.
+ *---------------------------------------------------------------------------*/
+task ucie_sb_compare_result_test_sequence::send_rx_transaction(ucie_sb_transaction trans);
+  // Send transaction directly to model's RX FIFO
+  target_model.rx_fifo.write(trans);
+  
+  if (target_model.cfg.enable_debug) begin
+    `uvm_info("COMPARE_RESULT_SEQUENCE", $sformatf("Sent RX to FIFO: tag=%0d, data=0x%08h", 
               trans.tag, trans.data[31:0]), UVM_HIGH)
   end
 endtask

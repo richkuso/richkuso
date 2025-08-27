@@ -129,21 +129,19 @@ class ucie_sb_compare_result_model extends uvm_component;
   `uvm_component_utils(ucie_sb_compare_result_model)
   
   /*---------------------------------------------------------------------------
-   * ANALYSIS PORT INTERFACES
-   * Input analysis ports for TX and RX transaction collection from monitors
+   * FIFO-BASED RECEIVER INFRASTRUCTURE
+   * TLM Analysis FIFOs for transaction collection from monitors
    *---------------------------------------------------------------------------*/
   
-  uvm_analysis_imp_tx #(ucie_sb_transaction, ucie_sb_compare_result_model) tx_analysis_imp;
-  uvm_analysis_imp_rx #(ucie_sb_transaction, ucie_sb_compare_result_model) rx_analysis_imp;
-  uvm_analysis_port #(ucie_sb_transaction) processed_rx_ap;
+  uvm_tlm_analysis_fifo #(ucie_sb_transaction) tx_fifo;  // TX requests from DUT monitor
+  uvm_tlm_analysis_fifo #(ucie_sb_transaction) rx_fifo;  // RX responses from remote DUT monitor
   
   /*---------------------------------------------------------------------------
-   * FIFO INFRASTRUCTURE
-   * TLM FIFOs for transaction storage and processing
+   * OUTPUT ANALYSIS PORT
+   * Output analysis port for processed transactions
    *---------------------------------------------------------------------------*/
   
-  uvm_tlm_fifo #(ucie_sb_transaction) tx_fifo;     // TX transaction FIFO from monitor
-  uvm_tlm_fifo #(ucie_sb_transaction) rx_fifo;     // RX transaction FIFO from monitor
+  uvm_analysis_port #(ucie_sb_transaction) processed_rx_ap;
   
   /*---------------------------------------------------------------------------
    * SEQUENCER INTERFACE
@@ -219,8 +217,6 @@ class ucie_sb_compare_result_model extends uvm_component;
   extern virtual function void end_of_elaboration_phase(uvm_phase phase);
   extern virtual task run_phase(uvm_phase phase);
   extern virtual function void report_phase(uvm_phase phase);
-  extern virtual function void write_tx(ucie_sb_transaction trans);
-  extern virtual function void write_rx(ucie_sb_transaction trans);
   extern virtual task process_transactions();
   extern virtual function void initialize_compare_array();
   extern virtual task process_tx_transaction(ucie_sb_transaction tx_trans);
@@ -341,15 +337,10 @@ endfunction
 /*---------------------------------------------------------------------------
  * UVM BUILD PHASE IMPLEMENTATION
  * 
- * Component construction, FIFO creation, and configuration retrieval.
+ * Component construction, analysis FIFO creation, and configuration retrieval.
  *---------------------------------------------------------------------------*/
 function void ucie_sb_compare_result_model::build_phase(uvm_phase phase);
   super.build_phase(phase);
-  
-  // Create analysis port implementations
-  tx_analysis_imp = new("tx_analysis_imp", this);
-  rx_analysis_imp = new("rx_analysis_imp", this);
-  processed_rx_ap = new("processed_rx_ap", this);
   
   // Get model configuration or create default
   if (!uvm_config_db#(ucie_sb_compare_result_config)::get(this, "", "cfg", cfg)) begin
@@ -361,9 +352,12 @@ function void ucie_sb_compare_result_model::build_phase(uvm_phase phase);
     `uvm_fatal("COMPARE_RESULT_MODEL", "Invalid configuration parameters")
   end
   
-  // Create FIFOs with configured sizes
+  // Create TLM Analysis FIFOs with configured sizes
   tx_fifo = new("tx_fifo", this, cfg.tx_fifo_size);
   rx_fifo = new("rx_fifo", this, cfg.rx_fifo_size);
+  
+  // Create output analysis port
+  processed_rx_ap = new("processed_rx_ap", this);
   
   // Create sequencer
   rx_sequencer = ucie_sb_sequencer::type_id::create("rx_sequencer", this);
@@ -440,72 +434,49 @@ function void ucie_sb_compare_result_model::report_phase(uvm_phase phase);
   end
 endfunction
 
-/*---------------------------------------------------------------------------
- * TX TRANSACTION WRITE IMPLEMENTATION
- * 
- * Receives TX transactions from sideband TX monitor and pushes to TX FIFO.
- *---------------------------------------------------------------------------*/
-function void ucie_sb_compare_result_model::write_tx(ucie_sb_transaction trans);
-  tx_transactions_received++;
-  
-  if (cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received TX transaction: opcode=%0d, addr=0x%06h, tag=%0d", 
-              trans.opcode, trans.addr, trans.tag), UVM_HIGH)
-  end
-  
-  // Push to TX FIFO
-  if (!tx_fifo.try_put(trans)) begin
-    `uvm_error("COMPARE_RESULT_MODEL", "TX FIFO full - dropping transaction")
-  end
-endfunction
 
-/*---------------------------------------------------------------------------
- * RX TRANSACTION WRITE IMPLEMENTATION
- * 
- * Receives RX transactions from sideband RX monitor and pushes to RX FIFO.
- *---------------------------------------------------------------------------*/
-function void ucie_sb_compare_result_model::write_rx(ucie_sb_transaction trans);
-  rx_transactions_received++;
-  
-  if (cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received RX transaction: opcode=%0d, tag=%0d, data=0x%08h", 
-              trans.opcode, trans.tag, trans.data[31:0]), UVM_HIGH)
-  end
-  
-  // Push to RX FIFO
-  if (!rx_fifo.try_put(trans)) begin
-    `uvm_error("COMPARE_RESULT_MODEL", "RX FIFO full - dropping transaction")
-  end
-endfunction
 
 /*---------------------------------------------------------------------------
  * MAIN TRANSACTION PROCESSING IMPLEMENTATION
  * 
- * Main processing loop that handles TX and RX FIFO processing according
- * to the compare result model specification.
+ * FIFO-based receiver that blocks on FIFO get() to process transactions
+ * in-order. Implements gatekeeper functionality for all RX transactions.
  *---------------------------------------------------------------------------*/
 task ucie_sb_compare_result_model::process_transactions();
   ucie_sb_transaction tx_trans, rx_trans;
   realtime start_time, process_time;
   
   forever begin
-    // Get TX transaction from FIFO
+    // Block on TX FIFO get() - collects TX requests from DUT
     tx_fifo.get(tx_trans);
+    tx_transactions_received++;
     start_time = $realtime;
+    
+    if (cfg.enable_debug) begin
+      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received TX transaction: opcode=%0d, addr=0x%06h, tag=%0d", 
+                tx_trans.opcode, tx_trans.addr, tx_trans.tag), UVM_HIGH)
+    end
     
     // Process TX transaction to set up array access parameters
     process_tx_transaction(tx_trans);
     
-    // Get RX transaction from FIFO
+    // Block on RX FIFO get() - collects RX responses from remote DUT (before modification)
     rx_fifo.get(rx_trans);
+    rx_transactions_received++;
     
-    // Process RX transaction based on model configuration
+    if (cfg.enable_debug) begin
+      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received RX transaction: opcode=%0d, tag=%0d, data=0x%08h", 
+                rx_trans.opcode, rx_trans.tag, rx_trans.data[31:0]), UVM_HIGH)
+    end
+    
+    // Process RX transaction based on model configuration (Gatekeeper functionality)
     if (!cfg.enable_model) begin
       // Model disabled - drop RX transaction (simulate timeout/failure)
+      // TX requests enter FIFO but no RX will be forwarded back
       log_message($sformatf("Model disabled - dropping RX transaction (tag=%0d)", rx_trans.tag), UVM_MEDIUM);
       
     end else if (cfg.pass_through_mode) begin
-      // Pass through unchanged
+      // Pass-through: RX transaction passes unchanged to sequencer → driver → DUT
       rx_sequencer.send_request(rx_trans);
       processed_rx_ap.write(rx_trans);
       rx_transactions_passed_through++;
@@ -515,10 +486,10 @@ task ucie_sb_compare_result_model::process_transactions();
       end
       
     end else begin
-      // Process RX transaction with compare result rewriting
+      // Rewriter: Only data field rewritten, parity recalculated, other fields unchanged
       ucie_sb_transaction processed_trans = process_rx_transaction(rx_trans);
       
-      // Send processed transaction to sequencer and analysis port
+      // Send processed transaction to sequencer → driver → DUT
       rx_sequencer.send_request(processed_trans);
       processed_rx_ap.write(processed_trans);
       
@@ -682,8 +653,9 @@ endfunction
 /*---------------------------------------------------------------------------
  * RX TRANSACTION PROCESSING IMPLEMENTATION
  * 
- * Main processing logic for RX transactions. Overwrites data field
- * with array value and recalculates parity.
+ * Rewriter: Only data field of RX is rewritten with array value.
+ * After rewriting data, parity is recalculated. Other fields remain unchanged.
+ * Logger: Logs original RX data/parity, rewritten RX data/parity, and array index.
  *---------------------------------------------------------------------------*/
 function ucie_sb_transaction ucie_sb_compare_result_model::process_rx_transaction(ucie_sb_transaction rx_trans);
   ucie_sb_transaction processed_trans;
@@ -693,20 +665,20 @@ function ucie_sb_transaction ucie_sb_compare_result_model::process_rx_transactio
   bit new_parity;
   int access_y, access_x;
   
-  // Create copy of original transaction
+  // Create copy of original transaction (other fields remain unchanged)
   processed_trans = rx_trans.copy();
   original_data = rx_trans.data[31:0];
   original_parity = rx_trans.dp;  // Assuming dp is data parity field
   
-  // Get next array value
-  new_data = get_next_array_value();
+  // Get next array value and capture access coordinates before advancing
   access_y = current_y_pos;
   access_x = current_x_pos;
+  new_data = get_next_array_value();
   
-  // Overwrite data field
+  // Rewriter: Only data field is rewritten
   processed_trans.data[31:0] = new_data;
   
-  // Recalculate parity
+  // Recalculate parity to ensure validity
   update_parity(processed_trans);
   new_parity = processed_trans.dp;
   
@@ -719,14 +691,14 @@ function ucie_sb_transaction ucie_sb_compare_result_model::process_rx_transactio
   
   array_accesses_total++;
   
-  // Log processing details
+  // Logger: Whenever rewriting occurs, log original/rewritten data/parity and array index
   if (cfg.enable_logging) begin
     log_rx_processing(rx_trans, processed_trans, access_y, access_x);
   end
   
   if (cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("RX processed: tag=%0d, array[%0d][%0d]=0x%08h, parity: %0b→%0b", 
-              rx_trans.tag, access_y, access_x, new_data, original_parity, new_parity), UVM_MEDIUM)
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("RX rewritten: tag=%0d, array[%0d][%0d]=0x%08h, data: 0x%08h→0x%08h, parity: %0b→%0b", 
+              rx_trans.tag, access_y, access_x, new_data, original_data, new_data, original_parity, new_parity), UVM_MEDIUM)
   end
   
   return processed_trans;
@@ -844,13 +816,21 @@ endfunction
 /*---------------------------------------------------------------------------
  * RX PROCESSING LOGGING IMPLEMENTATION
  * 
- * Logs detailed RX processing information including before/after values.
+ * Logger: Whenever rewriting occurs, logs:
+ * - Original RX data/parity
+ * - Rewritten RX data/parity  
+ * - Array index (Y, X) used for substitution
  *---------------------------------------------------------------------------*/
 function void ucie_sb_compare_result_model::log_rx_processing(ucie_sb_transaction original, ucie_sb_transaction processed, int y, int x);
   string msg;
   
-  msg = $sformatf("RX_PROCESS: tag=%0d, array[%0d][%0d], data: 0x%08h → 0x%08h, parity: %0b → %0b", 
-                  original.tag, y, x, original.data[31:0], processed.data[31:0], original.dp, processed.dp);
+  msg = $sformatf("RX_REWRITE: tag=%0d, array[%0d][%0d] used for substitution", original.tag, y, x);
+  log_message(msg, UVM_MEDIUM);
+  
+  msg = $sformatf("  Original RX data/parity: 0x%08h / %0b", original.data[31:0], original.dp);
+  log_message(msg, UVM_MEDIUM);
+  
+  msg = $sformatf("  Rewritten RX data/parity: 0x%08h / %0b", processed.data[31:0], processed.dp);
   log_message(msg, UVM_MEDIUM);
 endfunction
 
