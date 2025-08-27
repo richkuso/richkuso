@@ -69,6 +69,24 @@ class ucie_sb_compare_result_config extends uvm_object;
   int exp_clk_phase_max = 33;              // Expected clock phase maximum (X-axis)
   
   /*---------------------------------------------------------------------------
+   * INITIAL INDEX SELECTION PARAMETERS
+   * Testbench-defined parameters for initial valid index range
+   *---------------------------------------------------------------------------*/
+  
+  int volt_min = 10;                       // Initial voltage minimum for index selection
+  int volt_max = 11;                       // Initial voltage maximum for index selection
+  int clk_phase = 1;                       // Initial clock phase for X range calculation
+  
+  /*---------------------------------------------------------------------------
+   * TARGET ADDRESS CONSTANTS
+   * Specific CFG_READ_32B addresses that trigger rewriting
+   *---------------------------------------------------------------------------*/
+  
+  parameter bit [23:0] TARGET_ADDR_0 = 24'h013140;  // First target address
+  parameter bit [23:0] TARGET_ADDR_1 = 24'h013144;  // Second target address
+  parameter bit [23:0] TARGET_ADDR_2 = 24'h013148;  // Third target address
+  
+  /*---------------------------------------------------------------------------
    * ARRAY STRUCTURE CONSTANTS
    * Fixed array dimensions and value definitions
    *---------------------------------------------------------------------------*/
@@ -113,6 +131,8 @@ class ucie_sb_compare_result_config extends uvm_object;
   extern function void set_logging_options(bit enable_log, bit log_file, string file_name);
   extern function void set_operational_mode(bit enable, bit debug, bit pass_through);
   extern function void set_fifo_sizes(int tx_size, int rx_size);
+  extern function void set_initial_index_params(int v_min, int v_max, int clk_ph);
+  extern function bit is_target_address(bit [23:0] addr);
   extern function void print_config();
   extern function bit validate_config();
 
@@ -152,27 +172,30 @@ class ucie_sb_compare_result_model extends uvm_component;
   
   /*---------------------------------------------------------------------------
    * COMPARE RESULT ARRAY
-   * 2D array storing compare results with access tracking
+   * 2D array with linear index mapping (index = y*63 + x)
    *---------------------------------------------------------------------------*/
   
   bit [31:0] compare_result_array[64][63]; // 64 rows × 63 columns array
-  int current_y_pos = 0;                   // Current Y position for sequential access
-  int current_x_pos = 0;                   // Current X position for sequential access
-  int access_y_min = 0;                    // Current access Y range minimum
-  int access_y_max = 0;                    // Current access Y range maximum
-  int access_x_min = 0;                    // Current access X range minimum
-  int access_x_max = 0;                    // Current access X range maximum
   bit array_initialized = 0;               // Array initialization status
   
   /*---------------------------------------------------------------------------
-   * TX REQUEST PARAMETERS
-   * Latest TX request parameters for array access control
+   * LINEAR INDEX ACCESS SYSTEM
+   * Index-based access following row-major mapping (X first, then Y)
    *---------------------------------------------------------------------------*/
   
-  int latest_volt_min = 0;                 // Latest voltage minimum from TX
-  int latest_volt_max = 0;                 // Latest voltage maximum from TX
-  int latest_clk_phase = 0;                // Latest clock phase from TX
-  bit tx_request_pending = 0;              // TX request pending processing
+  int current_index = 0;                   // Current linear array index
+  int valid_indices[$];                    // Queue of valid indices for current session
+  int valid_index_ptr = 0;                 // Pointer to current valid index
+  bit indices_initialized = 0;             // Valid indices initialization status
+  
+  /*---------------------------------------------------------------------------
+   * THREE-ADDRESS GROUP TRACKING
+   * State tracking for the three-address group logic
+   *---------------------------------------------------------------------------*/
+  
+  int group_address_count = 0;             // Count of addresses processed in current group (0-2)
+  bit [23:0] last_processed_addresses[3];  // Track last 3 processed addresses
+  bit group_in_progress = 0;               // Flag indicating group processing active
   
   /*---------------------------------------------------------------------------
    * CONFIGURATION AND CONNECTIVITY
@@ -219,13 +242,18 @@ class ucie_sb_compare_result_model extends uvm_component;
   extern virtual function void report_phase(uvm_phase phase);
   extern virtual task process_transactions();
   extern virtual function void initialize_compare_array();
+  extern virtual function void initialize_valid_indices();
   extern virtual task process_tx_transaction(ucie_sb_transaction tx_trans);
   extern virtual function ucie_sb_transaction process_rx_transaction(ucie_sb_transaction rx_trans);
-  extern virtual function bit [31:0] get_next_array_value();
+  extern virtual function bit is_target_tx_transaction(ucie_sb_transaction tx_trans);
+  extern virtual function bit [31:0] get_array_value_by_index(int index);
+  extern virtual function void get_coordinates_from_index(int index, output int x, output int y);
+  extern virtual function int get_index_from_coordinates(int x, int y);
   extern virtual function void update_parity(ucie_sb_transaction trans);
+  extern virtual function void advance_group_state();
   extern virtual function void log_initialization();
-  extern virtual function void log_tx_request(int volt_min, int volt_max, int clk_phase);
-  extern virtual function void log_rx_processing(ucie_sb_transaction original, ucie_sb_transaction processed, int y, int x);
+  extern virtual function void log_tx_request(bit [4:0] opcode, bit [23:0] addr);
+  extern virtual function void log_rx_processing(ucie_sb_transaction original, ucie_sb_transaction processed, int index, int x, int y);
   extern virtual function void log_message(string message, uvm_verbosity verbosity = UVM_LOW);
   extern virtual function void set_default_config();
   extern virtual function void print_statistics();
@@ -286,6 +314,28 @@ function void ucie_sb_compare_result_config::set_fifo_sizes(int tx_size, int rx_
   tx_fifo_size = tx_size;
   rx_fifo_size = rx_size;
   `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Set FIFO sizes: TX=%0d, RX=%0d", tx_size, rx_size), UVM_LOW)
+endfunction
+
+/*---------------------------------------------------------------------------
+ * SET INITIAL INDEX PARAMETERS CONFIGURATION
+ * 
+ * Configures testbench-defined parameters for initial valid index range.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_config::set_initial_index_params(int v_min, int v_max, int clk_ph);
+  volt_min = v_min;
+  volt_max = v_max;
+  clk_phase = clk_ph;
+  `uvm_info("COMPARE_RESULT_CONFIG", $sformatf("Set initial index params: volt[%0d:%0d], clk_phase=%0d", 
+            v_min, v_max, clk_ph), UVM_LOW)
+endfunction
+
+/*---------------------------------------------------------------------------
+ * TARGET ADDRESS CHECK
+ * 
+ * Checks if given address is one of the three target addresses.
+ *---------------------------------------------------------------------------*/
+function bit ucie_sb_compare_result_config::is_target_address(bit [23:0] addr);
+  return (addr == TARGET_ADDR_0) || (addr == TARGET_ADDR_1) || (addr == TARGET_ADDR_2);
 endfunction
 
 /*---------------------------------------------------------------------------
@@ -386,6 +436,9 @@ function void ucie_sb_compare_result_model::end_of_elaboration_phase(uvm_phase p
   // Initialize compare result array
   initialize_compare_array();
   
+  // Initialize valid indices based on testbench parameters
+  initialize_valid_indices();
+  
   // Print configuration if debug enabled
   if (cfg.enable_debug) begin
     cfg.print_config();
@@ -453,11 +506,11 @@ task ucie_sb_compare_result_model::process_transactions();
     start_time = $realtime;
     
     if (cfg.enable_debug) begin
-      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received TX transaction: opcode=%0d, addr=0x%06h, tag=%0d", 
-                tx_trans.opcode, tx_trans.addr, tx_trans.tag), UVM_HIGH)
+      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received TX transaction: opcode=%0d, addr=0x%06h", 
+                tx_trans.opcode, tx_trans.addr), UVM_HIGH)
     end
     
-    // Process TX transaction to set up array access parameters
+    // Process TX transaction - check if it's a target address
     process_tx_transaction(tx_trans);
     
     // Block on RX FIFO get() - collects RX responses from remote DUT (before modification)
@@ -465,35 +518,46 @@ task ucie_sb_compare_result_model::process_transactions();
     rx_transactions_received++;
     
     if (cfg.enable_debug) begin
-      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received RX transaction: opcode=%0d, tag=%0d, data=0x%08h", 
-                rx_trans.opcode, rx_trans.tag, rx_trans.data[31:0]), UVM_HIGH)
+      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Received RX transaction: opcode=%0d, data=0x%08h", 
+                rx_trans.opcode, rx_trans.data[31:0]), UVM_HIGH)
     end
     
-    // Process RX transaction based on model configuration (Gatekeeper functionality)
+    // Process RX transaction based on model configuration
     if (!cfg.enable_model) begin
-      // Model disabled - drop RX transaction (simulate timeout/failure)
-      // TX requests enter FIFO but no RX will be forwarded back
-      log_message($sformatf("Model disabled - dropping RX transaction (tag=%0d)", rx_trans.tag), UVM_MEDIUM);
-      
-    end else if (cfg.pass_through_mode) begin
-      // Pass-through: RX transaction passes unchanged to sequencer → driver → DUT
+      // Model disabled - RX transactions pass-through directly
       rx_sequencer.send_request(rx_trans);
       processed_rx_ap.write(rx_trans);
       rx_transactions_passed_through++;
       
-      if (cfg.enable_debug) begin
-        `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Pass-through mode: forwarded RX unchanged (tag=%0d)", rx_trans.tag), UVM_HIGH)
-      end
+      log_message($sformatf("Model disabled - RX pass-through"), UVM_MEDIUM);
       
     end else begin
-      // Rewriter: Only data field rewritten, parity recalculated, other fields unchanged
-      ucie_sb_transaction processed_trans = process_rx_transaction(rx_trans);
+      // Model enabled - check if TX was a target address for rewriting
+      bit should_rewrite = is_target_tx_transaction(tx_trans) && (rx_trans.opcode == COMPLETION_32B);
       
-      // Send processed transaction to sequencer → driver → DUT
-      rx_sequencer.send_request(processed_trans);
-      processed_rx_ap.write(processed_trans);
-      
-      rx_transactions_processed++;
+      if (should_rewrite) begin
+        // Rewrite RX data with array value and recalculate parity
+        ucie_sb_transaction processed_trans = process_rx_transaction(rx_trans);
+        
+        // Send processed transaction to sequencer → driver → DUT
+        rx_sequencer.send_request(processed_trans);
+        processed_rx_ap.write(processed_trans);
+        
+        rx_transactions_processed++;
+        
+        // Advance group state after processing
+        advance_group_state();
+        
+      end else begin
+        // Pass-through: RX transaction passes unchanged
+        rx_sequencer.send_request(rx_trans);
+        processed_rx_ap.write(rx_trans);
+        rx_transactions_passed_through++;
+        
+        if (cfg.enable_debug) begin
+          `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Non-target TX or non-COMPLETION RX - pass-through"), UVM_HIGH)
+        end
+      end
     end
     
     // Update performance metrics
@@ -514,50 +578,16 @@ endtask
  * array access region for subsequent RX processing.
  *---------------------------------------------------------------------------*/
 task ucie_sb_compare_result_model::process_tx_transaction(ucie_sb_transaction tx_trans);
-  // Extract TX request parameters for array access setup
-  // This assumes TX transaction contains volt_min, volt_max, clk_phase information
-  // The exact extraction method depends on how these parameters are encoded in the transaction
-  
-  // For demonstration, assume parameters are encoded in specific fields:
-  int volt_min = tx_trans.addr[15:8];      // Example: volt_min in addr bits [15:8]
-  int volt_max = tx_trans.addr[7:0];       // Example: volt_max in addr bits [7:0]
-  int clk_phase = tx_trans.tag;            // Example: clk_phase in tag field
-  
-  // Process TX request to set up array access region
-  latest_volt_min = volt_min;
-  latest_volt_max = volt_max;
-  latest_clk_phase = clk_phase;
-  
-  // Set Y range directly from voltage parameters
-  access_y_min = volt_min;
-  access_y_max = volt_max;
-  
-  // Set X range based on clk_phase around center 31
-  access_x_min = 31 - clk_phase;
-  access_x_max = 31 + clk_phase;
-  
-  // Clamp to valid array bounds
-  if (access_y_min < 0) access_y_min = 0;
-  if (access_y_max >= cfg.ARRAY_ROWS) access_y_max = cfg.ARRAY_ROWS - 1;
-  if (access_x_min < 0) access_x_min = 0;
-  if (access_x_max >= cfg.ARRAY_COLS) access_x_max = cfg.ARRAY_COLS - 1;
-  
-  // Initialize sequential access position
-  current_y_pos = access_y_min;
-  current_x_pos = access_x_min;
-  tx_request_pending = 1;
   tx_requests_processed++;
   
   if (cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("TX request processed: volt[%0d:%0d], clk_phase=%0d", 
-              volt_min, volt_max, clk_phase), UVM_MEDIUM)
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Access region: Y[%0d:%0d], X[%0d:%0d]", 
-              access_y_min, access_y_max, access_x_min, access_x_max), UVM_MEDIUM)
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("TX processed: opcode=%0d, addr=0x%06h", 
+              tx_trans.opcode, tx_trans.addr), UVM_MEDIUM)
   end
   
   // Log TX request
   if (cfg.enable_logging) begin
-    log_tx_request(volt_min, volt_max, clk_phase);
+    log_tx_request(tx_trans.opcode, tx_trans.addr);
   end
 endtask
 
@@ -663,17 +693,16 @@ function ucie_sb_transaction ucie_sb_compare_result_model::process_rx_transactio
   bit [31:0] new_data;
   bit original_parity;
   bit new_parity;
-  int access_y, access_x;
+  int access_x, access_y;
   
   // Create copy of original transaction (other fields remain unchanged)
   processed_trans = rx_trans.copy();
   original_data = rx_trans.data[31:0];
   original_parity = rx_trans.dp;  // Assuming dp is data parity field
   
-  // Get next array value and capture access coordinates before advancing
-  access_y = current_y_pos;
-  access_x = current_x_pos;
-  new_data = get_next_array_value();
+  // Get array value using current index and capture coordinates
+  new_data = get_array_value_by_index(current_index);
+  get_coordinates_from_index(current_index, access_x, access_y);
   
   // Rewriter: Only data field is rewritten
   processed_trans.data[31:0] = new_data;
@@ -693,56 +722,18 @@ function ucie_sb_transaction ucie_sb_compare_result_model::process_rx_transactio
   
   // Logger: Whenever rewriting occurs, log original/rewritten data/parity and array index
   if (cfg.enable_logging) begin
-    log_rx_processing(rx_trans, processed_trans, access_y, access_x);
+    log_rx_processing(rx_trans, processed_trans, current_index, access_x, access_y);
   end
   
   if (cfg.enable_debug) begin
-    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("RX rewritten: tag=%0d, array[%0d][%0d]=0x%08h, data: 0x%08h→0x%08h, parity: %0b→%0b", 
-              rx_trans.tag, access_y, access_x, new_data, original_data, new_data, original_parity, new_parity), UVM_MEDIUM)
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("RX rewritten: index=%0d, array[%0d][%0d]=0x%08h, data: 0x%08h→0x%08h, parity: %0b→%0b", 
+              current_index, access_y, access_x, new_data, original_data, new_data, original_parity, new_parity), UVM_MEDIUM)
   end
   
   return processed_trans;
 endfunction
 
-/*---------------------------------------------------------------------------
- * ARRAY VALUE RETRIEVAL IMPLEMENTATION
- * 
- * Sequentially retrieves next value from compare result array based on
- * current access region and position.
- *---------------------------------------------------------------------------*/
-function bit [31:0] ucie_sb_compare_result_model::get_next_array_value();
-  bit [31:0] value;
-  
-  // Check if array is initialized
-  if (!array_initialized) begin
-    `uvm_error("COMPARE_RESULT_MODEL", "Array not initialized")
-    return cfg.FAIL_VALUE;
-  end
-  
-  // Check bounds
-  if (current_y_pos < 0 || current_y_pos >= cfg.ARRAY_ROWS ||
-      current_x_pos < 0 || current_x_pos >= cfg.ARRAY_COLS) begin
-    `uvm_error("COMPARE_RESULT_MODEL", $sformatf("Array access out of bounds: [%0d][%0d]", 
-               current_y_pos, current_x_pos))
-    return cfg.FAIL_VALUE;
-  end
-  
-  // Get value from array
-  value = compare_result_array[current_y_pos][current_x_pos];
-  
-  // Advance to next position (row-major order)
-  current_x_pos++;
-  if (current_x_pos > access_x_max) begin
-    current_x_pos = access_x_min;
-    current_y_pos++;
-    if (current_y_pos > access_y_max) begin
-      // Wrap around to beginning of region
-      current_y_pos = access_y_min;
-    end
-  end
-  
-  return value;
-endfunction
+
 
 /*---------------------------------------------------------------------------
  * PARITY UPDATE IMPLEMENTATION
@@ -793,20 +784,23 @@ endfunction
  * 
  * Logs TX request parameters and calculated access region.
  *---------------------------------------------------------------------------*/
-function void ucie_sb_compare_result_model::log_tx_request(int volt_min, int volt_max, int clk_phase);
+function void ucie_sb_compare_result_model::log_tx_request(bit [4:0] opcode, bit [23:0] addr);
   string msg;
   
   msg = $sformatf("=== TX REQUEST ===");
   log_message(msg, UVM_MEDIUM);
   
-  msg = $sformatf("DUT parameters: volt_min=%0d, volt_max=%0d, clk_phase=%0d", volt_min, volt_max, clk_phase);
+  msg = $sformatf("TX opcode: %0d (0x%02h)", opcode, opcode);
   log_message(msg, UVM_MEDIUM);
   
-  msg = $sformatf("Access region: Y[%0d:%0d], X[%0d:%0d]", access_y_min, access_y_max, access_x_min, access_x_max);
+  msg = $sformatf("TX addr: 0x%06h", addr);
   log_message(msg, UVM_MEDIUM);
   
-  int region_size = (access_y_max - access_y_min + 1) * (access_x_max - access_x_min + 1);
-  msg = $sformatf("Region size: %0d elements", region_size);
+  if (cfg.is_target_address(addr)) begin
+    msg = $sformatf("Target address: YES (will trigger rewriting)");
+  end else begin
+    msg = $sformatf("Target address: NO (will pass-through)");
+  end
   log_message(msg, UVM_MEDIUM);
   
   msg = $sformatf("==================");
@@ -821,10 +815,10 @@ endfunction
  * - Rewritten RX data/parity  
  * - Array index (Y, X) used for substitution
  *---------------------------------------------------------------------------*/
-function void ucie_sb_compare_result_model::log_rx_processing(ucie_sb_transaction original, ucie_sb_transaction processed, int y, int x);
+function void ucie_sb_compare_result_model::log_rx_processing(ucie_sb_transaction original, ucie_sb_transaction processed, int index, int x, int y);
   string msg;
   
-  msg = $sformatf("RX_REWRITE: tag=%0d, array[%0d][%0d] used for substitution", original.tag, y, x);
+  msg = $sformatf("RX_REWRITE: array index=%0d, coordinates(%0d,%0d) used for substitution", index, x, y);
   log_message(msg, UVM_MEDIUM);
   
   msg = $sformatf("  Original RX data/parity: 0x%08h / %0b", original.data[31:0], original.dp);
@@ -921,4 +915,129 @@ function void ucie_sb_compare_result_model::print_array_contents();
   end
   
   `uvm_info("COMPARE_RESULT_MODEL", "============================================", UVM_LOW)
+endfunction
+
+/*---------------------------------------------------------------------------
+ * INITIALIZE VALID INDICES IMPLEMENTATION
+ * 
+ * Initializes the valid indices queue based on testbench parameters.
+ * Uses linear index mapping: index = y*63 + x
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::initialize_valid_indices();
+  int y_min, y_max, x_min, x_max;
+  int index;
+  
+  // Calculate Y range from testbench parameters
+  y_min = cfg.volt_max;  // Note: spec shows volt_max as minimum Y
+  y_max = cfg.volt_min;  // Note: spec shows volt_min as maximum Y
+  
+  // Calculate X range from clk_phase around center 31
+  x_min = 31 - cfg.clk_phase;
+  x_max = 31 + cfg.clk_phase;
+  
+  // Clamp to valid array bounds
+  if (y_min < 0) y_min = 0;
+  if (y_max >= cfg.ARRAY_ROWS) y_max = cfg.ARRAY_ROWS - 1;
+  if (x_min < 0) x_min = 0;
+  if (x_max >= cfg.ARRAY_COLS) x_max = cfg.ARRAY_COLS - 1;
+  
+  // Clear existing valid indices
+  valid_indices.delete();
+  
+  // Generate valid indices in X-major then Y order
+  for (int y = y_min; y <= y_max; y++) begin
+    for (int x = x_min; x <= x_max; x++) begin
+      index = get_index_from_coordinates(x, y);
+      valid_indices.push_back(index);
+    end
+  end
+  
+  // Reset pointer
+  valid_index_ptr = 0;
+  current_index = (valid_indices.size() > 0) ? valid_indices[0] : 0;
+  indices_initialized = 1;
+  
+  if (cfg.enable_debug) begin
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Initialized %0d valid indices: Y[%0d:%0d], X[%0d:%0d]", 
+              valid_indices.size(), y_min, y_max, x_min, x_max), UVM_LOW)
+  end
+  
+  if (cfg.enable_logging) begin
+    log_message($sformatf("Valid indices initialized: %0d entries, starting index=%0d", 
+                valid_indices.size(), current_index), UVM_MEDIUM);
+  end
+endfunction
+
+/*---------------------------------------------------------------------------
+ * TARGET TX TRANSACTION CHECK IMPLEMENTATION
+ * 
+ * Checks if TX transaction matches target conditions for rewriting.
+ *---------------------------------------------------------------------------*/
+function bit ucie_sb_compare_result_model::is_target_tx_transaction(ucie_sb_transaction tx_trans);
+  return (tx_trans.opcode == CFG_READ_32B) && cfg.is_target_address(tx_trans.addr);
+endfunction
+
+/*---------------------------------------------------------------------------
+ * GET ARRAY VALUE BY INDEX IMPLEMENTATION
+ * 
+ * Retrieves array value using linear index mapping.
+ *---------------------------------------------------------------------------*/
+function bit [31:0] ucie_sb_compare_result_model::get_array_value_by_index(int index);
+  int x, y;
+  get_coordinates_from_index(index, x, y);
+  return compare_result_array[y][x];
+endfunction
+
+/*---------------------------------------------------------------------------
+ * GET COORDINATES FROM INDEX IMPLEMENTATION
+ * 
+ * Converts linear index to (x, y) coordinates using index = y*63 + x.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::get_coordinates_from_index(int index, output int x, output int y);
+  y = index / cfg.ARRAY_COLS;
+  x = index % cfg.ARRAY_COLS;
+endfunction
+
+/*---------------------------------------------------------------------------
+ * GET INDEX FROM COORDINATES IMPLEMENTATION
+ * 
+ * Converts (x, y) coordinates to linear index using index = y*63 + x.
+ *---------------------------------------------------------------------------*/
+function int ucie_sb_compare_result_model::get_index_from_coordinates(int x, int y);
+  return y * cfg.ARRAY_COLS + x;
+endfunction
+
+/*---------------------------------------------------------------------------
+ * ADVANCE GROUP STATE IMPLEMENTATION
+ * 
+ * Advances the three-address group state and increments array index.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::advance_group_state();
+  group_address_count++;
+  
+  if (group_address_count >= 3) begin
+    // Completed a group of three addresses - advance to next array index
+    group_address_count = 0;
+    valid_index_ptr++;
+    
+    if (valid_index_ptr < valid_indices.size()) begin
+      current_index = valid_indices[valid_index_ptr];
+      
+      if (cfg.enable_debug) begin
+        int x, y;
+        get_coordinates_from_index(current_index, x, y);
+        `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Advanced to next group: index=%0d, coords(%0d,%0d)", 
+                  current_index, x, y), UVM_MEDIUM)
+      end
+    end else begin
+      `uvm_warning("COMPARE_RESULT_MODEL", "All valid indices have been used - wrapping to start")
+      valid_index_ptr = 0;
+      current_index = (valid_indices.size() > 0) ? valid_indices[0] : 0;
+    end
+  end
+  
+  if (cfg.enable_debug) begin
+    `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Group state: address_count=%0d/3, index=%0d", 
+              group_address_count, current_index), UVM_HIGH)
+  end
 endfunction

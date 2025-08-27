@@ -109,7 +109,8 @@ class ucie_sb_compare_result_test_sequence extends uvm_sequence #(ucie_sb_transa
   extern virtual task test_edge_cases();
   extern virtual task test_enable_disable();
   extern virtual task test_pass_through_mode();
-  extern virtual function ucie_sb_transaction create_tx_transaction(int volt_min, int volt_max, int clk_phase);
+  extern virtual function ucie_sb_transaction create_tx_transaction(bit [23:0] addr);
+  extern virtual function ucie_sb_transaction create_target_tx_transaction(int addr_index);
   extern virtual function ucie_sb_transaction create_rx_transaction(int tag, bit [31:0] data);
   extern virtual task send_tx_transaction(ucie_sb_transaction trans);
   extern virtual task send_rx_transaction(ucie_sb_transaction trans);
@@ -245,24 +246,34 @@ endtask
 /*---------------------------------------------------------------------------
  * BASIC FUNCTIONALITY TEST IMPLEMENTATION
  * 
- * Tests basic model operation with simple parameters.
+ * Tests basic three-address group behavior with target addresses.
  *---------------------------------------------------------------------------*/
 task ucie_sb_compare_result_test_sequence::test_basic_functionality();
   ucie_sb_transaction tx_trans, rx_trans;
   
-  `uvm_info("COMPARE_RESULT_SEQUENCE", "Testing basic functionality...", UVM_MEDIUM)
+  `uvm_info("COMPARE_RESULT_SEQUENCE", "Testing basic three-address group functionality...", UVM_MEDIUM)
   
-  // Send several TX/RX transaction pairs
-  for (int i = 0; i < 5; i++) begin
-    // Create and send TX transaction (volt_min=12, volt_max=14, clk_phase=2)
-    tx_trans = create_tx_transaction(12, 14, 2);
-    send_tx_transaction(tx_trans);
+  // Test one complete group of three addresses
+  for (int group = 0; group < 2; group++) begin
+    `uvm_info("COMPARE_RESULT_SEQUENCE", $sformatf("Starting group %0d (uses array[%0d])", group, group), UVM_MEDIUM)
     
-    // Create and send corresponding RX transaction
-    rx_trans = create_rx_transaction(i, 32'h12345678 + i);
-    send_rx_transaction(rx_trans);
+    // Send three TX/RX pairs for each group (all use same array index)
+    for (int addr_idx = 0; addr_idx < 3; addr_idx++) begin
+      // Create and send target TX transaction
+      tx_trans = create_target_tx_transaction(addr_idx);
+      send_tx_transaction(tx_trans);
+      
+      // Create and send corresponding RX transaction
+      rx_trans = create_rx_transaction(100 + group*3 + addr_idx, 32'h12345678 + addr_idx);
+      send_rx_transaction(rx_trans);
+      
+      `uvm_info("COMPARE_RESULT_SEQUENCE", $sformatf("Sent TX addr=0x%06h, RX data=0x%08h", 
+                tx_trans.addr, rx_trans.data[31:0]), UVM_HIGH)
+      
+      #20ns;  // Allow processing time
+    end
     
-    #20ns;  // Allow processing time
+    `uvm_info("COMPARE_RESULT_SEQUENCE", $sformatf("Completed group %0d", group), UVM_MEDIUM)
   end
   
   `uvm_info("COMPARE_RESULT_SEQUENCE", "Basic functionality test complete", UVM_MEDIUM)
@@ -271,34 +282,45 @@ endtask
 /*---------------------------------------------------------------------------
  * SPECIFICATION EXAMPLE TEST IMPLEMENTATION
  * 
- * Implements the exact example from the specification document.
+ * Tests the linear index mapping and three-address group behavior.
  *---------------------------------------------------------------------------*/
 task ucie_sb_compare_result_test_sequence::test_specification_example();
   ucie_sb_transaction tx_trans, rx_trans;
   
   `uvm_info("COMPARE_RESULT_SEQUENCE", "Testing specification example scenario...", UVM_MEDIUM)
   
-  // Specification example parameters:
-  // Array initialized with: exp_volt_min=10, exp_volt_max=20, exp_clk_phase_min=29, exp_clk_phase_max=33
-  // TX request: volt_min=12, volt_max=14, clk_phase=30
-  // Expected access region: Y[12:14], X[1:61] (31-30 to 31+30)
-  // Expected results: PASS for positions within (12:14, 29:33), FAIL elsewhere
+  // Test configuration:
+  // - Array initialized with exp_volt_min=10, exp_volt_max=20, exp_clk_phase_min=29, exp_clk_phase_max=33
+  // - Initial index params: volt_min=10, volt_max=11, clk_phase=1
+  // - Expected valid indices: Y[10:11], X[30:32] = 6 indices total
+  // - Linear mapping: index = y*63 + x
   
-  `uvm_info("COMPARE_RESULT_SEQUENCE", "TX request: volt[12:14], clk_phase=30", UVM_MEDIUM)
-  `uvm_info("COMPARE_RESULT_SEQUENCE", "Expected access region: Y[12:14], X[1:61]", UVM_MEDIUM)
-  `uvm_info("COMPARE_RESULT_SEQUENCE", "Expected PASS region: Y[12:14], X[29:33]", UVM_MEDIUM)
+  `uvm_info("COMPARE_RESULT_SEQUENCE", "Array fill region: Y[10:20], X[29:33] (PASS values)", UVM_MEDIUM)
+  `uvm_info("COMPARE_RESULT_SEQUENCE", "Valid indices: Y[10:11], X[30:32] (6 indices)", UVM_MEDIUM)
+  `uvm_info("COMPARE_RESULT_SEQUENCE", "Expected sequence: index 660,661,662,693,694,695", UVM_MEDIUM)
   
-  // Send TX/RX transaction pairs to exercise the access region
-  for (int i = 0; i < 15; i++) begin
-    // Create and send TX transaction with specification parameters
-    tx_trans = create_tx_transaction(12, 14, 30);
-    send_tx_transaction(tx_trans);
+  // Test multiple groups to show index advancement
+  for (int group = 0; group < 3; group++) begin
+    `uvm_info("COMPARE_RESULT_SEQUENCE", $sformatf("=== GROUP %0d (should use array[%0d]) ===", group, group), UVM_MEDIUM)
     
-    // Create and send corresponding RX transaction
-    rx_trans = create_rx_transaction(100 + i, 32'hABCDEF00 + i);
-    send_rx_transaction(rx_trans);
+    // Send three TX/RX pairs for this group
+    for (int addr_idx = 0; addr_idx < 3; addr_idx++) begin
+      // Create and send target TX transaction
+      tx_trans = create_target_tx_transaction(addr_idx);
+      send_tx_transaction(tx_trans);
+      
+      // Create and send corresponding RX transaction
+      rx_trans = create_rx_transaction(200 + group*3 + addr_idx, 32'hABCDEF00 + group*16 + addr_idx);
+      send_rx_transaction(rx_trans);
+      
+      `uvm_info("COMPARE_RESULT_SEQUENCE", $sformatf("Group %0d, Addr %0d: TX=0x%06h, RX=0x%08h", 
+                group, addr_idx, tx_trans.addr, rx_trans.data[31:0]), UVM_HIGH)
+      
+      #15ns;  // Allow processing time
+    end
     
-    #10ns;  // Allow processing time
+    `uvm_info("COMPARE_RESULT_SEQUENCE", $sformatf("=== GROUP %0d COMPLETE ===", group), UVM_MEDIUM)
+    #10ns;
   end
   
   `uvm_info("COMPARE_RESULT_SEQUENCE", "Specification example test complete", UVM_MEDIUM)
@@ -411,18 +433,16 @@ endtask
 /*---------------------------------------------------------------------------
  * TX TRANSACTION CREATION IMPLEMENTATION
  * 
- * Creates TX transaction with volt_min, volt_max, clk_phase parameters.
+ * Creates TX transaction with specific target address.
  *---------------------------------------------------------------------------*/
-function ucie_sb_transaction ucie_sb_compare_result_test_sequence::create_tx_transaction(int volt_min, int volt_max, int clk_phase);
+function ucie_sb_transaction ucie_sb_compare_result_test_sequence::create_tx_transaction(bit [23:0] addr);
   ucie_sb_transaction trans;
   
   trans = ucie_sb_transaction::type_id::create("tx_trans");
   
   // Set transaction parameters
   trans.opcode = CFG_READ_32B;    // TX request opcode
-  trans.tag = clk_phase;          // Encode clk_phase in tag field
-  trans.addr[15:8] = volt_min;    // Encode volt_min in addr bits [15:8]
-  trans.addr[7:0] = volt_max;     // Encode volt_max in addr bits [7:0]
+  trans.addr = addr;              // Use specific target address
   trans.srcid = 3'h1;
   trans.dstid = 3'h2;
   
@@ -430,6 +450,24 @@ function ucie_sb_transaction ucie_sb_compare_result_test_sequence::create_tx_tra
   trans.update_packet_info();
   
   return trans;
+endfunction
+
+/*---------------------------------------------------------------------------
+ * TX TRANSACTION CREATION FOR TARGET ADDRESSES
+ * 
+ * Creates TX transactions for the three target addresses.
+ *---------------------------------------------------------------------------*/
+function ucie_sb_transaction ucie_sb_compare_result_test_sequence::create_target_tx_transaction(int addr_index);
+  bit [23:0] target_addr;
+  
+  case (addr_index)
+    0: target_addr = target_model.cfg.TARGET_ADDR_0;  // 0x013140
+    1: target_addr = target_model.cfg.TARGET_ADDR_1;  // 0x013144
+    2: target_addr = target_model.cfg.TARGET_ADDR_2;  // 0x013148
+    default: target_addr = 24'h000000;
+  endcase
+  
+  return create_tx_transaction(target_addr);
 endfunction
 
 /*---------------------------------------------------------------------------
