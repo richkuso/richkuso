@@ -95,18 +95,13 @@ graph LR
 │   ├── ucie_sb_env_loopback.sv             # Loopback Environment with Compare Model (129 lines)
 │   ├── ucie_sb_reg_access_checker.sv       # Register Access Checker (1147 lines)
 │   ├── ucie_sb_ltsm_model.sv               # Link Training State Machine (650+ lines)
-│   ├── ucie_sb_transaction_interceptor.sv  # Transaction Interceptor (1000+ lines)
-│   ├── ucie_sb_interceptor_example.sv     # Interceptor Example (500+ lines)
-│   ├── ucie_sb_compare_result_model.sv    # Compare Result Model (800+ lines)
-│   └── ucie_sb_compare_result_example.sv  # Compare Model Example (400+ lines)
+│   └── ucie_sb_compare_result_model.sv    # Compare Result Model (800+ lines)
 │
 ├── 📚 Examples & Documentation
 │   ├── ucie_sb_source_sync_example.sv      # Source-sync Demo (155 lines)
 │   ├── ucie_sb_clock_pattern_example.sv    # Clock Pattern Demo (243 lines)
 │   ├── ucie_sb_reg_checker_example.sv      # Register Checker Demo (324 lines)
-│   ├── ucie_sb_transaction_extern_example.sv # Transaction Demo (292 lines)
-│   ├── ucie_sb_ltsm_example.sv             # LTSM Training Demo (280+ lines)
-│   └── ucie_sb_interceptor_example.sv      # Interceptor Demo (500+ lines)
+│   └── ucie_sb_transaction_extern_example.sv # Transaction Demo (292 lines)
 │
 └── 📖 Documentation
     └── ucie_sb_README.md                   # This comprehensive guide
@@ -829,73 +824,7 @@ if (ltsm_model.current_state == LTSM_TRAINING) begin
 end
 ```
 
-### **🎮 LTSM Demo and Examples**
-
-The LTSM implementation includes a complete demonstration environment:
-
-#### **LTSM Example Components**
-- **`ucie_sb_ltsm_example.sv`**: Complete UVM test environment
-  - `ucie_sb_ltsm_env`: Dual LTSM model environment (initiator + target)
-  - `ucie_sb_ltsm_test`: UVM test with reset sequence and result reporting
-  - `ucie_sb_ltsm_testbench`: Top-level module with cross-connected interfaces
-
-#### **Running LTSM Demonstration**
-```bash
-# Compile LTSM example
-make compile_ltsm
-
-# Run LTSM training demo
-make run_ltsm_demo
-
-# View waveforms (generates ucie_sb_ltsm_waves.vcd)
-gtkwave ucie_sb_ltsm_waves.vcd
-```
-
-#### **Expected Demo Output**
-```
-LTSM_MODEL: State transition: RESET → SBINIT (duration: 0.100ms)
-LTSM_MODEL: Back-to-back clock patterns detected - sending 4 final patterns
-LTSM_MODEL: SBINIT OOR exchange complete
-LTSM_MODEL: Sent SBINIT Done Request message
-LTSM_MODEL: Received SBINIT Done Response message
-LTSM_MODEL: State transition: SBINIT → TRAINING (duration: 5.250ms)
-LTSM_TEST: Link training completed successfully!
-```
-
-#### **Integration with Existing Tests**
-The LTSM model can be easily integrated into existing UVM environments:
-
-```systemverilog
-class my_test extends uvm_test;
-  ucie_sb_ltsm_model ltsm;
-  
-  virtual function void build_phase(uvm_phase phase);
-    super.build_phase(phase);
-    ltsm = ucie_sb_ltsm_model::type_id::create("ltsm", this);
-  endfunction
-  
-  virtual task run_phase(uvm_phase phase);
-    phase.raise_objection(this);
-    
-    // Start training
-    ltsm.set_start_link_training();
-    
-    // Wait for completion
-    wait(ltsm.current_state == LTSM_TRAINING);
-    
-    // Continue with normal test operations
-    phase.drop_objection(this);
-  endtask
-endclass
-```
-
 ---
-
-## 🔀 **UCIe Sideband Transaction Interceptor**
-
-### **🎯 Interceptor Overview**
-
-The UCIe Sideband Agent includes a **production-grade Transaction Interceptor** component that provides intelligent transaction monitoring, interception, and modification capabilities. This advanced component enables sophisticated verification scenarios where specific transactions need to be captured, modified, or replaced with custom responses.
 
 ## 🏗️ **UCIe Sideband Loopback Environment Integration**
 
