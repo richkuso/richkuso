@@ -628,12 +628,14 @@ function bit ucie_sb_driver::validate_transaction(ucie_sb_transaction trans);
     return 0;
   end
   
-  if (trans.srcid == 3'b000) begin
+  // Skip srcid validation for clock pattern transactions
+  if (!trans.is_clock_pattern && trans.srcid == 3'b000) begin
     `uvm_error("DRIVER", "srcid=0 is reserved in UCIe specification")
     return 0;
   end
   
   if (trans.is_clock_pattern) begin
+    `uvm_info("DRIVER", "Clock pattern detected - srcid validation skipped", UVM_HIGH)
     if (trans.opcode == CLOCK_PATTERN) begin
       if (trans.has_data) begin
         `uvm_error("DRIVER", "UCIe CLOCK_PATTERN opcode should not have data payload")
