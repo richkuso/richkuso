@@ -26,12 +26,10 @@ ucie_sb_ltsm_model.sv
 # Compare result model components
 ucie_sb_compare_result_model.sv
 
-# Example files (optional)
-ucie_sb_clock_pattern_example.sv
-ucie_sb_source_sync_example.sv
-ucie_sb_transaction_extern_example.sv
-
-
+# Example files (optional - not included in current repository)
+# ucie_sb_clock_pattern_example.sv
+# ucie_sb_source_sync_example.sv  
+# ucie_sb_transaction_extern_example.sv
 
 # Compilation example for VCS:
 # vcs -f ucie_sb_files.f +incdir+$UVM_HOME/src $UVM_HOME/src/uvm_pkg.sv -ntb_opts uvm-1.2

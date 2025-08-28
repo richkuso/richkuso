@@ -1,6 +1,38 @@
-// UCIe Sideband UVM Loopback Environment
-// Contains the testbench environment with 16 agents (15 passive, 1 active), 
-// 8 register checkers, and 1 compare result model for loopback testing
+/*******************************************************************************
+ * UCIe Sideband Loopback Environment
+ * 
+ * OVERVIEW:
+ *   Comprehensive UVM environment for UCIe (Universal Chiplet Interconnect 
+ *   Express) sideband protocol loopback testing. Integrates multiple agents,
+ *   protocol checkers, and verification models for system-level validation.
+ *
+ * ENVIRONMENT ARCHITECTURE:
+ *   • 16 Sideband Agents: 15 passive monitoring + 1 active for stimulus
+ *   • 8 Register Access Checkers: Protocol validation across agent pairs
+ *   • 1 Compare Result Model: Mainband data verification integration
+ *   • Automatic configuration and connection management
+ *
+ * VERIFICATION CAPABILITIES:
+ *   • Multi-channel sideband protocol monitoring
+ *   • Register access protocol validation
+ *   • Mainband-sideband coordination verification
+ *   • Compare result injection and validation
+ *   • System-level loopback testing
+ *
+ * INTEGRATION FEATURES:
+ *   • Automatic agent configuration and connection
+ *   • Compare result model integration with TX/RX monitoring
+ *   • Flexible testbench integration patterns
+ *   • Comprehensive reporting and statistics
+ *
+ * COMPLIANCE:
+ *   • IEEE 1800-2017 SystemVerilog
+ *   • UVM 1.2 methodology
+ *   • UCIe 1.1 specification
+ *
+ * AUTHOR: UCIe Sideband UVM Agent
+ * VERSION: 3.0 - Production-grade loopback environment
+ ******************************************************************************/
 
 class ucie_sb_env_loopback extends uvm_env;
   `uvm_component_utils(ucie_sb_env_loopback)

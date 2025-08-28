@@ -1,22 +1,30 @@
-// UCIe Sideband Interface
-// Defines signals for UCIe sideband protocol communication
-
-//=============================================================================
-// INTERFACE: ucie_sb_inf
-//
-// DESCRIPTION:
-//   UCIe sideband interface defining the source-synchronous serial communication
-//   signals for the UCIe sideband protocol. Supports separate TX and RX paths
-//   for driver and monitor access.
-//
-// SIGNALS:
-//   - SBTX_CLK/SBRX_CLK: Source-synchronous clocks (800MHz)
-//   - SBTX_DATA/SBRX_DATA: Serial data signals
-//   - sb_reset: Active-high reset signal
-//
-// AUTHOR: UCIe Sideband UVM Agent
-// VERSION: 1.0
-//=============================================================================
+/*******************************************************************************
+ * UCIe Sideband Protocol Interface
+ * 
+ * OVERVIEW:
+ *   SystemVerilog interface defining source-synchronous serial communication
+ *   signals for UCIe (Universal Chiplet Interconnect Express) sideband protocol.
+ *   Provides separate TX/RX paths with comprehensive protocol assertions.
+ *
+ * SIGNAL DEFINITIONS:
+ *   • SBTX_CLK/SBRX_CLK: Source-synchronous clocks (up to 800MHz)
+ *   • SBTX_DATA/SBRX_DATA: Serial data signals
+ *   • sb_reset: Active-high reset signal
+ *
+ * ASSERTION COVERAGE:
+ *   • Reset behavior validation
+ *   • 800MHz ±5% frequency compliance checking
+ *   • 32 UI minimum gap enforcement
+ *   • Configurable assertion control via tags
+ *
+ * COMPLIANCE:
+ *   • IEEE 1800-2017 SystemVerilog
+ *   • UCIe 1.1 specification timing requirements
+ *   • UVM 1.2 interface conventions
+ *
+ * AUTHOR: UCIe Sideband UVM Agent
+ * VERSION: 3.0 - Production-grade interface with assertions
+ ******************************************************************************/
 
 interface ucie_sb_inf(input logic clk, input logic reset);
   

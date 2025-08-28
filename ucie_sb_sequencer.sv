@@ -1,17 +1,30 @@
-// UCIe Sideband Sequencer Class
-// Basic sequencer for UCIe sideband transactions
-
-//=============================================================================
-// CLASS: ucie_sb_sequencer
-//
-// DESCRIPTION:
-//   UCIe sideband sequencer that manages the flow of transactions to the driver.
-//   Extends the standard UVM sequencer to provide UCIe sideband specific
-//   functionality and transaction management.
-//
-// AUTHOR: UCIe Sideband UVM Agent
-// VERSION: 1.0
-//=============================================================================
+/*******************************************************************************
+ * UCIe Sideband Protocol Sequencer
+ * 
+ * OVERVIEW:
+ *   UVM sequencer component for UCIe (Universal Chiplet Interconnect Express)
+ *   sideband protocol transaction management. Extends standard UVM sequencer
+ *   to provide sideband-specific transaction flow control.
+ *
+ * FUNCTIONALITY:
+ *   • Transaction flow management to driver component
+ *   • Standard UVM sequencer interface compliance
+ *   • UCIe sideband transaction type specialization
+ *   • Sequence execution and arbitration support
+ *
+ * INTEGRATION:
+ *   • Seamless integration with UCIe sideband agent
+ *   • Compatible with all standard UVM sequence types
+ *   • Factory registration for polymorphic usage
+ *
+ * COMPLIANCE:
+ *   • IEEE 1800-2017 SystemVerilog
+ *   • UVM 1.2 methodology
+ *   • UCIe 1.1 specification
+ *
+ * AUTHOR: UCIe Sideband UVM Agent
+ * VERSION: 3.0 - Production-grade sequencer
+ ******************************************************************************/
 
 class ucie_sb_sequencer extends uvm_sequencer #(ucie_sb_transaction);
   `uvm_component_utils(ucie_sb_sequencer)

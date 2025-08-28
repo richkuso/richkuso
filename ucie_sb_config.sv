@@ -1,17 +1,32 @@
-// UCIe Sideband Configuration Class
-// Configuration object for sideband model and components
-
-//=============================================================================
-// CLASS: ucie_sb_config
-//
-// DESCRIPTION:
-//   Configuration class for UCIe sideband model and related components.
-//   Contains configuration parameters for initial flow, timing, and
-//   link parameter training.
-//
-// AUTHOR: UCIe Sideband UVM Agent
-// VERSION: 1.0 - Sideband Configuration
-//=============================================================================
+/*******************************************************************************
+ * UCIe Sideband Protocol Configuration
+ * 
+ * OVERVIEW:
+ *   Configuration class for UCIe (Universal Chiplet Interconnect Express)
+ *   sideband protocol components. Provides comprehensive parameter control
+ *   for initial flow, timing, link training, and protocol behavior.
+ *
+ * CONFIGURATION DOMAINS:
+ *   • Basic sideband parameters (source/destination IDs)
+ *   • Initial flow configuration (clock patterns, SBINIT messages)
+ *   • Timing parameters (timeouts, periods, frequencies)
+ *   • Protocol behavior controls (enable/disable features)
+ *   • Link parameter training settings
+ *
+ * USAGE PATTERNS:
+ *   • Agent configuration inheritance and distribution
+ *   • Driver timing parameter customization
+ *   • Protocol compliance feature control
+ *   • Test-specific behavior modification
+ *
+ * COMPLIANCE:
+ *   • IEEE 1800-2017 SystemVerilog
+ *   • UVM 1.2 methodology
+ *   • UCIe 1.1 specification
+ *
+ * AUTHOR: UCIe Sideband UVM Agent
+ * VERSION: 3.0 - Production-grade configuration
+ ******************************************************************************/
 
 class ucie_sb_config extends uvm_object;
   `uvm_object_utils(ucie_sb_config)

@@ -1,3 +1,26 @@
+/*******************************************************************************
+ * UCIe Sideband UVM Agent Package
+ * 
+ * OVERVIEW:
+ *   Main package definition for UCIe (Universal Chiplet Interconnect Express)
+ *   sideband protocol UVM agent. Contains all type definitions, enumerations,
+ *   constants, and class includes for complete agent functionality.
+ *
+ * PACKAGE CONTENTS:
+ *   • UCIe sideband protocol opcodes and type definitions
+ *   • Message codes and subcodes for SBINIT protocol
+ *   • Clock pattern constants for link training
+ *   • All agent component class includes
+ *
+ * COMPLIANCE:
+ *   • IEEE 1800-2017 SystemVerilog
+ *   • UVM 1.2 methodology
+ *   • UCIe 1.1 specification
+ *
+ * AUTHOR: UCIe Sideband UVM Agent
+ * VERSION: 3.0 - Production-grade package definition
+ ******************************************************************************/
+
 package ucie_sb_pkg;
   import uvm_pkg::*;
   `include "uvm_macros.svh"
