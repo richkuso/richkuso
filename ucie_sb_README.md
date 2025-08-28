@@ -92,7 +92,7 @@ graph LR
 │   └── ucie_sb_config.sv                   # Configuration Classes (277 lines)
 │
 ├── 🧪 Environment & Checker Components
-│   ├── ucie_sb_env_loopback.sv             # Loopback Environment (82 lines)
+│   ├── ucie_sb_env_loopback.sv             # Loopback Environment with Compare Model (129 lines)
 │   ├── ucie_sb_reg_access_checker.sv       # Register Access Checker (1147 lines)
 │   ├── ucie_sb_ltsm_model.sv               # Link Training State Machine (650+ lines)
 │   ├── ucie_sb_transaction_interceptor.sv  # Transaction Interceptor (1000+ lines)
@@ -896,6 +896,79 @@ endclass
 ### **🎯 Interceptor Overview**
 
 The UCIe Sideband Agent includes a **production-grade Transaction Interceptor** component that provides intelligent transaction monitoring, interception, and modification capabilities. This advanced component enables sophisticated verification scenarios where specific transactions need to be captured, modified, or replaced with custom responses.
+
+## 🏗️ **UCIe Sideband Loopback Environment Integration**
+
+### **📋 Environment Overview**
+
+The `ucie_sb_env_loopback` provides a **comprehensive loopback testing environment** that integrates multiple UCIe sideband components for system-level verification. This environment now includes **integrated compare result model support** for advanced mainband data verification scenarios.
+
+### **🎯 Architecture & Components**
+
+**Core Components:**
+- **16 Sideband Agents**: 15 passive monitoring agents + 1 active agent for transaction output
+- **8 Register Access Checkers**: Protocol validation across agent pairs (2 agents per checker)
+- **1 Compare Result Model**: Integrated TX/RX rewriting for mainband verification
+
+**Connection Architecture:**
+```
+Agent[0] (Monitor) ──→ compare_model.tx_fifo     (TX Monitoring)
+Agent[2] (Monitor) ──→ compare_model.rx_fifo     (RX Monitoring)
+Agent[1] (Active)  ←── compare_model.rx_sequencer (Transaction Output)
+
+Even Agents [0,2,4,6,8,10,12,14] ──→ reg_checker[0-7].tx_fifo
+Odd Agents  [1,3,5,7,9,11,13,15] ──→ reg_checker[0-7].rx_fifo
+```
+
+### **🔧 Compare Result Model Integration**
+
+**Monitoring Setup:**
+- **Agent[0]**: Monitors DUT TX requests (CFG_READ_32B @ target addresses)
+- **Agent[2]**: Monitors Remote DUT RX responses (COMPLETION_32B)
+
+**Output Path:**
+- **Agent[1]**: Active agent provides sequencer for compare model transaction output
+- **compare_model.rx_sequencer**: Connected to `agents[1].sequencer` for seamless transaction delivery
+
+**Configuration:**
+- **Automatic Configuration**: Environment pre-configures compare model with default array parameters
+- **Array Initialization**: `exp_volt_min/max = 10/20`, `exp_clk_phase_min/max = 29/33`
+- **Index Selection**: `volt_min/max = 12/14`, `clk_phase = 2`
+
+### **💡 Usage Benefits**
+
+**System-Level Testing:**
+- **Multi-Channel Verification**: 16 sideband channels with parallel checking
+- **Integrated Rewriting**: Seamless compare result injection into loopback flow
+- **Protocol Compliance**: Register access validation across all agent pairs
+
+**Verification Scenarios:**
+- **Mainband-Sideband Coordination**: Verify mainband data transfer with sideband result checking
+- **Multi-Agent Protocols**: Test complex scenarios involving multiple sideband channels
+- **Error Injection**: Use compare model to inject specific compare results for error testing
+
+### **📝 Usage Example**
+
+```systemverilog
+// Create loopback environment with integrated compare result model
+ucie_sb_env_loopback env;
+env = ucie_sb_env_loopback::type_id::create("env", this);
+
+// Environment automatically:
+// 1. Creates 16 agents (agent[1] active, others passive)
+// 2. Creates 8 register checkers for protocol validation
+// 3. Creates and configures compare result model
+// 4. Connects agent[0] → compare_model.tx_fifo (TX monitoring)
+// 5. Connects agent[2] → compare_model.rx_fifo (RX monitoring)
+// 6. Connects compare_model.rx_sequencer → agent[1].sequencer (output)
+
+// The compare result model will automatically:
+// - Monitor CFG_READ_32B @ 0x013140/44/48 from agent[0]
+// - Monitor COMPLETION_32B responses from agent[2]
+// - Rewrite RX.data with array[current_index] values
+// - Send rewritten transactions via agent[1] sequencer
+// - Advance array index after three-address group completion
+```
 
 ## 🎯 **UCIe Sideband Compare Result Model**
 
