@@ -24,6 +24,36 @@
  *   3. Model processes TX/RX pairs, rewrites data for target matches
  *   4. Three addresses share same array index, then index advances
  *
+ * EYE MAP SHAPES SUPPORTED:
+ *   • RECTANGULAR: Traditional rectangular fill (backward compatible)
+ *   • ELLIPTICAL: Elliptical/oval shape (most realistic for high-speed)
+ *   • DIAMOND: Diamond shape (common in digital interfaces)
+ *   • BATHTUB: Bathtub curve (timing margin characteristics)
+ *   • DCDL_CUSTOM: Custom per-row X ranges (for dcdl_txrx training)
+ *
+ * TRAINING MODES:
+ *   • SA_VREF: Optimized for sa_vref training parameters
+ *   • AFE_VSEL: Optimized for afe_vsel training parameters  
+ *   • DCDL_TXRX: Optimized for dcdl_txrx with custom Y-axis ranges
+ *
+ * USAGE EXAMPLES:
+ *   // SA_VREF training with elliptical eye map
+ *   initialize_compare_array("sa_vref", 31, 10, 15, 12, 20, 5);
+ *   
+ *   // AFE_VSEL training with diamond eye map
+ *   initialize_compare_array("afe_vsel", 30, 8, 15, 12, 20, 5);
+ *   
+ *   // DCDL_TXRX training with custom per-row ranges
+ *   initialize_compare_array("dcdl_txrx", 32, 12, 15, 12, 18, 8);
+ *   
+ *   // Using default parameters (sa_vref mode)
+ *   initialize_compare_array();
+ *   
+ *   // Named parameter style (SystemVerilog)
+ *   initialize_compare_array(.training_mode("afe_vsel"), 
+ *                          .expect_data_eye_center(28),
+ *                          .expect_data_eye_size(6));
+ *
  * COMPLIANCE:
  *   • IEEE 1800-2017 SystemVerilog
  *   • UVM 1.2 methodology
@@ -32,6 +62,25 @@
  * AUTHOR: UCIe Sideband UVM Agent
  * VERSION: 2.0 - Three-Address Group System
  ******************************************************************************/
+
+/*-----------------------------------------------------------------------------
+ * EYE MAP SHAPE ENUMERATION
+ * Defines different eye map shape patterns for realistic testing
+ *-----------------------------------------------------------------------------*/
+
+typedef enum {
+  EYE_SHAPE_RECTANGULAR,    // Original rectangular shape
+  EYE_SHAPE_ELLIPTICAL,     // Elliptical/oval shape (most realistic)
+  EYE_SHAPE_DIAMOND,        // Diamond shape for high-speed interfaces
+  EYE_SHAPE_BATHTUB,        // Bathtub curve shape for timing analysis
+  EYE_SHAPE_DCDL_CUSTOM     // Custom per-row range for dcdl_txrx
+} eye_shape_t;
+
+typedef enum {
+  TRAINING_MODE_SA_VREF,    // Training mode for sa_vref optimization
+  TRAINING_MODE_AFE_VSEL,   // Training mode for afe_vsel optimization
+  TRAINING_MODE_DCDL_TXRX   // Training mode for dcdl_txrx optimization
+} training_mode_t;
 
 /*-----------------------------------------------------------------------------
  * COMPARE RESULT MODEL CONFIGURATION CLASS
@@ -58,6 +107,44 @@ class ucie_sb_compare_result_config extends uvm_object;
   int exp_volt_max = 20;                   // Expected voltage maximum (Y-axis)
   int exp_clk_phase_min = 29;              // Expected clock phase minimum (X-axis)
   int exp_clk_phase_max = 33;              // Expected clock phase maximum (X-axis)
+  
+  /*---------------------------------------------------------------------------
+   * EYE MAP SHAPE CONFIGURATION
+   * Advanced eye map shape control for realistic testing patterns
+   *---------------------------------------------------------------------------*/
+  
+  eye_shape_t eye_shape = EYE_SHAPE_RECTANGULAR;  // Eye map shape selection
+  training_mode_t training_mode = TRAINING_MODE_SA_VREF;  // Training mode selection
+  
+  // Elliptical/Oval shape parameters
+  real ellipse_center_x_ratio = 0.5;       // Center X position as ratio of range (0.0-1.0)
+  real ellipse_center_y_ratio = 0.5;       // Center Y position as ratio of range (0.0-1.0)
+  real ellipse_width_ratio = 0.8;          // Width as ratio of X range (0.0-1.0)
+  real ellipse_height_ratio = 0.8;         // Height as ratio of Y range (0.0-1.0)
+  
+  // Diamond shape parameters
+  real diamond_center_x_ratio = 0.5;       // Center X position as ratio of range (0.0-1.0)
+  real diamond_center_y_ratio = 0.5;       // Center Y position as ratio of range (0.0-1.0)
+  real diamond_width_ratio = 0.7;          // Width as ratio of X range (0.0-1.0)
+  real diamond_height_ratio = 0.7;         // Height as ratio of Y range (0.0-1.0)
+  
+  // Bathtub curve parameters
+  real bathtub_center_ratio = 0.5;         // Center position as ratio of X range (0.0-1.0)
+  real bathtub_width_ratio = 0.6;          // Bathtub width as ratio of X range (0.0-1.0)
+  real bathtub_depth_ratio = 0.8;          // Bathtub depth as ratio of Y range (0.0-1.0)
+  
+  // DCDL custom shape parameters
+  int dcdl_x_center_max_deviation = 5;     // Maximum deviation from center X for each Y row
+  int dcdl_custom_x_ranges[64][2];         // Custom X min/max ranges for each Y row [y][0]=min, [y][1]=max
+  bit dcdl_ranges_initialized = 0;         // Flag indicating custom ranges are set
+  
+  // Training mode optimization parameters
+  int optimal_sa_vref_y = 15;              // Optimal Y coordinate for sa_vref training
+  int optimal_sa_vref_x = 31;              // Optimal X coordinate for sa_vref training
+  int optimal_afe_vsel_y = 12;             // Optimal Y coordinate for afe_vsel training
+  int optimal_afe_vsel_x = 30;             // Optimal X coordinate for afe_vsel training
+  int optimal_dcdl_txrx_y = 20;            // Optimal Y coordinate for dcdl_txrx training
+  int optimal_dcdl_txrx_x = 32;            // Optimal X coordinate for dcdl_txrx training
   
   /*---------------------------------------------------------------------------
    * INITIAL INDEX SELECTION PARAMETERS
@@ -275,7 +362,31 @@ class ucie_sb_compare_result_model extends uvm_component;
   extern virtual task run_phase(uvm_phase phase);
   extern virtual function void report_phase(uvm_phase phase);
   extern virtual task process_transactions();
-  extern virtual function void initialize_compare_array();
+  extern virtual function void initialize_compare_array(
+    input string training_mode = "sa_vref",
+    input int expect_data_eye_center = 31,
+    input int expect_data_eye_size = 10,
+    input int expect_optimal_sa_vref = 15,
+    input int expect_optimal_afe_vsel = 12,
+    input int expect_dcdl_eye_center = 20,
+    input int dcdl_eye_center_deviation = 5
+  );
+  extern virtual function void initialize_compare_array_rectangular();
+  extern virtual function void initialize_compare_array_elliptical();
+  extern virtual function void initialize_compare_array_diamond();
+  extern virtual function void initialize_compare_array_bathtub();
+  extern virtual function void initialize_compare_array_dcdl_custom();
+  extern virtual function void parse_and_apply_parameters(
+    input string training_mode,
+    input int expect_data_eye_center,
+    input int expect_data_eye_size,
+    input int expect_optimal_sa_vref,
+    input int expect_optimal_afe_vsel,
+    input int expect_dcdl_eye_center,
+    input int dcdl_eye_center_deviation
+  );
+  extern virtual function void calculate_optimal_coordinates();
+  extern virtual function void setup_dcdl_custom_ranges();
   extern virtual function void initialize_valid_indices();
   extern virtual task process_tx_transaction(ucie_sb_transaction tx_trans);
   extern virtual function ucie_sb_transaction process_rx_transaction(ucie_sb_transaction rx_trans);
@@ -468,7 +579,7 @@ endfunction
 function void ucie_sb_compare_result_model::end_of_elaboration_phase(uvm_phase phase);
   super.end_of_elaboration_phase(phase);
   
-  // Initialize compare result array
+  // Initialize compare result array with default parameters
   initialize_compare_array();
   
   // Initialize valid indices based on testbench parameters
@@ -624,16 +735,172 @@ task ucie_sb_compare_result_model::process_tx_transaction(ucie_sb_transaction tx
 endtask
 
 /*---------------------------------------------------------------------------
- * COMPARE ARRAY INITIALIZATION IMPLEMENTATION
+ * COMPARE ARRAY INITIALIZATION IMPLEMENTATION - Enhanced API
  * 
- * Initializes the 64×63 compare result array based on expected ranges.
- * Fills specified region with PASS values, elsewhere with FAIL values.
+ * Enhanced initialization with flexible parameter-based API for different
+ * training modes and eye map configurations.
+ * 
+ * PARAMETERS:
+ *   training_mode: "sa_vref", "afe_vsel", "dcdl_txrx" 
+ *   expect_data_eye_center: Expected X-axis center coordinate (0-62)
+ *   expect_data_eye_size: Eye size radius for X/Y dimensions
+ *   expect_optimal_sa_vref: Optimal Y coordinate for sa_vref training
+ *   expect_optimal_afe_vsel: Optimal Y coordinate for afe_vsel training  
+ *   expect_dcdl_eye_center: Center Y coordinate for dcdl_txrx training
+ *   dcdl_eye_center_deviation: Max deviation for DCDL custom ranges
  *---------------------------------------------------------------------------*/
-function void ucie_sb_compare_result_model::initialize_compare_array();
+function void ucie_sb_compare_result_model::initialize_compare_array(
+  input string training_mode = "sa_vref",
+  input int expect_data_eye_center = 31,
+  input int expect_data_eye_size = 10,
+  input int expect_optimal_sa_vref = 15,
+  input int expect_optimal_afe_vsel = 12,
+  input int expect_dcdl_eye_center = 20,
+  input int dcdl_eye_center_deviation = 5
+);
+  
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Initializing compare result array with training_mode=%s...", 
+            training_mode), UVM_LOW)
+  
+  // Parse and apply input parameters
+  parse_and_apply_parameters(training_mode, expect_data_eye_center, expect_data_eye_size,
+                           expect_optimal_sa_vref, expect_optimal_afe_vsel, 
+                           expect_dcdl_eye_center, dcdl_eye_center_deviation);
+  
+  // Calculate optimal coordinates based on training mode
+  calculate_optimal_coordinates();
+  
+  // Initialize array based on selected shape
+  case (cfg.eye_shape)
+    EYE_SHAPE_RECTANGULAR: begin
+      initialize_compare_array_rectangular();
+    end
+    EYE_SHAPE_ELLIPTICAL: begin
+      initialize_compare_array_elliptical();
+    end
+    EYE_SHAPE_DIAMOND: begin
+      initialize_compare_array_diamond();
+    end
+    EYE_SHAPE_BATHTUB: begin
+      initialize_compare_array_bathtub();
+    end
+    EYE_SHAPE_DCDL_CUSTOM: begin
+      setup_dcdl_custom_ranges();
+      initialize_compare_array_dcdl_custom();
+    end
+    default: begin
+      `uvm_error("COMPARE_RESULT_MODEL", $sformatf("Unsupported eye shape: %s", cfg.eye_shape.name()))
+      initialize_compare_array_rectangular(); // Fallback to rectangular
+    end
+  endcase
+  
+  array_initialized = 1;
+  
+  // Log initialization details
+  if (cfg.enable_logging) begin
+    log_initialization();
+  end
+  
+  if (cfg.enable_debug) begin
+    print_array_contents();
+  end
+endfunction
+
+/*---------------------------------------------------------------------------
+ * PARAMETER PARSING AND CONFIGURATION
+ * 
+ * Parses input parameters and applies them to configuration object.
+ * Maps training mode strings to enums and sets optimal coordinates.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::parse_and_apply_parameters(
+  input string training_mode,
+  input int expect_data_eye_center,
+  input int expect_data_eye_size,
+  input int expect_optimal_sa_vref,
+  input int expect_optimal_afe_vsel,
+  input int expect_dcdl_eye_center,
+  input int dcdl_eye_center_deviation
+);
+  
+  `uvm_info("COMPARE_RESULT_MODEL", "Parsing and applying input parameters...", UVM_MEDIUM)
+  
+  // Parse training mode string and set appropriate enum and eye shape
+  case (training_mode.tolower())
+    "sa_vref": begin
+      cfg.training_mode = TRAINING_MODE_SA_VREF;
+      cfg.eye_shape = EYE_SHAPE_ELLIPTICAL;  // Most realistic for sa_vref
+      cfg.optimal_sa_vref_y = expect_optimal_sa_vref;
+      cfg.optimal_sa_vref_x = expect_data_eye_center;
+      `uvm_info("COMPARE_RESULT_MODEL", "Using SA_VREF training mode with ELLIPTICAL shape", UVM_MEDIUM)
+    end
+    
+    "afe_vsel": begin
+      cfg.training_mode = TRAINING_MODE_AFE_VSEL;
+      cfg.eye_shape = EYE_SHAPE_DIAMOND;     // Good for afe_vsel
+      cfg.optimal_afe_vsel_y = expect_optimal_afe_vsel;
+      cfg.optimal_afe_vsel_x = expect_data_eye_center;
+      `uvm_info("COMPARE_RESULT_MODEL", "Using AFE_VSEL training mode with DIAMOND shape", UVM_MEDIUM)
+    end
+    
+    "dcdl_txrx": begin
+      cfg.training_mode = TRAINING_MODE_DCDL_TXRX;
+      cfg.eye_shape = EYE_SHAPE_DCDL_CUSTOM;  // Custom per-row ranges
+      cfg.optimal_dcdl_txrx_y = expect_dcdl_eye_center;
+      cfg.optimal_dcdl_txrx_x = expect_data_eye_center;
+      cfg.dcdl_x_center_max_deviation = dcdl_eye_center_deviation;
+      `uvm_info("COMPARE_RESULT_MODEL", "Using DCDL_TXRX training mode with DCDL_CUSTOM shape", UVM_MEDIUM)
+    end
+    
+    default: begin
+      `uvm_warning("COMPARE_RESULT_MODEL", $sformatf("Unknown training mode '%s', defaulting to sa_vref", training_mode))
+      cfg.training_mode = TRAINING_MODE_SA_VREF;
+      cfg.eye_shape = EYE_SHAPE_ELLIPTICAL;
+      cfg.optimal_sa_vref_y = expect_optimal_sa_vref;
+      cfg.optimal_sa_vref_x = expect_data_eye_center;
+    end
+  endcase
+  
+  // Apply eye size parameters to expected ranges
+  // Center the eye around expect_data_eye_center with expect_data_eye_size radius
+  cfg.exp_clk_phase_min = expect_data_eye_center - expect_data_eye_size;
+  cfg.exp_clk_phase_max = expect_data_eye_center + expect_data_eye_size;
+  
+  // Set Y range based on training mode
+  case (cfg.training_mode)
+    TRAINING_MODE_SA_VREF: begin
+      cfg.exp_volt_min = expect_optimal_sa_vref - expect_data_eye_size;
+      cfg.exp_volt_max = expect_optimal_sa_vref + expect_data_eye_size;
+    end
+    TRAINING_MODE_AFE_VSEL: begin
+      cfg.exp_volt_min = expect_optimal_afe_vsel - expect_data_eye_size;
+      cfg.exp_volt_max = expect_optimal_afe_vsel + expect_data_eye_size;
+    end
+    TRAINING_MODE_DCDL_TXRX: begin
+      cfg.exp_volt_min = expect_dcdl_eye_center - expect_data_eye_size;
+      cfg.exp_volt_max = expect_dcdl_eye_center + expect_data_eye_size;
+    end
+  endcase
+  
+  // Ensure ranges stay within array bounds
+  if (cfg.exp_clk_phase_min < 0) cfg.exp_clk_phase_min = 0;
+  if (cfg.exp_clk_phase_max >= cfg.ARRAY_COLS) cfg.exp_clk_phase_max = cfg.ARRAY_COLS - 1;
+  if (cfg.exp_volt_min < 0) cfg.exp_volt_min = 0;
+  if (cfg.exp_volt_max >= cfg.ARRAY_ROWS) cfg.exp_volt_max = cfg.ARRAY_ROWS - 1;
+  
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Applied parameters: mode=%s, center=%0d, size=%0d, ranges Y[%0d:%0d] X[%0d:%0d]", 
+            training_mode, expect_data_eye_center, expect_data_eye_size,
+            cfg.exp_volt_min, cfg.exp_volt_max, cfg.exp_clk_phase_min, cfg.exp_clk_phase_max), UVM_MEDIUM)
+  
+endfunction
+
+/*---------------------------------------------------------------------------
+ * RECTANGULAR SHAPE INITIALIZATION (Original Implementation)
+ * 
+ * Traditional rectangular fill pattern for backward compatibility.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::initialize_compare_array_rectangular();
   int pass_count = 0;
   int fail_count = 0;
-  
-  `uvm_info("COMPARE_RESULT_MODEL", "Initializing compare result array...", UVM_LOW)
   
   // Initialize entire array to FAIL values first
   for (int y = 0; y < cfg.ARRAY_ROWS; y++) begin
@@ -654,19 +921,307 @@ function void ucie_sb_compare_result_model::initialize_compare_array();
     end
   end
   
-  array_initialized = 1;
-  
-  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Array initialized: %0d PASS, %0d FAIL values", 
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Rectangular array initialized: %0d PASS, %0d FAIL values", 
             pass_count, fail_count), UVM_LOW)
+endfunction
+
+/*---------------------------------------------------------------------------
+ * ELLIPTICAL/OVAL SHAPE INITIALIZATION
+ * 
+ * Creates elliptical eye map pattern - most realistic for high-speed interfaces.
+ * Uses ellipse equation: ((x-cx)/rx)² + ((y-cy)/ry)² <= 1
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::initialize_compare_array_elliptical();
+  int pass_count = 0;
+  int fail_count = 0;
+  real center_x, center_y, radius_x, radius_y;
+  real x_range, y_range;
   
-  // Log initialization details
-  if (cfg.enable_logging) begin
-    log_initialization();
+  // Calculate center and radii based on expected ranges and ratios
+  x_range = cfg.exp_clk_phase_max - cfg.exp_clk_phase_min + 1;
+  y_range = cfg.exp_volt_max - cfg.exp_volt_min + 1;
+  center_x = cfg.exp_clk_phase_min + (x_range * cfg.ellipse_center_x_ratio);
+  center_y = cfg.exp_volt_min + (y_range * cfg.ellipse_center_y_ratio);
+  radius_x = (x_range * cfg.ellipse_width_ratio) / 2.0;
+  radius_y = (y_range * cfg.ellipse_height_ratio) / 2.0;
+  
+  // Initialize entire array to FAIL values first
+  for (int y = 0; y < cfg.ARRAY_ROWS; y++) begin
+    for (int x = 0; x < cfg.ARRAY_COLS; x++) begin
+      compare_result_array[y][x] = cfg.FAIL_VALUE;
+      fail_count++;
+    end
   end
   
-  if (cfg.enable_debug) begin
-    print_array_contents();
+  // Fill elliptical region with PASS values
+  for (int y = 0; y < cfg.ARRAY_ROWS; y++) begin
+    for (int x = 0; x < cfg.ARRAY_COLS; x++) begin
+      real dx = (x - center_x) / radius_x;
+      real dy = (y - center_y) / radius_y;
+      
+      // Ellipse equation: (dx)² + (dy)² <= 1
+      if ((dx*dx + dy*dy) <= 1.0) begin
+        compare_result_array[y][x] = cfg.PASS_VALUE;
+        pass_count++;
+        fail_count--;
+      end
+    end
   end
+  
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Elliptical array initialized: %0d PASS, %0d FAIL values", 
+            pass_count, fail_count), UVM_LOW)
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Ellipse center: (%.1f, %.1f), radii: (%.1f, %.1f)", 
+            center_x, center_y, radius_x, radius_y), UVM_LOW)
+endfunction
+
+/*---------------------------------------------------------------------------
+ * DIAMOND SHAPE INITIALIZATION
+ * 
+ * Creates diamond eye map pattern - common in high-speed digital interfaces.
+ * Uses diamond equation: |x-cx|/rx + |y-cy|/ry <= 1
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::initialize_compare_array_diamond();
+  int pass_count = 0;
+  int fail_count = 0;
+  real center_x, center_y, half_width, half_height;
+  real x_range, y_range;
+  
+  // Calculate center and dimensions based on expected ranges and ratios
+  x_range = cfg.exp_clk_phase_max - cfg.exp_clk_phase_min + 1;
+  y_range = cfg.exp_volt_max - cfg.exp_volt_min + 1;
+  center_x = cfg.exp_clk_phase_min + (x_range * cfg.diamond_center_x_ratio);
+  center_y = cfg.exp_volt_min + (y_range * cfg.diamond_center_y_ratio);
+  half_width = (x_range * cfg.diamond_width_ratio) / 2.0;
+  half_height = (y_range * cfg.diamond_height_ratio) / 2.0;
+  
+  // Initialize entire array to FAIL values first
+  for (int y = 0; y < cfg.ARRAY_ROWS; y++) begin
+    for (int x = 0; x < cfg.ARRAY_COLS; x++) begin
+      compare_result_array[y][x] = cfg.FAIL_VALUE;
+      fail_count++;
+    end
+  end
+  
+  // Fill diamond region with PASS values
+  for (int y = 0; y < cfg.ARRAY_ROWS; y++) begin
+    for (int x = 0; x < cfg.ARRAY_COLS; x++) begin
+      real abs_dx = (x > center_x) ? (x - center_x) : (center_x - x);
+      real abs_dy = (y > center_y) ? (y - center_y) : (center_y - y);
+      
+      // Diamond equation: |dx|/half_width + |dy|/half_height <= 1
+      if ((abs_dx/half_width + abs_dy/half_height) <= 1.0) begin
+        compare_result_array[y][x] = cfg.PASS_VALUE;
+        pass_count++;
+        fail_count--;
+      end
+    end
+  end
+  
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Diamond array initialized: %0d PASS, %0d FAIL values", 
+            pass_count, fail_count), UVM_LOW)
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Diamond center: (%.1f, %.1f), dimensions: (%.1f, %.1f)", 
+            center_x, center_y, half_width*2, half_height*2), UVM_LOW)
+endfunction
+
+/*---------------------------------------------------------------------------
+ * BATHTUB CURVE SHAPE INITIALIZATION
+ * 
+ * Creates bathtub curve pattern - wider at center, narrower at edges.
+ * Simulates timing margin characteristics in high-speed receivers.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::initialize_compare_array_bathtub();
+  int pass_count = 0;
+  int fail_count = 0;
+  real center_x, bathtub_width, bathtub_depth;
+  real x_range, y_range;
+  
+  // Calculate parameters based on expected ranges and ratios
+  x_range = cfg.exp_clk_phase_max - cfg.exp_clk_phase_min + 1;
+  y_range = cfg.exp_volt_max - cfg.exp_volt_min + 1;
+  center_x = cfg.exp_clk_phase_min + (x_range * cfg.bathtub_center_ratio);
+  bathtub_width = x_range * cfg.bathtub_width_ratio;
+  bathtub_depth = y_range * cfg.bathtub_depth_ratio;
+  
+  // Initialize entire array to FAIL values first
+  for (int y = 0; y < cfg.ARRAY_ROWS; y++) begin
+    for (int x = 0; x < cfg.ARRAY_COLS; x++) begin
+      compare_result_array[y][x] = cfg.FAIL_VALUE;
+      fail_count++;
+    end
+  end
+  
+  // Fill bathtub region with PASS values
+  for (int y = cfg.exp_volt_min; y <= cfg.exp_volt_max; y++) begin
+    // Calculate width at this Y level (bathtub shape)
+    real y_normalized = real'(y - cfg.exp_volt_min) / real'(y_range - 1);
+    real width_factor = 1.0 - (2.0 * y_normalized - 1.0) * (2.0 * y_normalized - 1.0); // Parabolic
+    real current_half_width = (bathtub_width / 2.0) * width_factor;
+    
+    int x_min = $rtoi(center_x - current_half_width);
+    int x_max = $rtoi(center_x + current_half_width);
+    
+    for (int x = x_min; x <= x_max; x++) begin
+      if (y >= 0 && y < cfg.ARRAY_ROWS && x >= 0 && x < cfg.ARRAY_COLS) begin
+        compare_result_array[y][x] = cfg.PASS_VALUE;
+        pass_count++;
+        fail_count--;
+      end
+    end
+  end
+  
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Bathtub array initialized: %0d PASS, %0d FAIL values", 
+            pass_count, fail_count), UVM_LOW)
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Bathtub center: %.1f, width: %.1f, depth: %.1f", 
+            center_x, bathtub_width, bathtub_depth), UVM_LOW)
+endfunction
+
+/*---------------------------------------------------------------------------
+ * DCDL CUSTOM SHAPE INITIALIZATION
+ * 
+ * Creates custom per-row X range pattern for dcdl_txrx training.
+ * Each Y row has different X min/max ranges with configurable center deviation.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::initialize_compare_array_dcdl_custom();
+  int pass_count = 0;
+  int fail_count = 0;
+  
+  // Initialize entire array to FAIL values first
+  for (int y = 0; y < cfg.ARRAY_ROWS; y++) begin
+    for (int x = 0; x < cfg.ARRAY_COLS; x++) begin
+      compare_result_array[y][x] = cfg.FAIL_VALUE;
+      fail_count++;
+    end
+  end
+  
+  // Fill custom ranges for each Y row
+  for (int y = 0; y < cfg.ARRAY_ROWS; y++) begin
+    if (cfg.dcdl_ranges_initialized) begin
+      int x_min = cfg.dcdl_custom_x_ranges[y][0];
+      int x_max = cfg.dcdl_custom_x_ranges[y][1];
+      
+      for (int x = x_min; x <= x_max; x++) begin
+        if (x >= 0 && x < cfg.ARRAY_COLS) begin
+          compare_result_array[y][x] = cfg.PASS_VALUE;
+          pass_count++;
+          fail_count--;
+        end
+      end
+    end
+  end
+  
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("DCDL custom array initialized: %0d PASS, %0d FAIL values", 
+            pass_count, fail_count), UVM_LOW)
+endfunction
+
+/*---------------------------------------------------------------------------
+ * CALCULATE OPTIMAL COORDINATES BASED ON TRAINING MODE
+ * 
+ * Calculates optimal Y/X coordinates based on training mode selection.
+ * Updates expected ranges to center around optimal points.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::calculate_optimal_coordinates();
+  int optimal_x, optimal_y;
+  int half_x_range, half_y_range;
+  
+  // Get optimal coordinates based on training mode
+  case (cfg.training_mode)
+    TRAINING_MODE_SA_VREF: begin
+      optimal_x = cfg.optimal_sa_vref_x;
+      optimal_y = cfg.optimal_sa_vref_y;
+      `uvm_info("COMPARE_RESULT_MODEL", "Using SA_VREF training mode optimization", UVM_MEDIUM)
+    end
+    TRAINING_MODE_AFE_VSEL: begin
+      optimal_x = cfg.optimal_afe_vsel_x;
+      optimal_y = cfg.optimal_afe_vsel_y;
+      `uvm_info("COMPARE_RESULT_MODEL", "Using AFE_VSEL training mode optimization", UVM_MEDIUM)
+    end
+    TRAINING_MODE_DCDL_TXRX: begin
+      optimal_x = cfg.optimal_dcdl_txrx_x;
+      optimal_y = cfg.optimal_dcdl_txrx_y;
+      `uvm_info("COMPARE_RESULT_MODEL", "Using DCDL_TXRX training mode optimization", UVM_MEDIUM)
+    end
+    default: begin
+      optimal_x = (cfg.exp_clk_phase_min + cfg.exp_clk_phase_max) / 2;
+      optimal_y = (cfg.exp_volt_min + cfg.exp_volt_max) / 2;
+      `uvm_warning("COMPARE_RESULT_MODEL", "Unknown training mode, using default center coordinates")
+    end
+  endcase
+  
+  // Calculate half ranges for centering
+  half_x_range = (cfg.exp_clk_phase_max - cfg.exp_clk_phase_min) / 2;
+  half_y_range = (cfg.exp_volt_max - cfg.exp_volt_min) / 2;
+  
+  // Update expected ranges to center around optimal coordinates
+  cfg.exp_clk_phase_min = optimal_x - half_x_range;
+  cfg.exp_clk_phase_max = optimal_x + half_x_range;
+  cfg.exp_volt_min = optimal_y - half_y_range;
+  cfg.exp_volt_max = optimal_y + half_y_range;
+  
+  // Ensure ranges stay within array bounds
+  if (cfg.exp_clk_phase_min < 0) cfg.exp_clk_phase_min = 0;
+  if (cfg.exp_clk_phase_max >= cfg.ARRAY_COLS) cfg.exp_clk_phase_max = cfg.ARRAY_COLS - 1;
+  if (cfg.exp_volt_min < 0) cfg.exp_volt_min = 0;
+  if (cfg.exp_volt_max >= cfg.ARRAY_ROWS) cfg.exp_volt_max = cfg.ARRAY_ROWS - 1;
+  
+  `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Optimal coordinates: (%0d, %0d), Updated ranges: Y[%0d:%0d], X[%0d:%0d]", 
+            optimal_x, optimal_y, cfg.exp_volt_min, cfg.exp_volt_max, 
+            cfg.exp_clk_phase_min, cfg.exp_clk_phase_max), UVM_MEDIUM)
+endfunction
+
+/*---------------------------------------------------------------------------
+ * SETUP DCDL CUSTOM RANGES
+ * 
+ * Sets up custom X ranges for each Y row in DCDL mode.
+ * Creates varying X ranges across Y axis with configurable center deviation.
+ *---------------------------------------------------------------------------*/
+function void ucie_sb_compare_result_model::setup_dcdl_custom_ranges();
+  int center_x;
+  int base_half_width;
+  
+  center_x = (cfg.exp_clk_phase_min + cfg.exp_clk_phase_max) / 2;
+  base_half_width = (cfg.exp_clk_phase_max - cfg.exp_clk_phase_min) / 2;
+  
+  `uvm_info("COMPARE_RESULT_MODEL", "Setting up DCDL custom X ranges for each Y row...", UVM_MEDIUM)
+  
+  // Setup custom ranges for each Y row (0-63)
+  for (int y = 0; y < cfg.ARRAY_ROWS; y++) begin
+    real y_factor;
+    int current_half_width;
+    int deviation;
+    
+    // Calculate Y-dependent width factor (wider at center Y rows)
+    if (y <= 31) begin
+      y_factor = real'(y) / 31.0;  // 0.0 to 1.0 for rows 0-31
+    end else begin
+      y_factor = real'(63 - y) / 32.0;  // 1.0 to 0.0 for rows 32-63
+    end
+    
+    // Apply width factor to create varying X ranges
+    current_half_width = $rtoi(base_half_width * (0.3 + 0.7 * y_factor)); // Min 30% width
+    
+    // Add some randomization within max deviation
+    deviation = $urandom_range(0, cfg.dcdl_x_center_max_deviation) - (cfg.dcdl_x_center_max_deviation / 2);
+    
+    // Calculate final X range for this Y row
+    cfg.dcdl_custom_x_ranges[y][0] = center_x - current_half_width + deviation; // X min
+    cfg.dcdl_custom_x_ranges[y][1] = center_x + current_half_width + deviation; // X max
+    
+    // Ensure ranges stay within array bounds
+    if (cfg.dcdl_custom_x_ranges[y][0] < 0) cfg.dcdl_custom_x_ranges[y][0] = 0;
+    if (cfg.dcdl_custom_x_ranges[y][1] >= cfg.ARRAY_COLS) cfg.dcdl_custom_x_ranges[y][1] = cfg.ARRAY_COLS - 1;
+    if (cfg.dcdl_custom_x_ranges[y][0] > cfg.dcdl_custom_x_ranges[y][1]) begin
+      cfg.dcdl_custom_x_ranges[y][0] = cfg.dcdl_custom_x_ranges[y][1];
+    end
+    
+    if (cfg.enable_debug && (y % 8 == 0)) begin
+      `uvm_info("COMPARE_RESULT_MODEL", $sformatf("Y[%02d]: X range [%02d:%02d], width=%0d, deviation=%0d", 
+                y, cfg.dcdl_custom_x_ranges[y][0], cfg.dcdl_custom_x_ranges[y][1], 
+                current_half_width*2, deviation), UVM_MEDIUM)
+    end
+  end
+  
+  cfg.dcdl_ranges_initialized = 1;
+  `uvm_info("COMPARE_RESULT_MODEL", "DCDL custom X ranges setup completed", UVM_MEDIUM)
 endfunction
 
 
@@ -747,7 +1302,13 @@ endfunction
 function void ucie_sb_compare_result_model::log_initialization();
   string msg;
   
-  msg = $sformatf("=== ARRAY INITIALIZATION ===");
+  msg = $sformatf("=== ENHANCED ARRAY INITIALIZATION ===");
+  log_message(msg, UVM_LOW);
+  
+  msg = $sformatf("Eye Map Shape: %s", cfg.eye_shape.name());
+  log_message(msg, UVM_LOW);
+  
+  msg = $sformatf("Training Mode: %s", cfg.training_mode.name());
   log_message(msg, UVM_LOW);
   
   msg = $sformatf("Expected ranges: volt[%0d:%0d], clk_phase[%0d:%0d]", 
@@ -759,6 +1320,32 @@ function void ucie_sb_compare_result_model::log_initialization();
   
   msg = $sformatf("PASS value: 0x%08h, FAIL value: 0x%08h", cfg.PASS_VALUE, cfg.FAIL_VALUE);
   log_message(msg, UVM_LOW);
+  
+  // Log shape-specific parameters
+  case (cfg.eye_shape)
+    EYE_SHAPE_ELLIPTICAL: begin
+      msg = $sformatf("Ellipse parameters: center_ratio(%.2f,%.2f), size_ratio(%.2f,%.2f)", 
+                      cfg.ellipse_center_x_ratio, cfg.ellipse_center_y_ratio,
+                      cfg.ellipse_width_ratio, cfg.ellipse_height_ratio);
+      log_message(msg, UVM_LOW);
+    end
+    EYE_SHAPE_DIAMOND: begin
+      msg = $sformatf("Diamond parameters: center_ratio(%.2f,%.2f), size_ratio(%.2f,%.2f)", 
+                      cfg.diamond_center_x_ratio, cfg.diamond_center_y_ratio,
+                      cfg.diamond_width_ratio, cfg.diamond_height_ratio);
+      log_message(msg, UVM_LOW);
+    end
+    EYE_SHAPE_BATHTUB: begin
+      msg = $sformatf("Bathtub parameters: center_ratio(%.2f), width_ratio(%.2f), depth_ratio(%.2f)", 
+                      cfg.bathtub_center_ratio, cfg.bathtub_width_ratio, cfg.bathtub_depth_ratio);
+      log_message(msg, UVM_LOW);
+    end
+    EYE_SHAPE_DCDL_CUSTOM: begin
+      msg = $sformatf("DCDL parameters: max_deviation(%0d), ranges_initialized(%b)", 
+                      cfg.dcdl_x_center_max_deviation, cfg.dcdl_ranges_initialized);
+      log_message(msg, UVM_LOW);
+    end
+  endcase
   
   // Calculate and log fill statistics
   int pass_elements = (cfg.exp_volt_max - cfg.exp_volt_min + 1) * (cfg.exp_clk_phase_max - cfg.exp_clk_phase_min + 1);
