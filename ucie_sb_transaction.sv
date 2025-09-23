@@ -88,6 +88,15 @@ class ucie_sb_transaction extends uvm_sequence_item;
   bit                   is_clock_pattern;        // Clock training sequence flag
   
   /*---------------------------------------------------------------------------
+   * PARITY ERROR INJECTION CONTROL
+   * Fields to control intentional parity error injection for testing
+   *---------------------------------------------------------------------------*/
+  
+  rand bit              inject_data_parity_error;    // Inject data parity error flag
+  rand bit              inject_control_parity_error; // Inject control parity error flag
+  rand bit [5:0]        error_bit_position;          // Bit position for error injection (0-63)
+  
+  /*---------------------------------------------------------------------------
    * UVM FACTORY AND FIELD REGISTRATION
    * Enables polymorphic creation and automatic field operations
    *---------------------------------------------------------------------------*/
@@ -112,6 +121,9 @@ class ucie_sb_transaction extends uvm_sequence_item;
     `uvm_field_int(has_data, UVM_ALL_ON)
     `uvm_field_int(is_64bit, UVM_ALL_ON)
     `uvm_field_int(is_clock_pattern, UVM_ALL_ON)
+    `uvm_field_int(inject_data_parity_error, UVM_ALL_ON)
+    `uvm_field_int(inject_control_parity_error, UVM_ALL_ON)
+    `uvm_field_int(error_bit_position, UVM_ALL_ON)
   `uvm_object_utils_end
 
   /*---------------------------------------------------------------------------
@@ -129,6 +141,8 @@ class ucie_sb_transaction extends uvm_sequence_item;
   extern function void post_randomize();
   extern function void update_packet_info();
   extern function void calculate_parity();
+  extern function void inject_data_parity_error_func();
+  extern function void inject_control_parity_error_func();
   extern function bit [63:0] get_header();
   extern function bit [63:0] get_message_header();
   extern function bit [63:0] get_clock_pattern_header();
@@ -217,6 +231,18 @@ class ucie_sb_transaction extends uvm_sequence_item;
       is_clock_pattern == 1;
     }
   }
+  
+  constraint error_injection_c {
+    // By default, don't inject errors
+    inject_data_parity_error == 0;
+    inject_control_parity_error == 0;
+    
+    // Mutual exclusion: can't inject both types of errors simultaneously
+    !(inject_data_parity_error && inject_control_parity_error);
+    
+    // Error bit position should be within valid range
+    error_bit_position < 64;
+  }
 
 endclass : ucie_sb_transaction
 
@@ -239,6 +265,16 @@ endclass : ucie_sb_transaction
 function void ucie_sb_transaction::post_randomize();
   update_packet_info();
   calculate_parity();
+  
+  // Apply error injection if requested
+  if (inject_data_parity_error) begin
+    inject_data_parity_error_func();
+  end
+  
+  if (inject_control_parity_error) begin
+    inject_control_parity_error_func();
+  end
+  
   `uvm_info("TRANSACTION", {"Post-randomize: ", convert2string()}, UVM_HIGH)
 endfunction
 
@@ -525,6 +561,11 @@ function string ucie_sb_transaction::convert2string();
   s = {s, $sformatf("\n| Flags: HasData:%0b Is64bit:%0b ClkPat:%0b Valid:%0b                |", 
                     has_data, is_64bit, is_clock_pattern, is_valid())};
   
+  if (inject_data_parity_error || inject_control_parity_error) begin
+    s = {s, $sformatf("\n| ERROR INJECTION: DataErr:%0b CtrlErr:%0b BitPos:%0d                |", 
+                      inject_data_parity_error, inject_control_parity_error, error_bit_position)};
+  end
+  
   if (is_clock_pattern && opcode == CLOCK_PATTERN) begin
     header = get_clock_pattern_header();
     s = {s, $sformatf("\n| Header: 0x%016h (Clock Pattern)                       |", header)};
@@ -806,4 +847,169 @@ function bit ucie_sb_transaction::is_valid();
   end
   
   return 1;
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * DATA PARITY ERROR INJECTION
+ * 
+ * Injects a data parity error by flipping a bit in either:
+ *   • Data payload (if has_data is true)
+ *   • DP bit directly (if no data payload or specifically targeting DP)
+ *
+ * The error_bit_position field determines which bit to flip:
+ *   • For data payload: bit position within data[63:0]
+ *   • For DP bit: any value flips the DP bit
+ *
+ * This creates an intentional mismatch between data content and parity,
+ * useful for testing error detection mechanisms.
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_transaction::inject_data_parity_error_func();
+  if (has_data) begin
+    // Flip a bit in the data payload
+    if (error_bit_position < 64) begin
+      data[error_bit_position] = ~data[error_bit_position];
+      `uvm_info("ERROR_INJECT", $sformatf("Injected data parity error: flipped data bit %0d", error_bit_position), UVM_LOW)
+    end else begin
+      // If bit position is out of range, flip DP bit directly
+      dp = ~dp;
+      `uvm_info("ERROR_INJECT", "Injected data parity error: flipped DP bit directly", UVM_LOW)
+    end
+  end else begin
+    // No data payload, flip DP bit directly
+    dp = ~dp;
+    `uvm_info("ERROR_INJECT", "Injected data parity error: flipped DP bit (no data payload)", UVM_LOW)
+  end
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * CONTROL PARITY ERROR INJECTION
+ * 
+ * Injects a control parity error by flipping a bit in the header fields
+ * that contribute to control parity calculation. The specific field and bit
+ * depend on the packet type and error_bit_position value.
+ *
+ * Header fields that can be corrupted (excluding DP bit):
+ *   • Register Access: srcid, tag, be, ep, opcode, cr, dstid, addr[23:0]
+ *   • Completions: srcid, tag, be, ep, opcode, cr, dstid, status[2:0]
+ *   • Messages: srcid, msgcode, opcode, dstid, msginfo, msgsubcode
+ *
+ * The error_bit_position is mapped to different fields based on packet type.
+ * This creates a mismatch between header content and control parity.
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_transaction::inject_control_parity_error_func();
+  bit [5:0] field_select;
+  
+  // Map error bit position to field selection
+  field_select = error_bit_position % 32; // Use modulo to cycle through available fields
+  
+  case (pkt_type)
+    PKT_REG_ACCESS: begin
+      case (field_select % 8)
+        0: begin
+          srcid = srcid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped srcid bit (new value: 0x%01h)", srcid), UVM_LOW)
+        end
+        1: begin
+          tag = tag ^ (1 << (error_bit_position % 5));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped tag bit %0d (new value: 0x%02h)", error_bit_position % 5, tag), UVM_LOW)
+        end
+        2: begin
+          be = be ^ (1 << (error_bit_position % 8));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped be bit %0d (new value: 0x%02h)", error_bit_position % 8, be), UVM_LOW)
+        end
+        3: begin
+          ep = ~ep;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped ep bit (new value: %0b)", ep), UVM_LOW)
+        end
+        4: begin
+          cr = ~cr;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped cr bit (new value: %0b)", cr), UVM_LOW)
+        end
+        5: begin
+          dstid = dstid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped dstid bit (new value: 0x%01h)", dstid), UVM_LOW)
+        end
+        6: begin
+          addr = addr ^ (1 << (error_bit_position % 24));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped addr bit %0d (new value: 0x%06h)", error_bit_position % 24, addr), UVM_LOW)
+        end
+        7: begin
+          // Flip opcode bit (but be careful not to make it invalid)
+          opcode = ucie_sb_opcode_e'(opcode ^ (1 << (error_bit_position % 5)));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped opcode bit %0d (new value: %s)", error_bit_position % 5, opcode.name()), UVM_LOW)
+        end
+      endcase
+    end
+    
+    PKT_COMPLETION: begin
+      case (field_select % 7)
+        0: begin
+          srcid = srcid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped srcid bit (new value: 0x%01h)", srcid), UVM_LOW)
+        end
+        1: begin
+          tag = tag ^ (1 << (error_bit_position % 5));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped tag bit %0d (new value: 0x%02h)", error_bit_position % 5, tag), UVM_LOW)
+        end
+        2: begin
+          be = be ^ (1 << (error_bit_position % 8));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped be bit %0d (new value: 0x%02h)", error_bit_position % 8, be), UVM_LOW)
+        end
+        3: begin
+          ep = ~ep;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped ep bit (new value: %0b)", ep), UVM_LOW)
+        end
+        4: begin
+          cr = ~cr;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped cr bit (new value: %0b)", cr), UVM_LOW)
+        end
+        5: begin
+          dstid = dstid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped dstid bit (new value: 0x%01h)", dstid), UVM_LOW)
+        end
+        6: begin
+          status = status ^ (1 << (error_bit_position % 3));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped status bit %0d (new value: 0x%04h)", error_bit_position % 3, status), UVM_LOW)
+        end
+      endcase
+    end
+    
+    PKT_MESSAGE: begin
+      case (field_select % 6)
+        0: begin
+          srcid = srcid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped srcid bit (new value: 0x%01h)", srcid), UVM_LOW)
+        end
+        1: begin
+          msgcode = msgcode ^ (1 << (error_bit_position % 8));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped msgcode bit %0d (new value: 0x%02h)", error_bit_position % 8, msgcode), UVM_LOW)
+        end
+        2: begin
+          dstid = dstid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped dstid bit (new value: 0x%01h)", dstid), UVM_LOW)
+        end
+        3: begin
+          msginfo = msginfo ^ (1 << (error_bit_position % 16));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped msginfo bit %0d (new value: 0x%04h)", error_bit_position % 16, msginfo), UVM_LOW)
+        end
+        4: begin
+          msgsubcode = msgsubcode ^ (1 << (error_bit_position % 8));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped msgsubcode bit %0d (new value: 0x%02h)", error_bit_position % 8, msgsubcode), UVM_LOW)
+        end
+        5: begin
+          // Flip opcode bit
+          opcode = ucie_sb_opcode_e'(opcode ^ (1 << (error_bit_position % 5)));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped opcode bit %0d (new value: %s)", error_bit_position % 5, opcode.name()), UVM_LOW)
+        end
+      endcase
+    end
+    
+    PKT_CLOCK_PATTERN: begin
+      `uvm_warning("ERROR_INJECT", "Control parity error injection not supported for clock patterns")
+    end
+    
+    default: begin
+      `uvm_warning("ERROR_INJECT", $sformatf("Control parity error injection not supported for packet type: %s", pkt_type.name()))
+    end
+  endcase
 endfunction
