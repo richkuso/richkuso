@@ -246,8 +246,17 @@ class ucie_sb_transaction extends uvm_sequence_item;
   }
   
   // Dedicated constraint for randomizing only error bit position
+  // Considers data width for more intelligent bit position selection
   constraint error_bit_position_only_c {
-    error_bit_position inside {[0:63]};
+    if (inject_data_parity_error && has_data) {
+      if (is_64bit) {
+        error_bit_position inside {[0:63]};  // Full 64-bit range
+      } else {
+        error_bit_position inside {[0:31]};  // 32-bit range only
+      }
+    } else {
+      error_bit_position inside {[0:63]};     // Full range for control errors or DP bit
+    }
   }
 
 endclass : ucie_sb_transaction
@@ -884,22 +893,30 @@ endfunction
  *   • DP bit directly (if no data payload or specifically targeting DP)
  *
  * The error_bit_position field determines which bit to flip:
- *   • For data payload: bit position within data[63:0]
- *   • For DP bit: any value flips the DP bit
+ *   • For 32-bit data: bit position within data[31:0] (0-31)
+ *   • For 64-bit data: bit position within data[63:0] (0-63)
+ *   • For DP bit: when bit position is out of valid data range
  *
  * This creates an intentional mismatch between data content and parity,
  * useful for testing error detection mechanisms.
  *-----------------------------------------------------------------------------*/
 function void ucie_sb_transaction::inject_data_parity_error_func();
+  bit [5:0] max_bit_position;
+  
   if (has_data) begin
-    // Flip a bit in the data payload
-    if (error_bit_position < 64) begin
+    // Determine valid bit range based on data width
+    max_bit_position = is_64bit ? 63 : 31;
+    
+    // Flip a bit in the data payload if within valid range
+    if (error_bit_position <= max_bit_position) begin
       data[error_bit_position] = ~data[error_bit_position];
-      `uvm_info("ERROR_INJECT", $sformatf("Injected data parity error: flipped data bit %0d", error_bit_position), UVM_LOW)
+      `uvm_info("ERROR_INJECT", $sformatf("Injected data parity error: flipped %s data bit %0d (data=0x%016h)", 
+                is_64bit ? "64-bit" : "32-bit", error_bit_position, data), UVM_LOW)
     end else begin
-      // If bit position is out of range, flip DP bit directly
+      // If bit position is out of valid data range, flip DP bit directly
       dp = ~dp;
-      `uvm_info("ERROR_INJECT", "Injected data parity error: flipped DP bit directly", UVM_LOW)
+      `uvm_info("ERROR_INJECT", $sformatf("Injected data parity error: flipped DP bit directly (bit_pos %0d > max %0d for %s)", 
+                error_bit_position, max_bit_position, is_64bit ? "64-bit" : "32-bit"), UVM_LOW)
     end
   end else begin
     // No data payload, flip DP bit directly
