@@ -95,6 +95,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
   rand bit              inject_data_parity_error;    // Inject data parity error flag
   rand bit              inject_control_parity_error; // Inject control parity error flag
   rand bit [5:0]        error_bit_position;          // Bit position for error injection (0-63)
+  bit                   inject_at_parity_bit;        // Flag to inject at parity bit vs field (from plusargs)
   
   /*---------------------------------------------------------------------------
    * UVM FACTORY AND FIELD REGISTRATION
@@ -124,6 +125,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
     `uvm_field_int(inject_data_parity_error, UVM_ALL_ON)
     `uvm_field_int(inject_control_parity_error, UVM_ALL_ON)
     `uvm_field_int(error_bit_position, UVM_ALL_ON)
+    `uvm_field_int(inject_at_parity_bit, UVM_ALL_ON)
   `uvm_object_utils_end
 
   /*---------------------------------------------------------------------------
@@ -131,6 +133,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
    *---------------------------------------------------------------------------*/
   function new(string name = "ucie_sb_transaction");
     super.new(name);
+    check_plusargs();
   endfunction
 
   /*---------------------------------------------------------------------------
@@ -144,6 +147,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
   extern function void inject_data_parity_error_func();
   extern function void inject_control_parity_error_func();
   extern function bit randomize_error_bit_position();
+  extern function void check_plusargs();
   extern function bit [63:0] get_header();
   extern function bit [63:0] get_message_header();
   extern function bit [63:0] get_clock_pattern_header();
@@ -577,8 +581,9 @@ function string ucie_sb_transaction::convert2string();
                     has_data, is_64bit, is_clock_pattern, is_valid())};
   
   if (inject_data_parity_error || inject_control_parity_error) begin
-    s = {s, $sformatf("\n| ERROR INJECTION: DataErr:%0b CtrlErr:%0b BitPos:%0d                |", 
-                      inject_data_parity_error, inject_control_parity_error, error_bit_position)};
+    s = {s, $sformatf("\n| ERROR INJECTION: DataErr:%0b CtrlErr:%0b BitPos:%0d Target:%s        |", 
+                      inject_data_parity_error, inject_control_parity_error, error_bit_position,
+                      inject_at_parity_bit ? "PARITY_BIT" : "FIELD")};
   end
   
   if (is_clock_pattern && opcode == CLOCK_PATTERN) begin
@@ -903,6 +908,14 @@ endfunction
 function void ucie_sb_transaction::inject_data_parity_error_func();
   bit [5:0] max_bit_position;
   
+  // Check if plusargs specifies to inject at parity bit directly
+  if (inject_at_parity_bit) begin
+    // Directly flip DP bit regardless of data presence
+    dp = ~dp;
+    `uvm_info("ERROR_INJECT", "Injected data parity error: flipped DP bit directly (plusargs specified)", UVM_LOW)
+    return;
+  end
+  
   if (has_data) begin
     // Determine valid bit range based on data width
     max_bit_position = is_64bit ? 63 : 31;
@@ -928,9 +941,9 @@ endfunction
 /*-----------------------------------------------------------------------------
  * CONTROL PARITY ERROR INJECTION
  * 
- * Injects a control parity error by flipping a bit in the header fields
- * that contribute to control parity calculation. The specific field and bit
- * depend on the packet type and error_bit_position value.
+ * Injects a control parity error by flipping a bit in either:
+ *   - CP bit directly (if plusargs specifies parity bit injection)
+ *   - Header fields that contribute to control parity calculation
  *
  * Header fields that can be corrupted (excluding DP bit):
  *   - Register Access: srcid, tag, be, ep, opcode, cr, dstid, addr[23:0]
@@ -942,6 +955,14 @@ endfunction
  *-----------------------------------------------------------------------------*/
 function void ucie_sb_transaction::inject_control_parity_error_func();
   bit [5:0] field_select;
+  
+  // Check if plusargs specifies to inject at parity bit directly
+  if (inject_at_parity_bit) begin
+    // Directly flip CP bit
+    cp = ~cp;
+    `uvm_info("ERROR_INJECT", "Injected control parity error: flipped CP bit directly (plusargs specified)", UVM_LOW)
+    return;
+  end
   
   // Map error bit position to field selection
   field_select = error_bit_position % 32; // Use modulo to cycle through available fields
@@ -1056,4 +1077,36 @@ function void ucie_sb_transaction::inject_control_parity_error_func();
       `uvm_warning("ERROR_INJECT", $sformatf("Control parity error injection not supported for packet type: %s", pkt_type.name()))
     end
   endcase
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * PLUSARGS CONFIGURATION CHECK
+ * 
+ * Checks for plusargs to configure error injection behavior:
+ *   +INJECT_AT_PARITY_BIT    - Inject errors at parity bits (DP/CP) directly
+ *   +INJECT_AT_FIELD         - Inject errors at header fields (default)
+ *
+ * Usage examples:
+ *   +INJECT_AT_PARITY_BIT    - All error injections target parity bits
+ *   +INJECT_AT_FIELD         - All error injections target header fields
+ *   (no plusarg)             - Default behavior (inject at fields)
+ *
+ * This allows runtime control of error injection strategy without
+ * recompiling the testbench.
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_transaction::check_plusargs();
+  string plusarg_value;
+  
+  // Check for parity bit injection plusarg
+  if ($test$plusargs("INJECT_AT_PARITY_BIT")) begin
+    inject_at_parity_bit = 1;
+    `uvm_info("PLUSARGS", "Error injection configured to target parity bits (DP/CP)", UVM_LOW)
+  end else if ($test$plusargs("INJECT_AT_FIELD")) begin
+    inject_at_parity_bit = 0;
+    `uvm_info("PLUSARGS", "Error injection configured to target header fields", UVM_LOW)
+  end else begin
+    // Default behavior: inject at fields
+    inject_at_parity_bit = 0;
+    `uvm_info("PLUSARGS", "Error injection using default behavior (target header fields)", UVM_MEDIUM)
+  end
 endfunction
