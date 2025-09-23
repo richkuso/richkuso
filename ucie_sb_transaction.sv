@@ -398,40 +398,43 @@ endfunction
  * 
  * Computes protocol-required parity values according to UCIe 1.1:
  *   - Data Parity (DP): XOR of data payload (when present)
- *   - Control Parity (CP): XOR of control fields (includes DP)
+ *   - Control Parity (CP): XOR of control fields (excludes DP)
  *
  * Critical Implementation Notes:
- *   - DP MUST be calculated first (CP depends on DP value)
+ *   - DP and CP are calculated independently
  *   - Different packet types have different CP field sets
  *   - Clock patterns use fixed parity values
+ *   - CP calculation excludes DP bit per specification
  *
- * Packet-Specific CP Field Sets:
- *   - Register Access: srcid, tag, be, ep, opcode, dp, cr, dstid, addr[23:0]
- *   - Completions: srcid, tag, be, ep, opcode, dp, cr, dstid, status[2:0]
- *   - Messages: srcid, msgcode, opcode, dp, dstid, msginfo, msgsubcode
+ * Packet-Specific CP Field Sets (excluding DP):
+ *   - Register Access: srcid, tag, be, ep, opcode, cr, dstid, addr[23:0]
+ *   - Completions: srcid, tag, be, ep, opcode, cr, dstid, status[2:0]
+ *   - Messages: srcid, msgcode, opcode, dstid, msginfo, msgsubcode
  *-----------------------------------------------------------------------------*/
 function void ucie_sb_transaction::calculate_parity();
+  // Calculate Data Parity (DP) - independent of control fields
   if (has_data) begin
     dp = is_64bit ? ^data : ^data[31:0];
   end else begin
     dp = 1'b0;
   end
   
+  // Calculate Control Parity (CP) - excludes DP bit
   if (pkt_type == PKT_CLOCK_PATTERN) begin
     cp = 1'b0;
     dp = 1'b0;
   end else if (pkt_type == PKT_REG_ACCESS) begin    
-    cp = ^{srcid, tag, be, ep, opcode, dp, cr, dstid, addr[23:0]};
+    cp = ^{srcid, tag, be, ep, opcode, cr, dstid, addr[23:0]};
   end else if (pkt_type == PKT_COMPLETION) begin    
-    cp = ^{srcid, tag, be, ep, opcode, dp, cr, dstid, status[2:0]};  
+    cp = ^{srcid, tag, be, ep, opcode, cr, dstid, status[2:0]};  
   end else if (pkt_type == PKT_MESSAGE) begin
-    cp = ^{srcid, msgcode, opcode, dp, dstid, msginfo, msgsubcode};	
+    cp = ^{srcid, msgcode, opcode, dstid, msginfo, msgsubcode};	
   end else if (pkt_type == PKT_MGMT) begin    
     `uvm_warning("TRANSACTION", "Management message parity calculation not supported")
     cp = 1'b0;
   end
   
-  `uvm_info("TRANSACTION", $sformatf("Calculated parity: CP=%0b, DP=%0b", cp, dp), UVM_DEBUG)
+  `uvm_info("TRANSACTION", $sformatf("Calculated parity: CP=%0b (control fields), DP=%0b (data payload)", cp, dp), UVM_DEBUG)
 endfunction
 
 /*-----------------------------------------------------------------------------
