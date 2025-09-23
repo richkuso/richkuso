@@ -143,6 +143,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
   extern function void calculate_parity();
   extern function void inject_data_parity_error_func();
   extern function void inject_control_parity_error_func();
+  extern function bit randomize_error_bit_position();
   extern function bit [63:0] get_header();
   extern function bit [63:0] get_message_header();
   extern function bit [63:0] get_clock_pattern_header();
@@ -242,6 +243,11 @@ class ucie_sb_transaction extends uvm_sequence_item;
     
     // Error bit position should be within valid range
     error_bit_position < 64;
+  }
+  
+  // Dedicated constraint for randomizing only error bit position
+  constraint error_bit_position_only_c {
+    error_bit_position inside {[0:63]};
   }
 
 endclass : ucie_sb_transaction
@@ -846,6 +852,27 @@ function bit ucie_sb_transaction::is_valid();
     endcase
   end
   
+  return 1;
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * RANDOMIZE ERROR BIT POSITION ONLY
+ * 
+ * Convenience method to randomize only the error_bit_position field
+ * while keeping all other fields unchanged. This is useful when you
+ * want to inject errors at different bit positions without changing
+ * the rest of the transaction.
+ *
+ * Returns: 1 if randomization succeeded, 0 if failed
+ *-----------------------------------------------------------------------------*/
+function bit ucie_sb_transaction::randomize_error_bit_position();
+  // Method 1: Use randomize() with only the specific field
+  if (!this.randomize(error_bit_position)) begin
+    `uvm_error("RAND_ERROR", "Failed to randomize error_bit_position")
+    return 0;
+  end
+  
+  `uvm_info("ERROR_INJECT", $sformatf("Randomized error_bit_position to: %0d", error_bit_position), UVM_LOW)
   return 1;
 endfunction
 
