@@ -7,36 +7,36 @@
  *   protocol behaviors defined in UCIe 1.1 specification.
  *
  * TRANSACTION CAPABILITIES:
- *   • All 19 UCIe sideband opcodes supported
- *   • Register Access: MEM/DMS/CFG operations (32B/64B)
- *   • Completions: Response packets with status reporting
- *   • Messages: Control and management messaging
- *   • Clock Patterns: Training and synchronization sequences
- *   • Automatic parity generation (CP/DP) per specification
+ *   - All 19 UCIe sideband opcodes supported
+ *   - Register Access: MEM/DMS/CFG operations (32B/64B)
+ *   - Completions: Response packets with status reporting
+ *   - Messages: Control and management messaging
+ *   - Clock Patterns: Training and synchronization sequences
+ *   - Automatic parity generation (CP/DP) per specification
  *
  * PROTOCOL COMPLIANCE:
- *   • UCIe 1.1 packet formats (Figures 7-1, 7-2, 7-3)
- *   • Address alignment requirements
- *   • Byte enable validation
- *   • Parity calculation per specification
- *   • Source/destination ID constraints
+ *   - UCIe 1.1 packet formats (Figures 7-1, 7-2, 7-3)
+ *   - Address alignment requirements
+ *   - Byte enable validation
+ *   - Parity calculation per specification
+ *   - Source/destination ID constraints
  *
  * VALIDATION FEATURES:
- *   • Comprehensive constraint sets for legal packet generation
- *   • Protocol validation methods
- *   • Human-readable string conversion
- *   • Debug and analysis support
+ *   - Comprehensive constraint sets for legal packet generation
+ *   - Protocol validation methods
+ *   - Human-readable string conversion
+ *   - Debug and analysis support
  *
  * ARCHITECTURE:
- *   • UVM sequence item inheritance
- *   • Randomizable fields with intelligent constraints
- *   • Extern method declarations for clean separation
- *   • Factory registration for polymorphic usage
+ *   - UVM sequence item inheritance
+ *   - Randomizable fields with intelligent constraints
+ *   - Extern method declarations for clean separation
+ *   - Factory registration for polymorphic usage
  *
  * COMPLIANCE:
- *   • IEEE 1800-2017 SystemVerilog
- *   • UVM 1.2 methodology
- *   • UCIe 1.1 specification
+ *   - IEEE 1800-2017 SystemVerilog
+ *   - UVM 1.2 methodology
+ *   - UCIe 1.1 specification
  *
  * AUTHOR: UCIe Sideband UVM Agent
  * VERSION: 3.0 - Production-grade transaction model
@@ -270,9 +270,9 @@ endclass : ucie_sb_transaction
  * POST-RANDOMIZATION PROCESSING
  * 
  * Automatically invoked after constraint solving to:
- *   • Update packet metadata based on randomized opcode
- *   • Calculate protocol-required parity values
- *   • Ensure transaction consistency and validity
+ *   - Update packet metadata based on randomized opcode
+ *   - Calculate protocol-required parity values
+ *   - Ensure transaction consistency and validity
  *
  * This method maintains the relationship between opcode and derived fields,
  * ensuring the transaction represents a valid UCIe protocol packet.
@@ -297,9 +297,9 @@ endfunction
  * PACKET METADATA COMPUTATION
  * 
  * Analyzes the randomized opcode to determine:
- *   • Packet type classification (register, completion, message, clock)
- *   • Data payload presence and width requirements
- *   • Special handling flags (clock patterns, etc.)
+ *   - Packet type classification (register, completion, message, clock)
+ *   - Data payload presence and width requirements
+ *   - Special handling flags (clock patterns, etc.)
  *
  * This creates the foundation for all subsequent packet processing by
  * establishing the packet's fundamental characteristics.
@@ -393,18 +393,18 @@ endfunction
  * UCIe SPECIFICATION PARITY CALCULATION
  * 
  * Computes protocol-required parity values according to UCIe 1.1:
- *   • Data Parity (DP): XOR of data payload (when present)
- *   • Control Parity (CP): XOR of control fields (includes DP)
+ *   - Data Parity (DP): XOR of data payload (when present)
+ *   - Control Parity (CP): XOR of control fields (includes DP)
  *
  * Critical Implementation Notes:
- *   • DP MUST be calculated first (CP depends on DP value)
- *   • Different packet types have different CP field sets
- *   • Clock patterns use fixed parity values
+ *   - DP MUST be calculated first (CP depends on DP value)
+ *   - Different packet types have different CP field sets
+ *   - Clock patterns use fixed parity values
  *
  * Packet-Specific CP Field Sets:
- *   • Register Access: srcid, tag, be, ep, opcode, dp, cr, dstid, addr[23:0]
- *   • Completions: srcid, tag, be, ep, opcode, dp, cr, dstid, status[2:0]
- *   • Messages: srcid, msgcode, opcode, dp, dstid, msginfo, msgsubcode
+ *   - Register Access: srcid, tag, be, ep, opcode, dp, cr, dstid, addr[23:0]
+ *   - Completions: srcid, tag, be, ep, opcode, dp, cr, dstid, status[2:0]
+ *   - Messages: srcid, msgcode, opcode, dp, dstid, msginfo, msgsubcode
  *-----------------------------------------------------------------------------*/
 function void ucie_sb_transaction::calculate_parity();
   if (has_data) begin
@@ -434,9 +434,9 @@ endfunction
  * HEADER PACKET GENERATION DISPATCHER
  * 
  * Routes header generation to appropriate packet-specific formatter:
- *   • Clock patterns: Fixed UCIe training sequence
- *   • Messages: UCIe Figure 7-3 format
- *   • Register/Completion: UCIe Figure 7-1/7-2 format
+ *   - Clock patterns: Fixed UCIe training sequence
+ *   - Messages: UCIe Figure 7-3 format
+ *   - Register/Completion: UCIe Figure 7-1/7-2 format
  *
  * Returns properly formatted 64-bit header ready for transmission.
  *-----------------------------------------------------------------------------*/
@@ -515,19 +515,19 @@ endfunction
  * COMPREHENSIVE TRANSACTION STRING CONVERSION
  * 
  * Generates detailed, formatted representation of transaction for:
- *   • Debug logging and analysis
- *   • Test result documentation
- *   • Protocol verification reporting
+ *   - Debug logging and analysis
+ *   - Test result documentation
+ *   - Protocol verification reporting
  *
  * Output includes:
- *   • Basic transaction identification
- *   • Address and control information
- *   • Data payload details
- *   • Message-specific fields (when applicable)
- *   • Completion status (when applicable)
- *   • Clock pattern information (when applicable)
- *   • Transaction validity and characteristics
- *   • Generated header packet
+ *   - Basic transaction identification
+ *   - Address and control information
+ *   - Data payload details
+ *   - Message-specific fields (when applicable)
+ *   - Completion status (when applicable)
+ *   - Clock pattern information (when applicable)
+ *   - Transaction validity and characteristics
+ *   - Generated header packet
  *-----------------------------------------------------------------------------*/
 function string ucie_sb_transaction::convert2string();
   string s;
@@ -725,9 +725,9 @@ endfunction
  * CLOCK PATTERN VALIDATION
  * 
  * Verifies that clock pattern transactions are properly formed:
- *   • Correct opcode (CLOCK_PATTERN)
- *   • No data payload (header-only)
- *   • Proper flag settings
+ *   - Correct opcode (CLOCK_PATTERN)
+ *   - No data payload (header-only)
+ *   - Proper flag settings
  *-----------------------------------------------------------------------------*/
 function bit ucie_sb_transaction::is_valid_clock_pattern();
   bit [63:0] expected_header;
@@ -810,12 +810,12 @@ endfunction
  * COMPREHENSIVE TRANSACTION VALIDATION
  * 
  * Performs complete protocol compliance checking:
- *   • Opcode validity
- *   • Clock pattern consistency
- *   • Address alignment requirements
- *   • Byte enable constraints
- *   • Message field consistency
- *   • Data payload coherency
+ *   - Opcode validity
+ *   - Clock pattern consistency
+ *   - Address alignment requirements
+ *   - Byte enable constraints
+ *   - Message field consistency
+ *   - Data payload coherency
  *
  * Returns true only if transaction meets all UCIe specification requirements.
  *-----------------------------------------------------------------------------*/
@@ -889,13 +889,13 @@ endfunction
  * DATA PARITY ERROR INJECTION
  * 
  * Injects a data parity error by flipping a bit in either:
- *   • Data payload (if has_data is true)
- *   • DP bit directly (if no data payload or specifically targeting DP)
+ *   - Data payload (if has_data is true)
+ *   - DP bit directly (if no data payload or specifically targeting DP)
  *
  * The error_bit_position field determines which bit to flip:
- *   • For 32-bit data: bit position within data[31:0] (0-31)
- *   • For 64-bit data: bit position within data[63:0] (0-63)
- *   • For DP bit: when bit position is out of valid data range
+ *   - For 32-bit data: bit position within data[31:0] (0-31)
+ *   - For 64-bit data: bit position within data[63:0] (0-63)
+ *   - For DP bit: when bit position is out of valid data range
  *
  * This creates an intentional mismatch between data content and parity,
  * useful for testing error detection mechanisms.
@@ -933,9 +933,9 @@ endfunction
  * depend on the packet type and error_bit_position value.
  *
  * Header fields that can be corrupted (excluding DP bit):
- *   • Register Access: srcid, tag, be, ep, opcode, cr, dstid, addr[23:0]
- *   • Completions: srcid, tag, be, ep, opcode, cr, dstid, status[2:0]
- *   • Messages: srcid, msgcode, opcode, dstid, msginfo, msgsubcode
+ *   - Register Access: srcid, tag, be, ep, opcode, cr, dstid, addr[23:0]
+ *   - Completions: srcid, tag, be, ep, opcode, cr, dstid, status[2:0]
+ *   - Messages: srcid, msgcode, opcode, dstid, msginfo, msgsubcode
  *
  * The error_bit_position is mapped to different fields based on packet type.
  * This creates a mismatch between header content and control parity.
