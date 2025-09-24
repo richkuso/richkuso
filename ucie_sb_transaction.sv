@@ -7,36 +7,36 @@
  *   protocol behaviors defined in UCIe 1.1 specification.
  *
  * TRANSACTION CAPABILITIES:
- *   • All 19 UCIe sideband opcodes supported
- *   • Register Access: MEM/DMS/CFG operations (32B/64B)
- *   • Completions: Response packets with status reporting
- *   • Messages: Control and management messaging
- *   • Clock Patterns: Training and synchronization sequences
- *   • Automatic parity generation (CP/DP) per specification
+ *   - All 19 UCIe sideband opcodes supported
+ *   - Register Access: MEM/DMS/CFG operations (32B/64B)
+ *   - Completions: Response packets with status reporting
+ *   - Messages: Control and management messaging
+ *   - Clock Patterns: Training and synchronization sequences
+ *   - Automatic parity generation (CP/DP) per specification
  *
  * PROTOCOL COMPLIANCE:
- *   • UCIe 1.1 packet formats (Figures 7-1, 7-2, 7-3)
- *   • Address alignment requirements
- *   • Byte enable validation
- *   • Parity calculation per specification
- *   • Source/destination ID constraints
+ *   - UCIe 1.1 packet formats (Figures 7-1, 7-2, 7-3)
+ *   - Address alignment requirements
+ *   - Byte enable validation
+ *   - Parity calculation per specification
+ *   - Source/destination ID constraints
  *
  * VALIDATION FEATURES:
- *   • Comprehensive constraint sets for legal packet generation
- *   • Protocol validation methods
- *   • Human-readable string conversion
- *   • Debug and analysis support
+ *   - Comprehensive constraint sets for legal packet generation
+ *   - Protocol validation methods
+ *   - Human-readable string conversion
+ *   - Debug and analysis support
  *
  * ARCHITECTURE:
- *   • UVM sequence item inheritance
- *   • Randomizable fields with intelligent constraints
- *   • Extern method declarations for clean separation
- *   • Factory registration for polymorphic usage
+ *   - UVM sequence item inheritance
+ *   - Randomizable fields with intelligent constraints
+ *   - Extern method declarations for clean separation
+ *   - Factory registration for polymorphic usage
  *
  * COMPLIANCE:
- *   • IEEE 1800-2017 SystemVerilog
- *   • UVM 1.2 methodology
- *   • UCIe 1.1 specification
+ *   - IEEE 1800-2017 SystemVerilog
+ *   - UVM 1.2 methodology
+ *   - UCIe 1.1 specification
  *
  * AUTHOR: UCIe Sideband UVM Agent
  * VERSION: 3.0 - Production-grade transaction model
@@ -88,6 +88,16 @@ class ucie_sb_transaction extends uvm_sequence_item;
   bit                   is_clock_pattern;        // Clock training sequence flag
   
   /*---------------------------------------------------------------------------
+   * PARITY ERROR INJECTION CONTROL
+   * Fields to control intentional parity error injection for testing
+   *---------------------------------------------------------------------------*/
+  
+  rand bit              inject_data_parity_error;    // Inject data parity error flag
+  rand bit              inject_control_parity_error; // Inject control parity error flag
+  rand bit [5:0]        error_bit_position;          // Bit position for error injection (0-63)
+  bit                   inject_at_parity_bit;        // Flag to inject at parity bit vs field (from plusargs)
+  
+  /*---------------------------------------------------------------------------
    * UVM FACTORY AND FIELD REGISTRATION
    * Enables polymorphic creation and automatic field operations
    *---------------------------------------------------------------------------*/
@@ -112,6 +122,10 @@ class ucie_sb_transaction extends uvm_sequence_item;
     `uvm_field_int(has_data, UVM_ALL_ON)
     `uvm_field_int(is_64bit, UVM_ALL_ON)
     `uvm_field_int(is_clock_pattern, UVM_ALL_ON)
+    `uvm_field_int(inject_data_parity_error, UVM_ALL_ON)
+    `uvm_field_int(inject_control_parity_error, UVM_ALL_ON)
+    `uvm_field_int(error_bit_position, UVM_ALL_ON)
+    `uvm_field_int(inject_at_parity_bit, UVM_ALL_ON)
   `uvm_object_utils_end
 
   /*---------------------------------------------------------------------------
@@ -119,6 +133,7 @@ class ucie_sb_transaction extends uvm_sequence_item;
    *---------------------------------------------------------------------------*/
   function new(string name = "ucie_sb_transaction");
     super.new(name);
+    check_plusargs();
   endfunction
 
   /*---------------------------------------------------------------------------
@@ -129,6 +144,12 @@ class ucie_sb_transaction extends uvm_sequence_item;
   extern function void post_randomize();
   extern function void update_packet_info();
   extern function void calculate_parity();
+  extern function void inject_data_parity_error_func();
+  extern function void inject_control_parity_error_func();
+  extern function bit randomize_error_bit_position();
+  extern function bit randomize_error_bit_position_simple();
+  extern function void set_random_error_bit_position();
+  extern function void check_plusargs();
   extern function bit [63:0] get_header();
   extern function bit [63:0] get_message_header();
   extern function bit [63:0] get_clock_pattern_header();
@@ -217,6 +238,25 @@ class ucie_sb_transaction extends uvm_sequence_item;
       is_clock_pattern == 1;
     }
   }
+  
+  constraint error_injection_c {
+    // By default, don't inject errors
+    inject_data_parity_error == 0;
+    inject_control_parity_error == 0;
+    
+    // Mutual exclusion: can't inject both types of errors simultaneously
+    !(inject_data_parity_error && inject_control_parity_error);
+    
+    // Error bit position should be within valid range
+    error_bit_position < 64;
+  }
+  
+  // Dedicated constraint for randomizing only error bit position
+  // Considers data width for more intelligent bit position selection
+  constraint error_bit_position_only_c {
+    // Simplified constraint to avoid dependency issues
+    error_bit_position inside {[0:63]};
+  }
 
 endclass : ucie_sb_transaction
 
@@ -229,9 +269,9 @@ endclass : ucie_sb_transaction
  * POST-RANDOMIZATION PROCESSING
  * 
  * Automatically invoked after constraint solving to:
- *   • Update packet metadata based on randomized opcode
- *   • Calculate protocol-required parity values
- *   • Ensure transaction consistency and validity
+ *   - Update packet metadata based on randomized opcode
+ *   - Calculate protocol-required parity values
+ *   - Ensure transaction consistency and validity
  *
  * This method maintains the relationship between opcode and derived fields,
  * ensuring the transaction represents a valid UCIe protocol packet.
@@ -239,6 +279,16 @@ endclass : ucie_sb_transaction
 function void ucie_sb_transaction::post_randomize();
   update_packet_info();
   calculate_parity();
+  
+  // Apply error injection if requested
+  if (inject_data_parity_error) begin
+    inject_data_parity_error_func();
+  end
+  
+  if (inject_control_parity_error) begin
+    inject_control_parity_error_func();
+  end
+  
   `uvm_info("TRANSACTION", {"Post-randomize: ", convert2string()}, UVM_HIGH)
 endfunction
 
@@ -246,9 +296,9 @@ endfunction
  * PACKET METADATA COMPUTATION
  * 
  * Analyzes the randomized opcode to determine:
- *   • Packet type classification (register, completion, message, clock)
- *   • Data payload presence and width requirements
- *   • Special handling flags (clock patterns, etc.)
+ *   - Packet type classification (register, completion, message, clock)
+ *   - Data payload presence and width requirements
+ *   - Special handling flags (clock patterns, etc.)
  *
  * This creates the foundation for all subsequent packet processing by
  * establishing the packet's fundamental characteristics.
@@ -342,50 +392,53 @@ endfunction
  * UCIe SPECIFICATION PARITY CALCULATION
  * 
  * Computes protocol-required parity values according to UCIe 1.1:
- *   • Data Parity (DP): XOR of data payload (when present)
- *   • Control Parity (CP): XOR of control fields (includes DP)
+ *   - Data Parity (DP): XOR of data payload (when present)
+ *   - Control Parity (CP): XOR of control fields (excludes DP)
  *
  * Critical Implementation Notes:
- *   • DP MUST be calculated first (CP depends on DP value)
- *   • Different packet types have different CP field sets
- *   • Clock patterns use fixed parity values
+ *   - DP and CP are calculated independently
+ *   - Different packet types have different CP field sets
+ *   - Clock patterns use fixed parity values
+ *   - CP calculation excludes DP bit per specification
  *
- * Packet-Specific CP Field Sets:
- *   • Register Access: srcid, tag, be, ep, opcode, dp, cr, dstid, addr[23:0]
- *   • Completions: srcid, tag, be, ep, opcode, dp, cr, dstid, status[2:0]
- *   • Messages: srcid, msgcode, opcode, dp, dstid, msginfo, msgsubcode
+ * Packet-Specific CP Field Sets (excluding DP):
+ *   - Register Access: srcid, tag, be, ep, opcode, cr, dstid, addr[23:0]
+ *   - Completions: srcid, tag, be, ep, opcode, cr, dstid, status[2:0]
+ *   - Messages: srcid, msgcode, opcode, dstid, msginfo, msgsubcode
  *-----------------------------------------------------------------------------*/
 function void ucie_sb_transaction::calculate_parity();
+  // Calculate Data Parity (DP) - independent of control fields
   if (has_data) begin
     dp = is_64bit ? ^data : ^data[31:0];
   end else begin
     dp = 1'b0;
   end
   
+  // Calculate Control Parity (CP) - excludes DP bit
   if (pkt_type == PKT_CLOCK_PATTERN) begin
     cp = 1'b0;
     dp = 1'b0;
   end else if (pkt_type == PKT_REG_ACCESS) begin    
-    cp = ^{srcid, tag, be, ep, opcode, dp, cr, dstid, addr[23:0]};
+    cp = ^{srcid, tag, be, ep, opcode, cr, dstid, addr[23:0]};
   end else if (pkt_type == PKT_COMPLETION) begin    
-    cp = ^{srcid, tag, be, ep, opcode, dp, cr, dstid, status[2:0]};  
+    cp = ^{srcid, tag, be, ep, opcode, cr, dstid, status[2:0]};  
   end else if (pkt_type == PKT_MESSAGE) begin
-    cp = ^{srcid, msgcode, opcode, dp, dstid, msginfo, msgsubcode};	
+    cp = ^{srcid, msgcode, opcode, dstid, msginfo, msgsubcode};	
   end else if (pkt_type == PKT_MGMT) begin    
     `uvm_warning("TRANSACTION", "Management message parity calculation not supported")
     cp = 1'b0;
   end
   
-  `uvm_info("TRANSACTION", $sformatf("Calculated parity: CP=%0b, DP=%0b", cp, dp), UVM_DEBUG)
+  `uvm_info("TRANSACTION", $sformatf("Calculated parity: CP=%0b (control fields), DP=%0b (data payload)", cp, dp), UVM_DEBUG)
 endfunction
 
 /*-----------------------------------------------------------------------------
  * HEADER PACKET GENERATION DISPATCHER
  * 
  * Routes header generation to appropriate packet-specific formatter:
- *   • Clock patterns: Fixed UCIe training sequence
- *   • Messages: UCIe Figure 7-3 format
- *   • Register/Completion: UCIe Figure 7-1/7-2 format
+ *   - Clock patterns: Fixed UCIe training sequence
+ *   - Messages: UCIe Figure 7-3 format
+ *   - Register/Completion: UCIe Figure 7-1/7-2 format
  *
  * Returns properly formatted 64-bit header ready for transmission.
  *-----------------------------------------------------------------------------*/
@@ -464,19 +517,19 @@ endfunction
  * COMPREHENSIVE TRANSACTION STRING CONVERSION
  * 
  * Generates detailed, formatted representation of transaction for:
- *   • Debug logging and analysis
- *   • Test result documentation
- *   • Protocol verification reporting
+ *   - Debug logging and analysis
+ *   - Test result documentation
+ *   - Protocol verification reporting
  *
  * Output includes:
- *   • Basic transaction identification
- *   • Address and control information
- *   • Data payload details
- *   • Message-specific fields (when applicable)
- *   • Completion status (when applicable)
- *   • Clock pattern information (when applicable)
- *   • Transaction validity and characteristics
- *   • Generated header packet
+ *   - Basic transaction identification
+ *   - Address and control information
+ *   - Data payload details
+ *   - Message-specific fields (when applicable)
+ *   - Completion status (when applicable)
+ *   - Clock pattern information (when applicable)
+ *   - Transaction validity and characteristics
+ *   - Generated header packet
  *-----------------------------------------------------------------------------*/
 function string ucie_sb_transaction::convert2string();
   string s;
@@ -524,6 +577,12 @@ function string ucie_sb_transaction::convert2string();
   
   s = {s, $sformatf("\n| Flags: HasData:%0b Is64bit:%0b ClkPat:%0b Valid:%0b                |", 
                     has_data, is_64bit, is_clock_pattern, is_valid())};
+  
+  if (inject_data_parity_error || inject_control_parity_error) begin
+    s = {s, $sformatf("\n| ERROR INJECTION: DataErr:%0b CtrlErr:%0b BitPos:%0d Target:%s        |", 
+                      inject_data_parity_error, inject_control_parity_error, error_bit_position,
+                      inject_at_parity_bit ? "PARITY_BIT" : "FIELD")};
+  end
   
   if (is_clock_pattern && opcode == CLOCK_PATTERN) begin
     header = get_clock_pattern_header();
@@ -669,9 +728,9 @@ endfunction
  * CLOCK PATTERN VALIDATION
  * 
  * Verifies that clock pattern transactions are properly formed:
- *   • Correct opcode (CLOCK_PATTERN)
- *   • No data payload (header-only)
- *   • Proper flag settings
+ *   - Correct opcode (CLOCK_PATTERN)
+ *   - No data payload (header-only)
+ *   - Proper flag settings
  *-----------------------------------------------------------------------------*/
 function bit ucie_sb_transaction::is_valid_clock_pattern();
   bit [63:0] expected_header;
@@ -754,12 +813,12 @@ endfunction
  * COMPREHENSIVE TRANSACTION VALIDATION
  * 
  * Performs complete protocol compliance checking:
- *   • Opcode validity
- *   • Clock pattern consistency
- *   • Address alignment requirements
- *   • Byte enable constraints
- *   • Message field consistency
- *   • Data payload coherency
+ *   - Opcode validity
+ *   - Clock pattern consistency
+ *   - Address alignment requirements
+ *   - Byte enable constraints
+ *   - Message field consistency
+ *   - Data payload coherency
  *
  * Returns true only if transaction meets all UCIe specification requirements.
  *-----------------------------------------------------------------------------*/
@@ -806,4 +865,312 @@ function bit ucie_sb_transaction::is_valid();
   end
   
   return 1;
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * RANDOMIZE ERROR BIT POSITION ONLY
+ * 
+ * Convenience method to randomize only the error_bit_position field
+ * while keeping all other fields unchanged. This is useful when you
+ * want to inject errors at different bit positions without changing
+ * the rest of the transaction.
+ *
+ * Returns: 1 if randomization succeeded, 0 if failed
+ *-----------------------------------------------------------------------------*/
+function bit ucie_sb_transaction::randomize_error_bit_position();
+  bit [5:0] max_range;
+  
+  // Determine appropriate range based on error type and data width
+  if (inject_data_parity_error && has_data && !is_64bit) begin
+    // For 32-bit data parity errors, limit to 32-bit range
+    max_range = 31;
+  end else begin
+    // For all other cases, use full 64-bit range
+    max_range = 63;
+  end
+  
+  // Use std::randomize for more reliable single-field randomization
+  if (!std::randomize(error_bit_position) with { 
+    error_bit_position <= max_range; 
+  }) begin
+    `uvm_error("RAND_ERROR", "Failed to randomize error_bit_position with std::randomize")
+    return 0;
+  end
+  
+  `uvm_info("ERROR_INJECT", $sformatf("Randomized error_bit_position to: %0d (max_range: %0d)", error_bit_position, max_range), UVM_LOW)
+  return 1;
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * SIMPLE ERROR BIT POSITION RANDOMIZATION
+ * 
+ * Alternative method using object randomization with inline constraints.
+ * This method avoids dependency issues with complex constraints by using
+ * inline constraint specification.
+ *
+ * Returns: 1 if randomization succeeded, 0 if failed
+ *-----------------------------------------------------------------------------*/
+function bit ucie_sb_transaction::randomize_error_bit_position_simple();
+  // Use object randomization with inline constraints to avoid dependency issues
+  if (!this.randomize() with { 
+    error_bit_position inside {[0:63]};
+    // Keep other error injection fields unchanged
+    inject_data_parity_error == inject_data_parity_error;
+    inject_control_parity_error == inject_control_parity_error;
+  }) begin
+    `uvm_error("RAND_ERROR", "Failed to randomize error_bit_position with inline constraints")
+    return 0;
+  end
+  
+  `uvm_info("ERROR_INJECT", $sformatf("Simple randomized error_bit_position to: %0d", error_bit_position), UVM_LOW)
+  return 1;
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * MANUAL ERROR BIT POSITION RANDOMIZATION
+ * 
+ * Simple manual method using $urandom_range() for cases where constraint
+ * randomization is problematic. This is the most reliable method but
+ * doesn't use SystemVerilog's constraint solver.
+ *
+ * This method automatically considers data width for intelligent range selection.
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_transaction::set_random_error_bit_position();
+  bit [5:0] max_range;
+  
+  // Determine appropriate range based on error type and data width
+  if (inject_data_parity_error && has_data && !is_64bit) begin
+    // For 32-bit data parity errors, limit to 32-bit range
+    max_range = 31;
+  end else begin
+    // For all other cases, use full 64-bit range
+    max_range = 63;
+  end
+  
+  // Use $urandom_range for simple random selection
+  error_bit_position = $urandom_range(0, max_range);
+  
+  `uvm_info("ERROR_INJECT", $sformatf("Manually set random error_bit_position to: %0d (range: 0-%0d)", 
+            error_bit_position, max_range), UVM_LOW)
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * DATA PARITY ERROR INJECTION
+ * 
+ * Injects a data parity error by flipping a bit in either:
+ *   - Data payload (if has_data is true)
+ *   - DP bit directly (if no data payload or specifically targeting DP)
+ *
+ * The error_bit_position field determines which bit to flip:
+ *   - For 32-bit data: bit position within data[31:0] (0-31)
+ *   - For 64-bit data: bit position within data[63:0] (0-63)
+ *   - For DP bit: when bit position is out of valid data range
+ *
+ * This creates an intentional mismatch between data content and parity,
+ * useful for testing error detection mechanisms.
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_transaction::inject_data_parity_error_func();
+  bit [5:0] max_bit_position;
+  
+  // Check if plusargs specifies to inject at parity bit directly
+  if (inject_at_parity_bit) begin
+    // Directly flip DP bit regardless of data presence
+    dp = ~dp;
+    `uvm_info("ERROR_INJECT", "Injected data parity error: flipped DP bit directly (plusargs specified)", UVM_LOW)
+    return;
+  end
+  
+  if (has_data) begin
+    // Determine valid bit range based on data width
+    max_bit_position = is_64bit ? 63 : 31;
+    
+    // Flip a bit in the data payload if within valid range
+    if (error_bit_position <= max_bit_position) begin
+      data[error_bit_position] = ~data[error_bit_position];
+      `uvm_info("ERROR_INJECT", $sformatf("Injected data parity error: flipped %s data bit %0d (data=0x%016h)", 
+                is_64bit ? "64-bit" : "32-bit", error_bit_position, data), UVM_LOW)
+    end else begin
+      // If bit position is out of valid data range, flip DP bit directly
+      dp = ~dp;
+      `uvm_info("ERROR_INJECT", $sformatf("Injected data parity error: flipped DP bit directly (bit_pos %0d > max %0d for %s)", 
+                error_bit_position, max_bit_position, is_64bit ? "64-bit" : "32-bit"), UVM_LOW)
+    end
+  end else begin
+    // No data payload, flip DP bit directly
+    dp = ~dp;
+    `uvm_info("ERROR_INJECT", "Injected data parity error: flipped DP bit (no data payload)", UVM_LOW)
+  end
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * CONTROL PARITY ERROR INJECTION
+ * 
+ * Injects a control parity error by flipping a bit in either:
+ *   - CP bit directly (if plusargs specifies parity bit injection)
+ *   - Header fields that contribute to control parity calculation
+ *
+ * Header fields that can be corrupted (excluding DP bit):
+ *   - Register Access: srcid, tag, be, ep, opcode, cr, dstid, addr[23:0]
+ *   - Completions: srcid, tag, be, ep, opcode, cr, dstid, status[2:0]
+ *   - Messages: srcid, msgcode, opcode, dstid, msginfo, msgsubcode
+ *
+ * The error_bit_position is mapped to different fields based on packet type.
+ * This creates a mismatch between header content and control parity.
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_transaction::inject_control_parity_error_func();
+  bit [5:0] field_select;
+  
+  // Check if plusargs specifies to inject at parity bit directly
+  if (inject_at_parity_bit) begin
+    // Directly flip CP bit
+    cp = ~cp;
+    `uvm_info("ERROR_INJECT", "Injected control parity error: flipped CP bit directly (plusargs specified)", UVM_LOW)
+    return;
+  end
+  
+  // Map error bit position to field selection
+  field_select = error_bit_position % 32; // Use modulo to cycle through available fields
+  
+  case (pkt_type)
+    PKT_REG_ACCESS: begin
+      case (field_select % 8)
+        0: begin
+          srcid = srcid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped srcid bit (new value: 0x%01h)", srcid), UVM_LOW)
+        end
+        1: begin
+          tag = tag ^ (1 << (error_bit_position % 5));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped tag bit %0d (new value: 0x%02h)", error_bit_position % 5, tag), UVM_LOW)
+        end
+        2: begin
+          be = be ^ (1 << (error_bit_position % 8));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped be bit %0d (new value: 0x%02h)", error_bit_position % 8, be), UVM_LOW)
+        end
+        3: begin
+          ep = ~ep;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped ep bit (new value: %0b)", ep), UVM_LOW)
+        end
+        4: begin
+          cr = ~cr;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped cr bit (new value: %0b)", cr), UVM_LOW)
+        end
+        5: begin
+          dstid = dstid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped dstid bit (new value: 0x%01h)", dstid), UVM_LOW)
+        end
+        6: begin
+          addr = addr ^ (1 << (error_bit_position % 24));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped addr bit %0d (new value: 0x%06h)", error_bit_position % 24, addr), UVM_LOW)
+        end
+        7: begin
+          // Flip opcode bit (but be careful not to make it invalid)
+          opcode = ucie_sb_opcode_e'(opcode ^ (1 << (error_bit_position % 5)));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped opcode bit %0d (new value: %s)", error_bit_position % 5, opcode.name()), UVM_LOW)
+        end
+      endcase
+    end
+    
+    PKT_COMPLETION: begin
+      case (field_select % 7)
+        0: begin
+          srcid = srcid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped srcid bit (new value: 0x%01h)", srcid), UVM_LOW)
+        end
+        1: begin
+          tag = tag ^ (1 << (error_bit_position % 5));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped tag bit %0d (new value: 0x%02h)", error_bit_position % 5, tag), UVM_LOW)
+        end
+        2: begin
+          be = be ^ (1 << (error_bit_position % 8));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped be bit %0d (new value: 0x%02h)", error_bit_position % 8, be), UVM_LOW)
+        end
+        3: begin
+          ep = ~ep;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped ep bit (new value: %0b)", ep), UVM_LOW)
+        end
+        4: begin
+          cr = ~cr;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped cr bit (new value: %0b)", cr), UVM_LOW)
+        end
+        5: begin
+          dstid = dstid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped dstid bit (new value: 0x%01h)", dstid), UVM_LOW)
+        end
+        6: begin
+          status = status ^ (1 << (error_bit_position % 3));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped status bit %0d (new value: 0x%04h)", error_bit_position % 3, status), UVM_LOW)
+        end
+      endcase
+    end
+    
+    PKT_MESSAGE: begin
+      case (field_select % 6)
+        0: begin
+          srcid = srcid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped srcid bit (new value: 0x%01h)", srcid), UVM_LOW)
+        end
+        1: begin
+          msgcode = msgcode ^ (1 << (error_bit_position % 8));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped msgcode bit %0d (new value: 0x%02h)", error_bit_position % 8, msgcode), UVM_LOW)
+        end
+        2: begin
+          dstid = dstid ^ 3'b001;
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped dstid bit (new value: 0x%01h)", dstid), UVM_LOW)
+        end
+        3: begin
+          msginfo = msginfo ^ (1 << (error_bit_position % 16));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped msginfo bit %0d (new value: 0x%04h)", error_bit_position % 16, msginfo), UVM_LOW)
+        end
+        4: begin
+          msgsubcode = msgsubcode ^ (1 << (error_bit_position % 8));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped msgsubcode bit %0d (new value: 0x%02h)", error_bit_position % 8, msgsubcode), UVM_LOW)
+        end
+        5: begin
+          // Flip opcode bit
+          opcode = ucie_sb_opcode_e'(opcode ^ (1 << (error_bit_position % 5)));
+          `uvm_info("ERROR_INJECT", $sformatf("Injected control parity error: flipped opcode bit %0d (new value: %s)", error_bit_position % 5, opcode.name()), UVM_LOW)
+        end
+      endcase
+    end
+    
+    PKT_CLOCK_PATTERN: begin
+      `uvm_warning("ERROR_INJECT", "Control parity error injection not supported for clock patterns")
+    end
+    
+    default: begin
+      `uvm_warning("ERROR_INJECT", $sformatf("Control parity error injection not supported for packet type: %s", pkt_type.name()))
+    end
+  endcase
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * PLUSARGS CONFIGURATION CHECK
+ * 
+ * Checks for plusargs to configure error injection behavior:
+ *   +INJECT_AT_PARITY_BIT    - Inject errors at parity bits (DP/CP) directly
+ *   +INJECT_AT_FIELD         - Inject errors at header fields (default)
+ *
+ * Usage examples:
+ *   +INJECT_AT_PARITY_BIT    - All error injections target parity bits
+ *   +INJECT_AT_FIELD         - All error injections target header fields
+ *   (no plusarg)             - Default behavior (inject at fields)
+ *
+ * This allows runtime control of error injection strategy without
+ * recompiling the testbench.
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_transaction::check_plusargs();
+  string plusarg_value;
+  
+  // Check for parity bit injection plusarg
+  if ($test$plusargs("INJECT_AT_PARITY_BIT")) begin
+    inject_at_parity_bit = 1;
+    `uvm_info("PLUSARGS", "Error injection configured to target parity bits (DP/CP)", UVM_LOW)
+  end else if ($test$plusargs("INJECT_AT_FIELD")) begin
+    inject_at_parity_bit = 0;
+    `uvm_info("PLUSARGS", "Error injection configured to target header fields", UVM_LOW)
+  end else begin
+    // Default behavior: inject at fields
+    inject_at_parity_bit = 0;
+    `uvm_info("PLUSARGS", "Error injection using default behavior (target header fields)", UVM_MEDIUM)
+  end
 endfunction
