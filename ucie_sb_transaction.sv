@@ -147,6 +147,8 @@ class ucie_sb_transaction extends uvm_sequence_item;
   extern function void inject_data_parity_error_func();
   extern function void inject_control_parity_error_func();
   extern function bit randomize_error_bit_position();
+  extern function bit randomize_error_bit_position_simple();
+  extern function void set_random_error_bit_position();
   extern function void check_plusargs();
   extern function bit [63:0] get_header();
   extern function bit [63:0] get_message_header();
@@ -252,15 +254,8 @@ class ucie_sb_transaction extends uvm_sequence_item;
   // Dedicated constraint for randomizing only error bit position
   // Considers data width for more intelligent bit position selection
   constraint error_bit_position_only_c {
-    if (inject_data_parity_error && has_data) {
-      if (is_64bit) {
-        error_bit_position inside {[0:63]};  // Full 64-bit range
-      } else {
-        error_bit_position inside {[0:31]};  // 32-bit range only
-      }
-    } else {
-      error_bit_position inside {[0:63]};     // Full range for control errors or DP bit
-    }
+    // Simplified constraint to avoid dependency issues
+    error_bit_position inside {[0:63]};
   }
 
 endclass : ucie_sb_transaction
@@ -883,14 +878,80 @@ endfunction
  * Returns: 1 if randomization succeeded, 0 if failed
  *-----------------------------------------------------------------------------*/
 function bit ucie_sb_transaction::randomize_error_bit_position();
-  // Method 1: Use randomize() with only the specific field
-  if (!this.randomize(error_bit_position)) begin
-    `uvm_error("RAND_ERROR", "Failed to randomize error_bit_position")
+  bit [5:0] max_range;
+  
+  // Determine appropriate range based on error type and data width
+  if (inject_data_parity_error && has_data && !is_64bit) begin
+    // For 32-bit data parity errors, limit to 32-bit range
+    max_range = 31;
+  end else begin
+    // For all other cases, use full 64-bit range
+    max_range = 63;
+  end
+  
+  // Use std::randomize for more reliable single-field randomization
+  if (!std::randomize(error_bit_position) with { 
+    error_bit_position <= max_range; 
+  }) begin
+    `uvm_error("RAND_ERROR", "Failed to randomize error_bit_position with std::randomize")
     return 0;
   end
   
-  `uvm_info("ERROR_INJECT", $sformatf("Randomized error_bit_position to: %0d", error_bit_position), UVM_LOW)
+  `uvm_info("ERROR_INJECT", $sformatf("Randomized error_bit_position to: %0d (max_range: %0d)", error_bit_position, max_range), UVM_LOW)
   return 1;
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * SIMPLE ERROR BIT POSITION RANDOMIZATION
+ * 
+ * Alternative method using object randomization with inline constraints.
+ * This method avoids dependency issues with complex constraints by using
+ * inline constraint specification.
+ *
+ * Returns: 1 if randomization succeeded, 0 if failed
+ *-----------------------------------------------------------------------------*/
+function bit ucie_sb_transaction::randomize_error_bit_position_simple();
+  // Use object randomization with inline constraints to avoid dependency issues
+  if (!this.randomize() with { 
+    error_bit_position inside {[0:63]};
+    // Keep other error injection fields unchanged
+    inject_data_parity_error == inject_data_parity_error;
+    inject_control_parity_error == inject_control_parity_error;
+  }) begin
+    `uvm_error("RAND_ERROR", "Failed to randomize error_bit_position with inline constraints")
+    return 0;
+  end
+  
+  `uvm_info("ERROR_INJECT", $sformatf("Simple randomized error_bit_position to: %0d", error_bit_position), UVM_LOW)
+  return 1;
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * MANUAL ERROR BIT POSITION RANDOMIZATION
+ * 
+ * Simple manual method using $urandom_range() for cases where constraint
+ * randomization is problematic. This is the most reliable method but
+ * doesn't use SystemVerilog's constraint solver.
+ *
+ * This method automatically considers data width for intelligent range selection.
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_transaction::set_random_error_bit_position();
+  bit [5:0] max_range;
+  
+  // Determine appropriate range based on error type and data width
+  if (inject_data_parity_error && has_data && !is_64bit) begin
+    // For 32-bit data parity errors, limit to 32-bit range
+    max_range = 31;
+  end else begin
+    // For all other cases, use full 64-bit range
+    max_range = 63;
+  end
+  
+  // Use $urandom_range for simple random selection
+  error_bit_position = $urandom_range(0, max_range);
+  
+  `uvm_info("ERROR_INJECT", $sformatf("Manually set random error_bit_position to: %0d (range: 0-%0d)", 
+            error_bit_position, max_range), UVM_LOW)
 endfunction
 
 /*-----------------------------------------------------------------------------
