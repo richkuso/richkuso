@@ -61,6 +61,12 @@ class ucie_sb_monitor extends uvm_monitor;
   bit first_packet = 1;                           // Flag for first packet detection
   
   /*---------------------------------------------------------------------------
+   * RESET CONTROL
+   *---------------------------------------------------------------------------*/
+  
+  bit monitor_reset = 0;                          // Internal reset flag for monitor restart
+  
+  /*---------------------------------------------------------------------------
    * STATISTICS AND MONITORING COUNTERS
    *---------------------------------------------------------------------------*/
   
@@ -92,6 +98,8 @@ class ucie_sb_monitor extends uvm_monitor;
   extern virtual function void update_statistics(ucie_sb_transaction trans);
   extern virtual function void print_statistics();
   extern virtual function void set_ui_time(real ui_ns);
+  extern virtual function void reset_monitor();
+  extern virtual task reset_monitor_process();
 
 endclass : ucie_sb_monitor
 
@@ -157,56 +165,79 @@ task ucie_sb_monitor::run_phase(uvm_phase phase);
   
   `uvm_info("MONITOR", "Starting sideband monitor run phase with timestamp-based gap validation", UVM_LOW)
   
+  // Start reset monitoring process in parallel
+  fork
+    reset_monitor_process();
+  join_none
+  
   forever begin
-    wait (!vif.sb_reset);
+    // Wait for reset deassertion and monitor_reset flag clear
+    wait (!vif.sb_reset && !monitor_reset);
     
-    wait_for_packet_start();
-    
-    if (!first_packet) begin
-      validate_packet_gap();
-    end else begin
-      first_packet = 0;
-      `uvm_info("MONITOR", "First packet detected - skipping gap validation", UVM_DEBUG)
-    end
-    
-    capture_serial_packet(header_packet);
-    `uvm_info("MONITOR", $sformatf("Captured header packet: 0x%016h", header_packet), UVM_HIGH)
-    
-    trans = decode_header(header_packet);
-    
-    if (trans != null) begin
-      if (trans.has_data) begin
+    // Check for reset assertion during packet processing
+    fork : packet_processing
+      begin
         wait_for_packet_start();
-        validate_packet_gap();
         
-        capture_serial_packet(data_packet);
-        `uvm_info("MONITOR", $sformatf("Captured data packet: 0x%016h", data_packet), UVM_HIGH)
-        
-        if (trans.is_64bit) begin
-          trans.data = data_packet;
+        if (!first_packet) begin
+          validate_packet_gap();
         end else begin
-          trans.data = {32'h0, data_packet[31:0]};
+          first_packet = 0;
+          `uvm_info("MONITOR", "First packet detected - skipping gap validation", UVM_DEBUG)
         end
-      end
-      
-      if (!trans.is_clock_pattern) begin
-        check_transaction_validity(trans);
-      end else begin
-        if (!trans.is_valid_clock_pattern()) begin
-          `uvm_error("MONITOR", "Clock pattern transaction has invalid data pattern")
+        
+        capture_serial_packet(header_packet);
+        `uvm_info("MONITOR", $sformatf("Captured header packet: 0x%016h", header_packet), UVM_HIGH)
+        
+        trans = decode_header(header_packet);
+        
+        if (trans != null) begin
+          if (trans.has_data) begin
+            wait_for_packet_start();
+            validate_packet_gap();
+            
+            capture_serial_packet(data_packet);
+            `uvm_info("MONITOR", $sformatf("Captured data packet: 0x%016h", data_packet), UVM_HIGH)
+            
+            if (trans.is_64bit) begin
+              trans.data = data_packet;
+            end else begin
+              trans.data = {32'h0, data_packet[31:0]};
+            end
+          end
+          
+          if (!trans.is_clock_pattern) begin
+            check_transaction_validity(trans);
+          end else begin
+            if (!trans.is_valid_clock_pattern()) begin
+              `uvm_error("MONITOR", "Clock pattern transaction has invalid data pattern")
+              protocol_errors++;
+            end else begin
+              `uvm_info("MONITOR", "Clock pattern validation PASSED", UVM_HIGH)
+            end
+          end
+          
+          update_statistics(trans);
+          
+          ap.write(trans);
+          `uvm_info("MONITOR", {"Monitored transaction: ", trans.convert2string()}, UVM_MEDIUM)
+        end else begin
+          `uvm_error("MONITOR", $sformatf("Failed to decode header packet: 0x%016h", header_packet))
           protocol_errors++;
-        end else begin
-          `uvm_info("MONITOR", "Clock pattern validation PASSED", UVM_HIGH)
         end
       end
-      
-      update_statistics(trans);
-      
-      ap.write(trans);
-      `uvm_info("MONITOR", {"Monitored transaction: ", trans.convert2string()}, UVM_MEDIUM)
-    end else begin
-      `uvm_error("MONITOR", $sformatf("Failed to decode header packet: 0x%016h", header_packet))
-      protocol_errors++;
+      begin
+        // Monitor for reset assertion during packet processing
+        wait (vif.sb_reset || monitor_reset);
+        `uvm_info("MONITOR", "Reset detected during packet processing - restarting monitor", UVM_LOW)
+      end
+    join_any
+    disable packet_processing;
+    
+    // If reset was detected, clear state and restart
+    if (vif.sb_reset || monitor_reset) begin
+      reset_monitor();
+      continue;
     end
   end
 endtask
@@ -470,15 +501,15 @@ function void ucie_sb_monitor::check_transaction_validity(ucie_sb_transaction tr
     expected_dp = 1'b0;
   end
   
-  // Calculate expected control parity based on packet type (includes DP)
+  // Calculate expected control parity based on packet type (excludes DP per UCIe spec)
   if (trans.pkt_type == PKT_CLOCK_PATTERN) begin
     expected_cp = 1'b0;
   end else if (trans.pkt_type == PKT_REG_ACCESS) begin    
-    expected_cp = ^{trans.srcid, trans.tag, trans.be, trans.ep, trans.opcode, expected_dp, trans.cr, trans.dstid, trans.addr[23:0]};
+    expected_cp = ^{trans.srcid, trans.tag, trans.be, trans.ep, trans.opcode, trans.cr, trans.dstid, trans.addr[23:0]};
   end else if (trans.pkt_type == PKT_COMPLETION) begin    
-    expected_cp = ^{trans.srcid, trans.tag, trans.be, trans.ep, trans.opcode, expected_dp, trans.cr, trans.dstid, trans.status[2:0]};  
+    expected_cp = ^{trans.srcid, trans.tag, trans.be, trans.ep, trans.opcode, trans.cr, trans.dstid, trans.status[2:0]};  
   end else if (trans.pkt_type == PKT_MESSAGE) begin
-    expected_cp = ^{trans.srcid, trans.msgcode, trans.opcode, expected_dp, trans.dstid, trans.msginfo, trans.msgsubcode};	
+    expected_cp = ^{trans.srcid, trans.msgcode, trans.opcode, trans.dstid, trans.msginfo, trans.msgsubcode};	
   end else if (trans.pkt_type == PKT_MGMT) begin    
     `uvm_warning("MONITOR", "Management message parity validation not supported")
     expected_cp = 1'b0;
@@ -602,3 +633,86 @@ function void ucie_sb_monitor::set_ui_time(real ui_ns);
   ui_time_ns = ui_ns;
   `uvm_info("MONITOR", $sformatf("UI time set to %.2fns (%.1fMHz equivalent)", ui_ns, 1000.0/ui_ns), UVM_LOW)
 endfunction
+
+/*-----------------------------------------------------------------------------
+ * MONITOR RESET FUNCTION
+ * 
+ * Purpose:
+ *   • Clear all monitor state when reset is asserted
+ *   • Reset timing tracking variables
+ *   • Clear statistics counters (optional - can be preserved for debug)
+ *   • Prepare monitor for clean restart
+ *
+ * Reset Actions:
+ *   • Clear packet timing timestamps
+ *   • Reset first packet flag
+ *   • Clear internal reset flag
+ *   • Log reset action for debugging
+ *
+ * Usage:
+ *   • Called automatically when reset detected
+ *   • Can be called manually for monitor restart
+ *   • Non-blocking operation for immediate response
+ *-----------------------------------------------------------------------------*/
+function void ucie_sb_monitor::reset_monitor();
+  `uvm_info("MONITOR", "Resetting monitor state - clearing timing and flags", UVM_LOW)
+  
+  // Clear timing tracking
+  packet_end_time = 0;
+  packet_start_time = 0;
+  first_packet = 1;
+  
+  // Clear internal reset flag
+  monitor_reset = 0;
+  
+  // Note: Statistics are preserved across resets for debugging
+  // If you want to clear statistics on reset, uncomment below:
+  // packets_captured = 0;
+  // bits_captured = 0;
+  // protocol_errors = 0;
+  // gap_violations = 0;
+  
+  `uvm_info("MONITOR", "Monitor reset complete - ready for new packets", UVM_LOW)
+endfunction
+
+/*-----------------------------------------------------------------------------
+ * RESET MONITORING PROCESS
+ * 
+ * Purpose:
+ *   • Continuously monitor for reset assertion
+ *   • Trigger monitor reset when sb_reset goes high
+ *   • Provide clean separation between reset detection and processing
+ *
+ * Operation:
+ *   • Runs in parallel with main monitoring loop
+ *   • Detects reset assertion immediately
+ *   • Sets internal flag to interrupt packet processing
+ *   • Allows main loop to handle reset gracefully
+ *
+ * Reset Sequence:
+ *   1. Detect sb_reset assertion
+ *   2. Set monitor_reset flag
+ *   3. Wait for reset deassertion
+ *   4. Clear monitor_reset flag in reset_monitor()
+ *   5. Main loop restarts from beginning
+ *
+ * Advantages:
+ *   • Immediate reset response
+ *   • Clean state transition
+ *   • No hanging processes during reset
+ *   • Graceful restart capability
+ *-----------------------------------------------------------------------------*/
+task ucie_sb_monitor::reset_monitor_process();
+  forever begin
+    // Wait for reset assertion
+    @(posedge vif.sb_reset);
+    `uvm_info("MONITOR", "Reset asserted - setting monitor reset flag", UVM_LOW)
+    
+    // Set flag to interrupt main monitoring loop
+    monitor_reset = 1;
+    
+    // Wait for reset deassertion before allowing restart
+    @(negedge vif.sb_reset);
+    `uvm_info("MONITOR", "Reset deasserted - monitor ready for restart", UVM_LOW)
+  end
+endtask
