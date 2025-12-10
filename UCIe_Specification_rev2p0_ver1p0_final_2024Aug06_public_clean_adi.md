@@ -324,9 +324,9 @@ MBTRAIN ........................................................................
 
 4.5.3.4
 
-4.4
-
 4.5
+
+4.4
 
 UCIe Specification Revision 2.0, Version 1.0
 August 6, 2024
@@ -451,9 +451,9 @@ Ball-out and Channel Specification .............................................
 5.6
 5.7
 
-5.4
-
 5.5
+
+5.4
 
 UCIe Specification Revision 2.0, Version 1.0
 August 6, 2024
@@ -1093,9 +1093,9 @@ UCIe Link Registers in Streaming Mode and System SW/FW Implications ............
 MSI and MSI-X Capability in Hosts/Switches for UCIe Interrupt.............................. 450
 UCIe Early Discovery Table (UEDT) .................................................................... 450
 
-9.5.4.5.4
-
 9.5.4.5.5
+
+9.5.4.5.4
 
 9.6
 9.7
