@@ -1120,7 +1120,7 @@ TRD_P [0] (RRD_P[0]) and the upper Lane is remapped to TRD_P [1] (RRD_P [1]) . F
 physical Lane failures in TD_P [63 : 32] (RD_P[63: 31] ), the lower Lane must be remapped to
 TRD_P [2] (RRD_P[2]) and the upper Lane is remapped to TRD_P [3] (RRD_P [3]).
 
-Pseudo code for two Lane repair in TD_P[31: 0] (RD_P[31:0]) $\left( 0 < = x , y < = 3 1 \right) :$
+Pseudo code for two Lane repair in TD_P[31: 0] (RD_P[31: 0]) $\left( 0 < = x , y < = 3 1 \right) :$
 
 <figure>
 
@@ -1140,7 +1140,7 @@ RD_L $I \left[ 3 1 \right] = R R D _ { - } \left[ 1 \right]$
 
 </figure>
 
-Pseudo code for two Lane repair in TD_P[63: 32] (RD_P[63: 32] ) $\left( 3 2 < = x , y < = 6 3 \right)$ (this does not
+Pseudo code for two Lane repair in TD_P[63: 32] (RD_P[63: 32]) $\left( 3 2 < = x , y < = 6 3 \right)$ (this does not
 apply to x32 Advanced Package Link):
 
 $$\mathrm { R D } L \left[ x - i \right] = R D \quad P \left[ x - i - 1 \right]$$
@@ -1401,7 +1401,7 @@ RD_L [32] = RRD_P[2]
 
 </figure>
 
-Pseudo code for two-Lane failure in TD_P[63: 32] (RD_P[0: 31] ) $\left( 3 2 < = x < = 6 3 \right) :$
+Pseudo code for two-Lane failure in TD_P[63: 32] (RD_P[0: 31]) $\left( 3 2 < = x < = 6 3 \right) :$
 
 IF failure occurs in TD_P[x], TD_P[y] AND $\left( x < y \right)$ :
 IF x > 32 :
@@ -6649,7 +6649,7 @@ MBTRAIN.LINKSPEED.
 In this state, the UCIe Module checks Link stability at the operating date rate. The Track Transmitter is
 held Low. When not performing the actions relevant to this state:
 
-. Clock Receivers are enabled
+· Clock Receivers are enabled
 
 · Data and Valid Transmitters are held low
 
@@ -7768,7 +7768,7 @@ Aggregate Raw BW (M, CLS) = Common Minimum Link width * M * CLS
 If modules report Width degrade:
 If CLS = 4 GT/s
 Apply Width degrade for all modules
-Else If Aggregate Raw BW(M, (CLS-1) ) > Aggregate raw BW (M/2, CLS) :
+Else If Aggregate Raw BW (M, (CLS-1) ) > Aggregate raw BW (M/2, CLS) :
 Attempt Speed Degrade
 
 Else :

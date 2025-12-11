@@ -655,7 +655,7 @@ UCle Register Block Header
 <tr>
 <td rowspan="2">1:0</td>
 <td rowspan="2">RW</td>
-<td>Compliance Mode Any write to this register takes effect after the next entry of RDI state status to Retrain. · 00b = Normal mode of operation · 01b = PHY only Link Training or Retraining - Adapter performs the necessary RDI handshakes to bring RDI to Active but does not perform Parameter exchanges or Adapter vLSM handshakes and keeps FDI in Reset to prevent mainband traffic. - Adapter must still trigger RDI to Retrain if software programmed the Retrain bit in Link Control. - Sideband Register Access requests and completions are operational in this mode.</td>
+<td>Compliance Mode Any write to this register takes effect after the next entry of RDI state status to Retrain. · 00b = Normal mode of operation . 01b = PHY only Link Training or Retraining - Adapter performs the necessary RDI handshakes to bring RDI to Active but does not perform Parameter exchanges or Adapter vLSM handshakes and keeps FDI in Reset to prevent mainband traffic. - Adapter must still trigger RDI to Retrain if software programmed the Retrain bit in Link Control. - Sideband Register Access requests and completions are operational in this mode.</td>
 </tr>
 <tr>
 <td>· 10b = Adapter Compliance - Adapter performs the necessary RDI handshakes to bring RDI to Active but does not perform Parameter exchanges or Adapter vLSM handshakes (unless triggered by software) and keeps FDI in Reset. - Adapter only performs actions based on the triggers and setup according to the registers defined in Section 9.5.4.4.2 to Section 9.5.4.4.6. - Adapter must still trigger RDI to Retrain if software programmed the Retrain bit in Link Control. - Sideband Register Access requests and completions are operational in this mode. · 11b = Reserved $\begin{array}{} { \text { Any RDI transition to LINKE } } \\ { \text { Anse not reset any registers } } \end{array}$ when this field is either 01b or 10b Default is 00b.</td>
@@ -1670,7 +1670,7 @@ signals run on the lclk or the Mgmt_Clk is implementation-specific.
 <td>Management transport negotiation phase completed. Signal de-asserts after being asserted for two clocks. This signal asserts when MBINIT.PARAM management transport negotiation phase completes. Note that this signal is asserted even if MBINIT.PARAM Configuration or SBFE exchanges indicate no support for management transport in the partner chiplet.</td>
 </tr>
 <tr>
-<td>pm_param_local_count [N-1: 0]</td>
+<td>pm_param_local_count [N-1 : 0]</td>
 <td>Number of modules that successfully negotiated Management transport on transmit side. This field is sampled only when pm_param_done signal is asserted. $0 0 0 b : 0 \quad m o d u l e s$ 011b: 3 modules 001b: 1 module $1 0 0 b : 4 \quad m o d u l e s$ 010b: 2 modules Others: Reserved N=2 for 1, 2, or 3 modules scenarios, and N=3 for 4 modules scenario.</td>
 </tr>
 <tr>
@@ -2205,7 +2205,7 @@ Ip_state_req=Active
 lp_state_req=Active
 
 SB MSG {LinkMgmt.RDI.Req.Active}
-SB MSG {LinkMgmt.RDI.Rsp.Active}-
+SB MSG {LinkMgmt.RDI.Rsp.Active}
 I
 
 SB MSG {LinkMgmt.RDI.Req.Active}
@@ -2272,7 +2272,7 @@ must initiate PM exit flow on RDI by requesting lp_state_req = Active. All PM en
 handshakes must have finished prior to this (this is when the Physical Layer on both sides of
 the Link have received a valid "PM Response" sideband message).
 
-\- If the resolution is Active.PMNAK, the Adapter must initiate a request of Active on RDI. Once
+\- If the resolution is Active. PMNAK, the Adapter must initiate a request of Active on RDI. Once
 the status moves to Active, the Adapter is permitted to re-request PM entry (if all conditions
 of PM entry are still met). Figure 10-9 shows an example of PM abort flow. The PM request
 could have been from either side.
@@ -3378,7 +3378,7 @@ FOBytes(127.64]
 
 FOBytes(191:128]
 
-FOBytes[255.192]
+FOBytes[255. 192]
 
 FÜBytes(83.0]
 
@@ -5348,7 +5348,7 @@ Retrain
 
 Adapter LSM is L2
 
-SB MSG {LinkMgmt.AdapterO.Rsp.L2}
+SB MSG {LinkMgmt.Adapter0.Rsp.L2}
 
 Adapter LSM is Retrain
 
@@ -5825,7 +5825,7 @@ are listed below.
 
 · CXL DVSEC Flex Bus Port Received Modified TS Data Phase1 Register
 
-. CXL DVSEC Flex Bus Port Control
+· CXL DVSEC Flex Bus Port Control
 
 · CXL DVSEC Flex Bus Port Status
 

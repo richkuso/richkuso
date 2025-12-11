@@ -9541,7 +9541,7 @@ enabled) are transmitted to the remote Link partner using a sideband message. In
 </tr>
 <tr>
 <td>"Standard 256B End Header Flit Format"</td>
-<td>This must be advertised if any of the following are true: · Enhanced Multi-Protocol capability is supported and enabled, AND the Standard 256B End Header Flit Format is supported and enabled · The Standard 256B End Header Flit Format for Streaming Protocol capability is supported and enabled Otherwise, it must be set to 0b.</td>
+<td>This must be advertised if any of the following are true: · Enhanced Multi-Protocol capability is supported and enabled, AND the Standard 256B End Header Flit Format is supported and enabled . The Standard 256B End Header Flit Format for Streaming Protocol capability is supported and enabled Otherwise, it must be set to 0b.</td>
 </tr>
 <tr>
 <td>"Standard 256B Start Header Flit Format"</td>
@@ -10800,7 +10800,7 @@ a. See Figure 2-1 for color mapping.
 
 b. Flit Header Byte 0 and Byte 1, respectively.
 
-c. CRCO Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
+c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 
 Figure 3-18. Format 4: Standard 256B Start Header Flit Format for CXL.io or PCIeª
 
@@ -11416,95 +11416,105 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 
 e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 
+$\frac { 9 } { 8 }$ 192
+
+Byte 128
+
+$B y t e$ 64
+
+$\frac { 5 } { 8 }$
+
 <table>
 <tr>
-<th>Byte 192</th>
-<th>Byte 128</th>
-<th>$\frac { 5 } { 8 }$</th>
-<th>Byte 0</th>
-<th></th>
-<th></th>
-</tr>
-<tr>
-<th rowspan="8">52B of Flit Chunk 3</th>
-<th rowspan="9"></th>
+<th rowspan="5">52B of Flit</th>
+<th rowspan="8"></th>
 <th rowspan="6">58B</th>
 <th>FH B0b</th>
-<th>+0</th>
-<th>Figure 3-24.</th>
+<th rowspan="2">+0 +1</th>
+<th rowspan="3">Figure 3-24. Format for</th>
 </tr>
 <tr>
-<td>FH B1b</td>
-<td>+1</td>
-<td></td>
+<th>$F H B 1 ^ { b }$</th>
 </tr>
 <tr>
-<th rowspan="5"></th>
-<th rowspan="3">+2</th>
-<th>Format 6: for CXL.cachememª</th>
+<th rowspan="9"></th>
+<th rowspan="2">+2</th>
 </tr>
 <tr>
-<td></td>
-</tr>
-<tr>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td>Latency-Optimized</td>
-</tr>
-<tr>
-<td>of</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td rowspan="4"></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="3">(from</td>
-<td>Flit</td>
-<td rowspan="2"></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="7">Flit Chunk</td>
-<td rowspan="2">Chunk</td>
-<td></td>
+<td>6: CXL.cachememª</td>
 </tr>
 <tr>
 <td></td>
 <td></td>
 </tr>
 <tr>
-<td rowspan="5">Protocol</td>
-<td rowspan="2"></td>
+<td>Chunk</td>
 <td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td>62B</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td>1</td>
-<td></td>
-<td></td>
-<td>256B</td>
+<td rowspan="2">Latency-Optimized</td>
 </tr>
 <tr>
 <td></td>
 <td>of</td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td rowspan="2">Flit</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td>(from</td>
+<td>Flit</td>
+<td>Chunk</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+<td rowspan="3">62B</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Protocol</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>1</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td rowspan="2">Chunk</td>
+<td></td>
+<td rowspan="3">of Flit</td>
+<td></td>
+<td>256B</td>
+</tr>
+<tr>
+<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -11512,47 +11522,42 @@ e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 <tr>
 <td></td>
 <td>2</td>
-<td></td>
-<td>Flit</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="13">Layer)</td>
-<td></td>
-<td></td>
-<td></td>
+<td>(from</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
+<td></td>
+<td></td>
+<td></td>
+<td rowspan="2">Chunk</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Layer)</td>
 <td>64B</td>
-<td></td>
-<td></td>
+<td>Protocol</td>
 <td></td>
 <td>with</td>
 </tr>
 <tr>
 <td></td>
+<td rowspan="2">(from</td>
 <td></td>
+<td rowspan="2"></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td rowspan="3"></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
 <tr>
-<td rowspan="22">(from Protocol Layer)</td>
+<td rowspan="2"></td>
 <td></td>
-<td>Chunk</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="3">Protocol</td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
 <td rowspan="2">0</td>
 <td></td>
 <td></td>
@@ -11560,39 +11565,42 @@ e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 <tr>
 <td></td>
 <td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
 <td></td>
 </tr>
 <tr>
+<td></td>
+<td rowspan="5">Protocol</td>
+<td></td>
+<td rowspan="3">(from</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td rowspan="5"></td>
 <td rowspan="11">Layer)</td>
-<td rowspan="2">(from</td>
-<td rowspan="2"></td>
+<td></td>
 <td>Optional</td>
 </tr>
 <tr>
 <td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
 <td></td>
 </tr>
 <tr>
-<td rowspan="2">Protocol</td>
+<td rowspan="15">Protocol Layer)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
 <td rowspan="2">+51</td>
 <td></td>
 </tr>
 <tr>
+<td rowspan="13">Layer)</td>
 <td></td>
 </tr>
 <tr>
-<td>H B4c</td>
-<td rowspan="11">Layer)</td>
-<td>+52</td>
+<td>$H B 4 ^ { c }$</td>
+<td>$+ 5 2$</td>
 <td>Bytes</td>
 </tr>
 <tr>
@@ -11607,27 +11615,27 @@ e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 </tr>
 <tr>
 <td>H B7c</td>
-<td></td>
-</tr>
-<tr>
-<td>H B8c</td>
-<td rowspan="2">+57</td>
 <td>Format</td>
 </tr>
 <tr>
+<td>H B8c</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
 <td>H B9c</td>
+<td>+57</td>
 <td></td>
 </tr>
 <tr>
 <td>H B10c</td>
 <td>$H B O ^ { C }$</td>
 <td rowspan="2">+58</td>
-<td></td>
+<td rowspan="2"></td>
 </tr>
 <tr>
 <td>H B11c</td>
 <td>H B1c</td>
-<td></td>
 </tr>
 <tr>
 <td>H B12c</td>
@@ -11650,7 +11658,6 @@ e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 <tr>
 <td>C1 B1d</td>
 <td>C0 B1d</td>
-<td></td>
 <td>+63</td>
 <td></td>
 </tr>
@@ -11666,10 +11673,10 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 
 <table>
 <tr>
-<th>Byte 192</th>
-<th>$B y t e$ 128</th>
-<th>Byte 64</th>
-<th>$\frac { 5 } { 8 }$</th>
+<th>$\frac { 8 } { 8 }$ 192</th>
+<th>$\frac { 5 } { 8 }$ 128</th>
+<th>$\frac { 8 } { 8 }$</th>
+<th>Byte 0</th>
 <th></th>
 <th></th>
 <th>Figure</th>
@@ -11688,14 +11695,14 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td>FH B1b</td>
-<td>$+ 1$</td>
+<td>+1</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td></td>
 <td></td>
-<td rowspan="2"></td>
+<td></td>
 <td></td>
 <td>+2</td>
 <td>for</td>
@@ -11703,13 +11710,22 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 </tr>
 <tr>
 <td></td>
+<td></td>
+<td rowspan="2"></td>
 <td rowspan="2"></td>
 <td></td>
-<td></td>
 <td>Streaming</td>
-<td>Format 6:</td>
+<td>Format</td>
 </tr>
 <tr>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>6:</td>
+</tr>
+<tr>
+<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -11745,24 +11761,18 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 </tr>
 <tr>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
 <td>62B</td>
-<td rowspan="2"></td>
-<td rowspan="2">62B</td>
 <td></td>
-<td rowspan="2"></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
+<td>62B</td>
 <td></td>
 <td></td>
 <td></td>
@@ -11805,29 +11815,15 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 </tr>
 <tr>
-<td></td>
+<td>Chunk</td>
+<td rowspan="2">Chunk 2</td>
 <td rowspan="2">Chunk</td>
-<td></td>
-<td>of</td>
-<td></td>
-<td></td>
-<td></td>
+<td rowspan="2">of Flit</td>
+<td rowspan="2"></td>
+<td rowspan="2"></td>
+<td rowspan="2">256B</td>
 </tr>
 <tr>
-<td>Chunk</td>
-<td>Chunk</td>
-<td></td>
-<td></td>
-<td></td>
-<td>256B</td>
-</tr>
-<tr>
-<td></td>
-<td>2</td>
-<td></td>
-<td>Flit</td>
-<td></td>
-<td></td>
 <td></td>
 </tr>
 <tr>
@@ -11887,26 +11883,17 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <tr>
 <td></td>
 <td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td>Layer)</td>
-<td></td>
 <td>Layer)</td>
 <td>Protocol</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Layer)</td>
+<td></td>
+<td></td>
+<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -11933,21 +11920,15 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td></td>
+<td>Layer)</td>
 <td></td>
 <td></td>
 <td>Flit</td>
 </tr>
 <tr>
 <td></td>
-<td rowspan="2"></td>
-<td rowspan="2"></td>
-<td>Layer)</td>
 <td></td>
 <td></td>
-<td rowspan="2">Format</td>
-</tr>
-<tr>
 <td></td>
 <td></td>
 <td></td>
@@ -11958,14 +11939,23 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td>$+ 6 1$</td>
+<td></td>
+<td></td>
+<td>Format</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>+61</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td>C1 B0c</td>
 <td></td>
-<td>$C 0 B 0 ^ { \circ }$</td>
+<td>CO BOC</td>
 <td></td>
 <td>+62</td>
 <td></td>
@@ -11993,20 +11983,21 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <th>c. CRC0 b. Flit Header</th>
 <th>a. See Figure</th>
 <th>Byte 192</th>
-<th>$\frac { 5 } { 8 }$ 128</th>
+<th>Byte 128</th>
 <th>Byte 64</th>
-<th>$B y t e \quad 0$</th>
+<th>$\frac { 5 } { 8 }$</th>
 <th></th>
 <th></th>
 <th>Figure</th>
 </tr>
 <tr>
-<td colspan="2">Byte</td>
+<td>Byte</td>
+<td></td>
 <td></td>
 <td></td>
 <td rowspan="2"></td>
 <td>FH B0b</td>
-<td>40</td>
+<td>+0</td>
 <td></td>
 <td>3-26.</td>
 </tr>
@@ -12015,8 +12006,8 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td>2-1</td>
 <td></td>
 <td></td>
-<td>FH B1b</td>
-<td>71</td>
+<td>$F H B 1 ^ { b } + 1$</td>
+<td></td>
 <td></td>
 <td></td>
 </tr>
@@ -12027,8 +12018,8 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td>4</td>
-<td>for</td>
+<td>+2</td>
+<td>for Management</td>
 <td>Format</td>
 </tr>
 <tr>
@@ -12036,15 +12027,13 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td>mapping.</td>
 <td>52B</td>
 <td rowspan="2"></td>
+<td rowspan="2"></td>
+<td rowspan="2"></td>
 <td></td>
 <td></td>
-<td></td>
-<td>Management</td>
 <td>6:</td>
 </tr>
 <tr>
-<td></td>
-<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -12119,7 +12108,7 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td>Latency-Optimized</td>
 </tr>
 <tr>
-<td></td>
+<td>and</td>
 <td></td>
 <td>3</td>
 <td></td>
@@ -12130,7 +12119,7 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 </tr>
 <tr>
-<td>and</td>
+<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -12278,17 +12267,6 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
 <td>Protocol</td>
 <td></td>
 <td></td>
@@ -12299,18 +12277,18 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td></td>
+<td>Layer)</td>
 <td></td>
 <td>+51</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
+<td rowspan="2"></td>
+<td rowspan="2"></td>
 <td></td>
-<td rowspan="4"></td>
+<td rowspan="2">Layer)</td>
 <td></td>
-<td></td>
-<td>Layer)</td>
 <td></td>
 <td>+52</td>
 <td></td>
@@ -12319,23 +12297,18 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <tr>
 <td></td>
 <td></td>
-<td rowspan="3">Layer)</td>
 <td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="2"></td>
-<td rowspan="2">Rsvd 6B</td>
-<td rowspan="2"></td>
-<td rowspan="2">Layer)</td>
 <td></td>
 <td></td>
 <td>Flit</td>
 </tr>
 <tr>
+<td></td>
+<td></td>
+<td>Rsvd 6B</td>
+<td></td>
+<td></td>
+<td>Layer)</td>
 <td></td>
 <td></td>
 <td>Format</td>
@@ -12386,11 +12359,11 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <tr>
 <td></td>
 <td></td>
-<td>$B 1 ^ { c }$</td>
+<td>C1 B1c</td>
 <td></td>
 <td>C0 B1c</td>
 <td></td>
-<td>$+ 6 3$</td>
+<td>+63</td>
 <td></td>
 <td></td>
 </tr>
@@ -13254,7 +13227,7 @@ both NOP flits or Payload flits are permitted to be used to complete the Sequenc
 Handshake Phase. If there are no Payload flits to send, the Adapter must generate NOP flits to
 complete the Sequence Number Handshake Phase.
 
-· The variable "Prior Flit was Payload" is always set to 1. This bit does not exist in the Flit Header,
+. The variable "Prior Flit was Payload" is always set to 1. This bit does not exist in the Flit Header,
 and thus from the Retry perspective, implementations must assume that it is always set to 1.
 
 · MAX_UNACKNOWLEDGED_FLITS is set to the lesser of:
@@ -15781,7 +15754,7 @@ TRD_P [0] (RRD_P[0]) and the upper Lane is remapped to TRD_P [1] (RRD_P [1]) . F
 physical Lane failures in TD_P [63 : 32] (RD_P[63: 31] ), the lower Lane must be remapped to
 TRD_P [2] (RRD_P[2]) and the upper Lane is remapped to TRD_P [3] (RRD_P [3]).
 
-Pseudo code for two Lane repair in TD_P[31: 0] (RD_P[31:0]) $\left( 0 < = x , y < = 3 1 \right) :$
+Pseudo code for two Lane repair in TD_P[31: 0] (RD_P[31: 0]) $\left( 0 < = x , y < = 3 1 \right) :$
 
 <figure>
 
@@ -15801,7 +15774,7 @@ RD_L $I \left[ 3 1 \right] = R R D _ { - } \left[ 1 \right]$
 
 </figure>
 
-Pseudo code for two Lane repair in TD_P[63: 32] (RD_P[63: 32] ) $\left( 3 2 < = x , y < = 6 3 \right)$ (this does not
+Pseudo code for two Lane repair in TD_P[63: 32] (RD_P[63: 32]) $\left( 3 2 < = x , y < = 6 3 \right)$ (this does not
 apply to x32 Advanced Package Link):
 
 $$\mathrm { R D } L \left[ x - i \right] = R D \quad P \left[ x - i - 1 \right]$$
@@ -16062,7 +16035,7 @@ RD_L [32] = RRD_P[2]
 
 </figure>
 
-Pseudo code for two-Lane failure in TD_P[63: 32] (RD_P[0: 31] ) $\left( 3 2 < = x < = 6 3 \right) :$
+Pseudo code for two-Lane failure in TD_P[63: 32] (RD_P[0: 31]) $\left( 3 2 < = x < = 6 3 \right) :$
 
 IF failure occurs in TD_P[x], TD_P[y] AND $\left( x < y \right)$ :
 IF x > 32 :
@@ -21310,7 +21283,7 @@ MBTRAIN.LINKSPEED.
 In this state, the UCIe Module checks Link stability at the operating date rate. The Track Transmitter is
 held Low. When not performing the actions relevant to this state:
 
-. Clock Receivers are enabled
+· Clock Receivers are enabled
 
 · Data and Valid Transmitters are held low
 
@@ -22429,7 +22402,7 @@ Aggregate Raw BW (M, CLS) = Common Minimum Link width * M * CLS
 If modules report Width degrade:
 If CLS = 4 GT/s
 Apply Width degrade for all modules
-Else If Aggregate Raw BW(M, (CLS-1) ) > Aggregate raw BW (M/2, CLS) :
+Else If Aggregate Raw BW (M, (CLS-1) ) > Aggregate raw BW (M/2, CLS) :
 Attempt Speed Degrade
 
 Else :
@@ -37015,7 +36988,7 @@ Tx
 KL
 
 (|9x)
-K1
+KI
 
 (tex)
 1
@@ -40111,6 +40084,8 @@ K
 
 \-
 
+nro
+
 Hirey
 
 0
@@ -40175,15 +40150,16 @@ W
 
 \-
 
+(-16)
+
 I
 
 MD
 
 LT
+4
 
 my
-
-4
 
 DW
 
@@ -40223,7 +40199,7 @@ Bu
 
 \-
 
-1
+W
 
 \-
 M
@@ -40271,7 +40247,7 @@ MO
 
 M2
 
-M/
+MI
 
 MO
 
@@ -42363,7 +42339,7 @@ G
 
 2
 
-2:
+2\.
 
 Logic
 
@@ -43227,8 +43203,6 @@ pitch.
 
 \-
 
-R
-
 VDS
 
 VOD
@@ -43263,8 +43237,6 @@ WA
 
 \-
 
-0
-
 \-
 
 \-
@@ -43272,6 +43244,8 @@ WA
 \-
 
 \-
+
+4
 
 v
 
@@ -43280,8 +43254,6 @@ v
 1
 
 W
-
-I
 
 W
 
@@ -43296,11 +43268,11 @@ m
 
 \-
 
-4
-
 \-
 
 6
+
+4
 
 .
 
@@ -43327,6 +43299,8 @@ A
 \-
 
 3
+
+155
 
 151
 
@@ -52627,7 +52601,7 @@ capability structure which exposes a Circular Buffer structure.
 
 The capability structure shall define the following mandatory requirement:
 
-. Security asset class for the Circular Buffer control structure.
+· Security asset class for the Circular Buffer control structure.
 
 The capability structure can define the following optional requirement:
 
@@ -53326,9 +53300,9 @@ messages on the mainband.
 <th>9</th>
 <th>8</th>
 <th>7</th>
+<th>6</th>
 <th></th>
-<th>654</th>
-<th></th>
+<th>54</th>
 <th>3</th>
 <th></th>
 <th></th>
@@ -59349,10 +59323,10 @@ use the three following identifiers:
 <th>10</th>
 <th>9</th>
 <th></th>
+<th>876</th>
 <th></th>
 <th></th>
-<th></th>
-<th>876543210</th>
+<th>543210</th>
 <th></th>
 <th></th>
 <th></th>
@@ -65909,7 +65883,7 @@ multiples of 4 KB.
 <tr>
 <td rowspan="5">2:0</td>
 <td rowspan="5">RO</td>
-<td>Register BIR For UCIe DVSEC capability in host UiRB, Switch UiSRB and in UCIe Retimer, this field is reserved. For others, its defined as follows: Indicates which one of a Dev0/Fn0 Base Address Registers, located beginning at 10h in Configuration Space, or entry in the Enhanced Allocation capability with a matching BAR Equivalent Indicator (BEI), is used to map the UCIe Register blocks into Memory Space. Defined encodings are:</td>
+<td>Register BIR For UCIe DVSEC capability in host URB, Switch UiSRB and in UCIe Retimer, this field is reserved. For others, its defined as follows: Indicates which one of a Dev0/Fn0 Base Address Registers, located beginning at 10h in Configuration Space, or entry in the Enhanced Allocation capability with a matching BAR Equivalent Indicator (BEI), is used to map the UCIe Register blocks into Memory Space. Defined encodings are:</td>
 </tr>
 <tr>
 <td>· 0 Base Address Register 10h</td>
@@ -68095,7 +68069,7 @@ UCle Register Block Header
 <tr>
 <td rowspan="2">1:0</td>
 <td rowspan="2">RW</td>
-<td>Compliance Mode Any write to this register takes effect after the next entry of RDI state status to Retrain. · 00b = Normal mode of operation · 01b = PHY only Link Training or Retraining - Adapter performs the necessary RDI handshakes to bring RDI to Active but does not perform Parameter exchanges or Adapter vLSM handshakes and keeps FDI in Reset to prevent mainband traffic. - Adapter must still trigger RDI to Retrain if software programmed the Retrain bit in Link Control. - Sideband Register Access requests and completions are operational in this mode.</td>
+<td>Compliance Mode Any write to this register takes effect after the next entry of RDI state status to Retrain. · 00b = Normal mode of operation . 01b = PHY only Link Training or Retraining - Adapter performs the necessary RDI handshakes to bring RDI to Active but does not perform Parameter exchanges or Adapter vLSM handshakes and keeps FDI in Reset to prevent mainband traffic. - Adapter must still trigger RDI to Retrain if software programmed the Retrain bit in Link Control. - Sideband Register Access requests and completions are operational in this mode.</td>
 </tr>
 <tr>
 <td>· 10b = Adapter Compliance - Adapter performs the necessary RDI handshakes to bring RDI to Active but does not perform Parameter exchanges or Adapter vLSM handshakes (unless triggered by software) and keeps FDI in Reset. - Adapter only performs actions based on the triggers and setup according to the registers defined in Section 9.5.4.4.2 to Section 9.5.4.4.6. - Adapter must still trigger RDI to Retrain if software programmed the Retrain bit in Link Control. - Sideband Register Access requests and completions are operational in this mode. · 11b = Reserved $\begin{array}{} { \text { Any RDI transition to LINKE } } \\ { \text { Anse not reset any registers } } \end{array}$ when this field is either 01b or 10b Default is 00b.</td>
@@ -69110,7 +69084,7 @@ signals run on the lclk or the Mgmt_Clk is implementation-specific.
 <td>Management transport negotiation phase completed. Signal de-asserts after being asserted for two clocks. This signal asserts when MBINIT.PARAM management transport negotiation phase completes. Note that this signal is asserted even if MBINIT.PARAM Configuration or SBFE exchanges indicate no support for management transport in the partner chiplet.</td>
 </tr>
 <tr>
-<td>pm_param_local_count [N-1: 0]</td>
+<td>pm_param_local_count [N-1 : 0]</td>
 <td>Number of modules that successfully negotiated Management transport on transmit side. This field is sampled only when pm_param_done signal is asserted. $0 0 0 b : 0 \quad m o d u l e s$ 011b: 3 modules 001b: 1 module $1 0 0 b : 4 \quad m o d u l e s$ 010b: 2 modules Others: Reserved N=2 for 1, 2, or 3 modules scenarios, and N=3 for 4 modules scenario.</td>
 </tr>
 <tr>
@@ -69645,7 +69619,7 @@ Ip_state_req=Active
 lp_state_req=Active
 
 SB MSG {LinkMgmt.RDI.Req.Active}
-SB MSG {LinkMgmt.RDI.Rsp.Active}-
+SB MSG {LinkMgmt.RDI.Rsp.Active}
 I
 
 SB MSG {LinkMgmt.RDI.Req.Active}
@@ -69712,7 +69686,7 @@ must initiate PM exit flow on RDI by requesting lp_state_req = Active. All PM en
 handshakes must have finished prior to this (this is when the Physical Layer on both sides of
 the Link have received a valid "PM Response" sideband message).
 
-\- If the resolution is Active.PMNAK, the Adapter must initiate a request of Active on RDI. Once
+\- If the resolution is Active. PMNAK, the Adapter must initiate a request of Active on RDI. Once
 the status moves to Active, the Adapter is permitted to re-request PM entry (if all conditions
 of PM entry are still met). Figure 10-9 shows an example of PM abort flow. The PM request
 could have been from either side.
@@ -70818,7 +70792,7 @@ FOBytes(127.64]
 
 FOBytes(191:128]
 
-FOBytes[255.192]
+FOBytes[255. 192]
 
 FÜBytes(83.0]
 
@@ -72788,7 +72762,7 @@ Retrain
 
 Adapter LSM is L2
 
-SB MSG {LinkMgmt.AdapterO.Rsp.L2}
+SB MSG {LinkMgmt.Adapter0.Rsp.L2}
 
 Adapter LSM is Retrain
 
@@ -73265,7 +73239,7 @@ are listed below.
 
 · CXL DVSEC Flex Bus Port Received Modified TS Data Phase1 Register
 
-. CXL DVSEC Flex Bus Port Control
+· CXL DVSEC Flex Bus Port Control
 
 · CXL DVSEC Flex Bus Port Status
 

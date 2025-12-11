@@ -5238,7 +5238,7 @@ capability structure which exposes a Circular Buffer structure.
 
 The capability structure shall define the following mandatory requirement:
 
-. Security asset class for the Circular Buffer control structure.
+· Security asset class for the Circular Buffer control structure.
 
 The capability structure can define the following optional requirement:
 
@@ -5937,9 +5937,9 @@ messages on the mainband.
 <th>9</th>
 <th>8</th>
 <th>7</th>
+<th>6</th>
 <th></th>
-<th>654</th>
-<th></th>
+<th>54</th>
 <th>3</th>
 <th></th>
 <th></th>

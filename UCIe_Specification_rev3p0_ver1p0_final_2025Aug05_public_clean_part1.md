@@ -9541,7 +9541,7 @@ enabled) are transmitted to the remote Link partner using a sideband message. In
 </tr>
 <tr>
 <td>"Standard 256B End Header Flit Format"</td>
-<td>This must be advertised if any of the following are true: · Enhanced Multi-Protocol capability is supported and enabled, AND the Standard 256B End Header Flit Format is supported and enabled · The Standard 256B End Header Flit Format for Streaming Protocol capability is supported and enabled Otherwise, it must be set to 0b.</td>
+<td>This must be advertised if any of the following are true: · Enhanced Multi-Protocol capability is supported and enabled, AND the Standard 256B End Header Flit Format is supported and enabled . The Standard 256B End Header Flit Format for Streaming Protocol capability is supported and enabled Otherwise, it must be set to 0b.</td>
 </tr>
 <tr>
 <td>"Standard 256B Start Header Flit Format"</td>
@@ -10800,7 +10800,7 @@ a. See Figure 2-1 for color mapping.
 
 b. Flit Header Byte 0 and Byte 1, respectively.
 
-c. CRCO Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
+c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 
 Figure 3-18. Format 4: Standard 256B Start Header Flit Format for CXL.io or PCIeª
 
@@ -11416,95 +11416,105 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 
 e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 
+$\frac { 9 } { 8 }$ 192
+
+Byte 128
+
+$B y t e$ 64
+
+$\frac { 5 } { 8 }$
+
 <table>
 <tr>
-<th>Byte 192</th>
-<th>Byte 128</th>
-<th>$\frac { 5 } { 8 }$</th>
-<th>Byte 0</th>
-<th></th>
-<th></th>
-</tr>
-<tr>
-<th rowspan="8">52B of Flit Chunk 3</th>
-<th rowspan="9"></th>
+<th rowspan="5">52B of Flit</th>
+<th rowspan="8"></th>
 <th rowspan="6">58B</th>
 <th>FH B0b</th>
-<th>+0</th>
-<th>Figure 3-24.</th>
+<th rowspan="2">+0 +1</th>
+<th rowspan="3">Figure 3-24. Format for</th>
 </tr>
 <tr>
-<td>FH B1b</td>
-<td>+1</td>
-<td></td>
+<th>$F H B 1 ^ { b }$</th>
 </tr>
 <tr>
-<th rowspan="5"></th>
-<th rowspan="3">+2</th>
-<th>Format 6: for CXL.cachememª</th>
+<th rowspan="9"></th>
+<th rowspan="2">+2</th>
 </tr>
 <tr>
-<td></td>
-</tr>
-<tr>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td>Latency-Optimized</td>
-</tr>
-<tr>
-<td>of</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td rowspan="4"></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="3">(from</td>
-<td>Flit</td>
-<td rowspan="2"></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="7">Flit Chunk</td>
-<td rowspan="2">Chunk</td>
-<td></td>
+<td>6: CXL.cachememª</td>
 </tr>
 <tr>
 <td></td>
 <td></td>
 </tr>
 <tr>
-<td rowspan="5">Protocol</td>
-<td rowspan="2"></td>
+<td>Chunk</td>
 <td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td>62B</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td>1</td>
-<td></td>
-<td></td>
-<td>256B</td>
+<td rowspan="2">Latency-Optimized</td>
 </tr>
 <tr>
 <td></td>
 <td>of</td>
+<td></td>
+</tr>
+<tr>
+<td>3</td>
+<td rowspan="2">Flit</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td>(from</td>
+<td>Flit</td>
+<td>Chunk</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+<td rowspan="3">62B</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Protocol</td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td>1</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td rowspan="2">Chunk</td>
+<td></td>
+<td rowspan="3">of Flit</td>
+<td></td>
+<td>256B</td>
+</tr>
+<tr>
+<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -11512,47 +11522,42 @@ e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 <tr>
 <td></td>
 <td>2</td>
-<td></td>
-<td>Flit</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="13">Layer)</td>
-<td></td>
-<td></td>
-<td></td>
+<td>(from</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
+<td></td>
+<td></td>
+<td></td>
+<td rowspan="2">Chunk</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Layer)</td>
 <td>64B</td>
-<td></td>
-<td></td>
+<td>Protocol</td>
 <td></td>
 <td>with</td>
 </tr>
 <tr>
 <td></td>
+<td rowspan="2">(from</td>
 <td></td>
+<td rowspan="2"></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td rowspan="3"></td>
 <td></td>
 <td></td>
 <td></td>
 </tr>
 <tr>
-<td rowspan="22">(from Protocol Layer)</td>
+<td rowspan="2"></td>
 <td></td>
-<td>Chunk</td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="3">Protocol</td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
 <td rowspan="2">0</td>
 <td></td>
 <td></td>
@@ -11560,39 +11565,42 @@ e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 <tr>
 <td></td>
 <td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
 <td></td>
 </tr>
 <tr>
+<td></td>
+<td rowspan="5">Protocol</td>
+<td></td>
+<td rowspan="3">(from</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td rowspan="5"></td>
 <td rowspan="11">Layer)</td>
-<td rowspan="2">(from</td>
-<td rowspan="2"></td>
+<td></td>
 <td>Optional</td>
 </tr>
 <tr>
 <td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
 <td></td>
 </tr>
 <tr>
-<td rowspan="2">Protocol</td>
+<td rowspan="15">Protocol Layer)</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
 <td rowspan="2">+51</td>
 <td></td>
 </tr>
 <tr>
+<td rowspan="13">Layer)</td>
 <td></td>
 </tr>
 <tr>
-<td>H B4c</td>
-<td rowspan="11">Layer)</td>
-<td>+52</td>
+<td>$H B 4 ^ { c }$</td>
+<td>$+ 5 2$</td>
 <td>Bytes</td>
 </tr>
 <tr>
@@ -11607,27 +11615,27 @@ e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 </tr>
 <tr>
 <td>H B7c</td>
-<td></td>
-</tr>
-<tr>
-<td>H B8c</td>
-<td rowspan="2">+57</td>
 <td>Format</td>
 </tr>
 <tr>
+<td>H B8c</td>
+<td></td>
+<td></td>
+</tr>
+<tr>
 <td>H B9c</td>
+<td>+57</td>
 <td></td>
 </tr>
 <tr>
 <td>H B10c</td>
 <td>$H B O ^ { C }$</td>
 <td rowspan="2">+58</td>
-<td></td>
+<td rowspan="2"></td>
 </tr>
 <tr>
 <td>H B11c</td>
 <td>H B1c</td>
-<td></td>
 </tr>
 <tr>
 <td>H B12c</td>
@@ -11650,7 +11658,6 @@ e. Flit_Marker Byte 0, Byte 1, Byte 2, and Byte 3, respectively.
 <tr>
 <td>C1 B1d</td>
 <td>C0 B1d</td>
-<td></td>
 <td>+63</td>
 <td></td>
 </tr>
@@ -11666,10 +11673,10 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 
 <table>
 <tr>
-<th>Byte 192</th>
-<th>$B y t e$ 128</th>
-<th>Byte 64</th>
-<th>$\frac { 5 } { 8 }$</th>
+<th>$\frac { 8 } { 8 }$ 192</th>
+<th>$\frac { 5 } { 8 }$ 128</th>
+<th>$\frac { 8 } { 8 }$</th>
+<th>Byte 0</th>
 <th></th>
 <th></th>
 <th>Figure</th>
@@ -11688,14 +11695,14 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td>FH B1b</td>
-<td>$+ 1$</td>
+<td>+1</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td></td>
 <td></td>
-<td rowspan="2"></td>
+<td></td>
 <td></td>
 <td>+2</td>
 <td>for</td>
@@ -11703,13 +11710,22 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 </tr>
 <tr>
 <td></td>
+<td></td>
+<td rowspan="2"></td>
 <td rowspan="2"></td>
 <td></td>
-<td></td>
 <td>Streaming</td>
-<td>Format 6:</td>
+<td>Format</td>
 </tr>
 <tr>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>6:</td>
+</tr>
+<tr>
+<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -11745,24 +11761,18 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 </tr>
 <tr>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
 <td>62B</td>
-<td rowspan="2"></td>
-<td rowspan="2">62B</td>
 <td></td>
-<td rowspan="2"></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
+<td>62B</td>
 <td></td>
 <td></td>
 <td></td>
@@ -11805,29 +11815,15 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 </tr>
 <tr>
-<td></td>
+<td>Chunk</td>
+<td rowspan="2">Chunk 2</td>
 <td rowspan="2">Chunk</td>
-<td></td>
-<td>of</td>
-<td></td>
-<td></td>
-<td></td>
+<td rowspan="2">of Flit</td>
+<td rowspan="2"></td>
+<td rowspan="2"></td>
+<td rowspan="2">256B</td>
 </tr>
 <tr>
-<td>Chunk</td>
-<td>Chunk</td>
-<td></td>
-<td></td>
-<td></td>
-<td>256B</td>
-</tr>
-<tr>
-<td></td>
-<td>2</td>
-<td></td>
-<td>Flit</td>
-<td></td>
-<td></td>
 <td></td>
 </tr>
 <tr>
@@ -11887,26 +11883,17 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <tr>
 <td></td>
 <td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td>Layer)</td>
-<td></td>
 <td>Layer)</td>
 <td>Protocol</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>Layer)</td>
+<td></td>
+<td></td>
+<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -11933,21 +11920,15 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td></td>
+<td>Layer)</td>
 <td></td>
 <td></td>
 <td>Flit</td>
 </tr>
 <tr>
 <td></td>
-<td rowspan="2"></td>
-<td rowspan="2"></td>
-<td>Layer)</td>
 <td></td>
 <td></td>
-<td rowspan="2">Format</td>
-</tr>
-<tr>
 <td></td>
 <td></td>
 <td></td>
@@ -11958,14 +11939,23 @@ d. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td>$+ 6 1$</td>
+<td></td>
+<td></td>
+<td>Format</td>
+</tr>
+<tr>
+<td></td>
+<td></td>
+<td></td>
+<td></td>
+<td>+61</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
 <td>C1 B0c</td>
 <td></td>
-<td>$C 0 B 0 ^ { \circ }$</td>
+<td>CO BOC</td>
 <td></td>
 <td>+62</td>
 <td></td>
@@ -11993,20 +11983,21 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <th>c. CRC0 b. Flit Header</th>
 <th>a. See Figure</th>
 <th>Byte 192</th>
-<th>$\frac { 5 } { 8 }$ 128</th>
+<th>Byte 128</th>
 <th>Byte 64</th>
-<th>$B y t e \quad 0$</th>
+<th>$\frac { 5 } { 8 }$</th>
 <th></th>
 <th></th>
 <th>Figure</th>
 </tr>
 <tr>
-<td colspan="2">Byte</td>
+<td>Byte</td>
+<td></td>
 <td></td>
 <td></td>
 <td rowspan="2"></td>
 <td>FH B0b</td>
-<td>40</td>
+<td>+0</td>
 <td></td>
 <td>3-26.</td>
 </tr>
@@ -12015,8 +12006,8 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td>2-1</td>
 <td></td>
 <td></td>
-<td>FH B1b</td>
-<td>71</td>
+<td>$F H B 1 ^ { b } + 1$</td>
+<td></td>
 <td></td>
 <td></td>
 </tr>
@@ -12027,8 +12018,8 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td>4</td>
-<td>for</td>
+<td>+2</td>
+<td>for Management</td>
 <td>Format</td>
 </tr>
 <tr>
@@ -12036,15 +12027,13 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td>mapping.</td>
 <td>52B</td>
 <td rowspan="2"></td>
+<td rowspan="2"></td>
+<td rowspan="2"></td>
 <td></td>
 <td></td>
-<td></td>
-<td>Management</td>
 <td>6:</td>
 </tr>
 <tr>
-<td></td>
-<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -12119,7 +12108,7 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td>Latency-Optimized</td>
 </tr>
 <tr>
-<td></td>
+<td>and</td>
 <td></td>
 <td>3</td>
 <td></td>
@@ -12130,7 +12119,7 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 </tr>
 <tr>
-<td>and</td>
+<td></td>
 <td></td>
 <td></td>
 <td></td>
@@ -12278,17 +12267,6 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
 <td>Protocol</td>
 <td></td>
 <td></td>
@@ -12299,18 +12277,18 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <td></td>
 <td></td>
 <td></td>
-<td></td>
+<td>Layer)</td>
 <td></td>
 <td>+51</td>
 <td></td>
 <td></td>
 </tr>
 <tr>
+<td rowspan="2"></td>
+<td rowspan="2"></td>
 <td></td>
-<td rowspan="4"></td>
+<td rowspan="2">Layer)</td>
 <td></td>
-<td></td>
-<td>Layer)</td>
 <td></td>
 <td>+52</td>
 <td></td>
@@ -12319,23 +12297,18 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <tr>
 <td></td>
 <td></td>
-<td rowspan="3">Layer)</td>
 <td></td>
-<td></td>
-<td></td>
-<td></td>
-<td></td>
-</tr>
-<tr>
-<td rowspan="2"></td>
-<td rowspan="2">Rsvd 6B</td>
-<td rowspan="2"></td>
-<td rowspan="2">Layer)</td>
 <td></td>
 <td></td>
 <td>Flit</td>
 </tr>
 <tr>
+<td></td>
+<td></td>
+<td>Rsvd 6B</td>
+<td></td>
+<td></td>
+<td>Layer)</td>
 <td></td>
 <td></td>
 <td>Format</td>
@@ -12386,11 +12359,11 @@ c. CRC0 Byte 0, CRC0 Byte 1, CRC1 Byte 0, and CRC1 Byte 1, respectively.
 <tr>
 <td></td>
 <td></td>
-<td>$B 1 ^ { c }$</td>
+<td>C1 B1c</td>
 <td></td>
 <td>C0 B1c</td>
 <td></td>
-<td>$+ 6 3$</td>
+<td>+63</td>
 <td></td>
 <td></td>
 </tr>
@@ -13254,7 +13227,7 @@ both NOP flits or Payload flits are permitted to be used to complete the Sequenc
 Handshake Phase. If there are no Payload flits to send, the Adapter must generate NOP flits to
 complete the Sequence Number Handshake Phase.
 
-· The variable "Prior Flit was Payload" is always set to 1. This bit does not exist in the Flit Header,
+. The variable "Prior Flit was Payload" is always set to 1. This bit does not exist in the Flit Header,
 and thus from the Retry perspective, implementations must assume that it is always set to 1.
 
 · MAX_UNACKNOWLEDGED_FLITS is set to the lesser of:

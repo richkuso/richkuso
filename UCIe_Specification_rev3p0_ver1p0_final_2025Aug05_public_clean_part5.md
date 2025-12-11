@@ -1065,10 +1065,10 @@ use the three following identifiers:
 <th>10</th>
 <th>9</th>
 <th></th>
+<th>876</th>
 <th></th>
 <th></th>
-<th></th>
-<th>876543210</th>
+<th>543210</th>
 <th></th>
 <th></th>
 <th></th>
@@ -7625,7 +7625,7 @@ multiples of 4 KB.
 <tr>
 <td rowspan="5">2:0</td>
 <td rowspan="5">RO</td>
-<td>Register BIR For UCIe DVSEC capability in host UiRB, Switch UiSRB and in UCIe Retimer, this field is reserved. For others, its defined as follows: Indicates which one of a Dev0/Fn0 Base Address Registers, located beginning at 10h in Configuration Space, or entry in the Enhanced Allocation capability with a matching BAR Equivalent Indicator (BEI), is used to map the UCIe Register blocks into Memory Space. Defined encodings are:</td>
+<td>Register BIR For UCIe DVSEC capability in host URB, Switch UiSRB and in UCIe Retimer, this field is reserved. For others, its defined as follows: Indicates which one of a Dev0/Fn0 Base Address Registers, located beginning at 10h in Configuration Space, or entry in the Enhanced Allocation capability with a matching BAR Equivalent Indicator (BEI), is used to map the UCIe Register blocks into Memory Space. Defined encodings are:</td>
 </tr>
 <tr>
 <td>· 0 Base Address Register 10h</td>
