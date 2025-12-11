@@ -50031,7 +50031,7 @@ structures are described in Table 8-15 and Table 8-16, respectively.
 <td>Number of Vendor Defined Asset Classes This field indicates the number of vendor defined asset classes. A value of all 0s in this field indicates that no vendor defined asset classes are supported.</td>
 </tr>
 <tr>
-<td>$\begin{array}{} { \text { Standard Asset } } \\ { \text { Class Access } } \end{array}$ Table Low</td>
+<td>Standard Asset<br>Class Access Table Low</td>
 <td>$6 \left[ 3 1 : 0 \right]$</td>
 <td>17</td>
 <td>$R O$</td>
@@ -50042,21 +50042,21 @@ structures are described in Table 8-15 and Table 8-16, respectively.
 <td>$7 \left[ 3 1 : 0 \right]$</td>
 <td>17</td>
 <td>$R O$</td>
-<td>Standard Asset $B i t s \quad 3 2 \quad t o \quad 6 3 \quad o f \quad t h e \quad 6 4 - b i t \quad a d d r e s s \quad o f \quad t h e \quad b a s e \quad a d d r e s s \quad o f$</td>
+<td>Standard Asset Class Access Table High Bits 32 to 63 of the 64-bit address of the base address of the Standard Asset Class Table.</td>
 </tr>
 <tr>
-<td>Vendor Defined $\begin{array}{} \text { Asset Class } \\ \text { Access Table Lov } \end{array}$</td>
+<td>Vendor Defined<br>Asset Class Access Table Low</td>
 <td>$8 \left\lceil 3 1 : 0 \right\rceil$</td>
 <td>17</td>
 <td>$R O$</td>
-<td>Vendor Defined Asset Class Access Table Low Bits 0 to 31 of the 64-bit address of the base address of the Vendor Defined Asset Class Table. Because the Vendor Defined Asset Class Access Table must be DWORD-aligned, bits 0 and 1 must be 00b. $\begin{array}{} { \text { A value of zero in the Vendor Defined Asset Class Access } } \\ { \text { Table Low and Hah fields indicates that there is no Vendc } } \end{array}$ Defined Asset Class Access Table.</td>
+<td>Vendor Defined Asset Class Access Table Low Bits 0 to 31 of the 64-bit address of the base address of the Vendor Defined Asset Class Table. Because the Vendor Defined Asset Class Access Table must be DWORD-aligned, bits 0 and 1 must be 00b. A value of zero in the Vendor Defined Asset Class Access Table Low and High fields indicates that there is no Vendor Defined Asset Class Access Table.</td>
 </tr>
 <tr>
 <td>Vendor Defined Asset Class Access Table High</td>
 <td>$9 \left[ 3 1 : 0 \right]$</td>
 <td>17</td>
 <td>$R O$</td>
-<td>Vendor Defined Asset Class Access Table High Bits 32 to 63 of the 64-bit address of the base address of the Vendor Defined Asset Class Table. $\begin{array}{} { \text { A value of zero in the Vendor Defined Asset Class Access } } \\ { \text { Table Low and High fields indicaties that there is no Vendo } } \end{array}$ Defined Asset Class Access Table.</td>
+<td>Vendor Defined Asset Class Access Table High Bits 32 to 63 of the 64-bit address of the base address of the Vendor Defined Asset Class Table. A value of zero in the Vendor Defined Asset Class Access Table Low and High fields indicates that there is no Vendor Defined Asset Class Access Table.</td>
 </tr>
 </table>
 
